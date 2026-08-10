@@ -1070,6 +1070,15 @@ while IFS= read -r -d '' src_file <&3; do
     # Skip metadata files
     if _in_list "$rel_path" "${SKIP_FILES[@]}"; then continue; fi
 
+    # Never install compiled Python artifacts. The learning demos are plain .py
+    # run in place; bytecode is generated, and its bytes embed the source path
+    # and brand it was compiled from (stale bytecode once carried a retired
+    # pre-rebrand framework path into every install). ship.sh already excludes
+    # these from src/ — this is the second line of defence at install time.
+    case "$rel_path" in
+        *__pycache__/*|*.pyc|*.pyo) continue ;;
+    esac
+
     # Platform filter: .github/** only for github-based platforms
     if [[ "$rel_path" == .github/* ]]; then
         if [ "$PLATFORM" = "none" ]; then

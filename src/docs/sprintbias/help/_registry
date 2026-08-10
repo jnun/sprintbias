@@ -23,7 +23,7 @@
 newidea       | create   | [name]              | Create a new idea (no name = AI Q&A) | newidea
 newfeature    | create   | [name]              | Create a new feature (no name = AI Q&A) | newfeature
 newtask       | create   | <description>       | Create a new task | newtask
-newplan       | create   | <name> [task-id...|parent:N] | Create a plan — named task-ID list; parent:N binds open parent+children (fast lane) | newplan
+newplan       | create   | <name> [ids / parent:N] | Create a plan — named task-ID list; parent:N binds open parent+children (fast lane) | newplan
 newbug        | create   | <description>       | Report a new bug | bug
 newtest       | create   | <name>              | Create a test loop to validate a deployed thing | newtest
 

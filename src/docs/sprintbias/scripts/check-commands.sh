@@ -117,6 +117,39 @@ if [ -n "$_badgroups" ]; then
     echo ""
 fi
 
+# ── Check 6: registry row shape — no field may contain a literal '|' ──
+#            The registry is pipe-delimited and sprint.sh splits it with
+#            IFS='|'. One stray pipe inside a field silently shifts every
+#            later field: the summary vanishes from the generated index and
+#            demo_for_cmd reads the summary as a demo name. Two cheap guards:
+#            a hard field-count cap, and 5th-field validity (when present it
+#            must name a real learning/<demo>.py) — the second also catches a
+#            stray pipe that happens to land on a legal field count.
+_badrows=""
+while IFS='|' read -r _c _g _u _s _d _extra; do
+    _c="${_c//[[:space:]]/}"
+    case "$_c" in ''|'#'*) continue ;; esac
+    if [ -n "${_extra:-}" ]; then
+        _badrows="$_badrows ${_c}:over-5-fields"
+        continue
+    fi
+    _d="${_d//[[:space:]]/}"
+    if [ -n "$_d" ] && [ ! -f "$PROJECT_ROOT/docs/sprintbias/learning/${_d}.py" ]; then
+        _badrows="$_badrows ${_c}:no-demo(${_d})"
+    fi
+done < "$REGISTRY"
+if [ -n "$_badrows" ]; then
+    fail=1
+    echo -e "${RED}✗ Malformed registry row(s) — a field contains a literal '|':${NC}"
+    for br in $_badrows; do
+        case "$br" in
+            *:over-5-fields) echo "    ${br%%:*}   — more than 5 fields; remove the stray pipe" ;;
+            *) echo "    ${br%%:*}   — field 5 ${br#*:no-demo} is not a learning/<demo>.py; a pipe likely shifted the fields" ;;
+        esac
+    done
+    echo ""
+fi
+
 _count=$(printf '%s\n' "$REG_CMDS" | grep -cE '.')
 if [ "$fail" -eq 0 ]; then
     echo -e "${BLUE}Checked $_count command(s) across all four surfaces.${NC}"

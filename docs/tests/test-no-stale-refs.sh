@@ -205,6 +205,27 @@ check '\./sprint\.sh (talk|tasks|define|checkfeatures|ai-context|audit-deps)\b' 
 check '^[[:space:]]*(MODEL_TALK|MODEL_DEFINE|MODEL_TASKS|BUDGET_TASKS)=' \
     "no retired MODEL_TALK/DEFINE/TASKS or BUDGET_TASKS config keys"
 
+# ── Compiled artifacts in the distribution ───────────────────────────
+# Every check above is text-only: the policed list keeps .sh/.md/.yml/.template
+# /config and drops src/ outright, and ship.sh's legacy gate greps with -I
+# (skip binaries). A .pyc is invisible to both — yet its bytes embed the source
+# path and brand it was compiled from, so committed bytecode smuggled
+# `docs/sprintmd/learning/gate.py` and `sprint.md` into every install. This
+# check is deliberately placed OUTSIDE the text scan: it walks src/ on the
+# filesystem, so the src/ exclusion above cannot hide it.
+_pyc_hits=$(find src -name '__pycache__' -o -name '*.pyc' -o -name '*.pyo' 2>/dev/null)
+if [ -n "$_pyc_hits" ]; then
+    echo "  FAIL: no compiled Python artifacts under src/"
+    printf '%s\n' "$_pyc_hits" | sed 's/^/        /'
+    echo "        Bytecode embeds the path+brand it was compiled from and is"
+    echo "        invisible to every text-based scan. Remove it, and confirm"
+    echo "        __pycache__/*.pyc are in .gitignore and ship.sh TREE_EXCLUDES."
+    FAIL=$((FAIL + 1))
+else
+    echo "  PASS: no compiled Python artifacts under src/"
+    PASS=$((PASS + 1))
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1

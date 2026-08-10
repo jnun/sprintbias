@@ -137,6 +137,14 @@ docs/_build/
 docs/.doctrees/
 site/
 
+# Python bytecode — the learning demos under docs/sprintbias/learning/ are
+# plain .py run in place. Compiled artifacts are generated, carry stale
+# pre-rebrand strings in their bytes, and must never be tracked or shipped
+# (ship.sh excludes them; test-no-stale-refs.sh asserts src/ stays clear).
+__pycache__/
+*.pyc
+*.pyo
+
 # macOS Finder
 .fseventsd
 .Spotlight-V100

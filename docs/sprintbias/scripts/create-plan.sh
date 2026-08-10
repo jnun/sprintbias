@@ -68,10 +68,13 @@ expand_ids() {
 # **Parent**: N exactly. Emits one id per line. Notes on stdout stderr for
 # "parent retired" when children match but parent is not open.
 expand_parent_token() {
-    local pid="$1" stage f id pval parent_open=0 child_count=0
-    # Parent itself only if open-stage.
-    if hit=$(sprintbias_find_task "$pid" \
-                docs/tasks/backlog docs/tasks/next docs/tasks/doing docs/tasks/blocked); then
+    local pid="$1" stage f id pval hit parent_open=0 child_count=0
+    # Parent itself only if open-stage. Resolve the folder list from
+    # SPRINTBIAS_OPEN_STAGES — the same array the child scan and the zero-match
+    # error name — so the two can never drift out of agreement.
+    local -a open_dirs=()
+    for stage in "${SPRINTBIAS_OPEN_STAGES[@]}"; do open_dirs+=("docs/tasks/$stage"); done
+    if hit=$(sprintbias_find_task "$pid" "${open_dirs[@]}"); then
         printf '%s\n' "$pid"
         parent_open=1
     fi
@@ -99,32 +102,46 @@ PREBOUND=0
 HAD_PLAIN_IDS=0
 PARENT_TOKENS=0
 
-if [ "$#" -gt 0 ]; then
-    PREBOUND=1
-    _raw_out=$(mktemp)
-    for _tok in "$@"; do
-        _tok="${_tok//,/ }"
-        for _tok in $_tok; do
-            if [[ "$_tok" =~ ^[Pp]arent:([0-9]+)$ ]]; then
+# collect_member_tokens TOKEN… — expand every member token to ids on stdout.
+# THE one member parser: comma splitting, N-M ranges, parent:N, and a loud
+# error on anything unrecognized. Both entry paths (argv and the interactive
+# prompt) call this, so the two can never disagree about what a token means.
+# Records PARENT_TOKENS / HAD_PLAIN_IDS for the caller's zero-match guard.
+# Returns non-zero on a bad token; the caller cleans up and exits.
+collect_member_tokens() {
+    local tok
+    for tok in "$@"; do
+        tok="${tok//,/ }"
+        for tok in $tok; do
+            if [[ "$tok" =~ ^[Pp]arent:([0-9]+)$ ]]; then
                 PARENT_TOKENS=$((PARENT_TOKENS + 1))
-                expand_parent_token "${BASH_REMATCH[1]}" >> "$_raw_out" || true
-            elif [[ "$_tok" =~ ^([0-9]+)-([0-9]+)$ ]] || [[ "$_tok" =~ ^[0-9]+$ ]]; then
+                expand_parent_token "${BASH_REMATCH[1]}" || true
+            elif [[ "$tok" =~ ^([0-9]+)-([0-9]+)$ ]] || [[ "$tok" =~ ^[0-9]+$ ]]; then
                 HAD_PLAIN_IDS=1
-                expand_ids "$_tok" >> "$_raw_out"
-            elif [[ "$_tok" =~ ^[Pp]arent: ]]; then
-                echo -e "${RED}ERROR: invalid parent token '$_tok' (use parent:N with a numeric id).${NC}"
-                rm -f "$_raw_out"
-                exit 1
+                expand_ids "$tok"
+            elif [[ "$tok" =~ ^[Pp]arent: ]]; then
+                echo -e "${RED}ERROR: invalid parent token '$tok' (use parent:N with a numeric id).${NC}" >&2
+                return 2
             else
-                echo -e "${RED}ERROR: unrecognized member token '$_tok'.${NC}"
-                echo "Use task ids, N-M ranges, or parent:N."
-                rm -f "$_raw_out"
-                exit 1
+                echo -e "${RED}ERROR: unrecognized member token '$tok'.${NC}" >&2
+                echo "Use task ids, N-M ranges, or parent:N." >&2
+                return 2
             fi
         done
     done
-    while IFS= read -r _id; do MEMBER_IDS+=("$_id"); done < <(awk '!seen[$0]++' "$_raw_out")
-    rm -f "$_raw_out"
+}
+
+# bind_members TOKEN… — run the shared parser, dedupe into MEMBER_IDS, and
+# apply the no-empty-silent-plan guard. Shared by both entry paths.
+bind_members() {
+    local raw_out
+    raw_out=$(mktemp)
+    if ! collect_member_tokens "$@" >> "$raw_out"; then
+        rm -f "$raw_out"
+        exit 1
+    fi
+    while IFS= read -r _id; do MEMBER_IDS+=("$_id"); done < <(awk '!seen[$0]++' "$raw_out")
+    rm -f "$raw_out"
     # parent:N alone with zero matches → fail loud (no empty silent plan).
     if [ "$PARENT_TOKENS" -gt 0 ] && [ "$HAD_PLAIN_IDS" -eq 0 ] && [ "${#MEMBER_IDS[@]}" -eq 0 ]; then
         echo -e "${RED}ERROR: parent: token(s) matched no open tasks.${NC}"
@@ -132,6 +149,11 @@ if [ "$#" -gt 0 ]; then
         echo "Include the parent only if it is still open; children need **Parent**: N exactly."
         exit 1
     fi
+}
+
+if [ "$#" -gt 0 ]; then
+    PREBOUND=1
+    bind_members "$@"
 elif [ -t 0 ] && [ -t 1 ]; then
     # Interactive: a plan is the defining period, so offer backlog/ — the tasks
     # you choose before work starts. (next/blocked/doing/review/done are all
@@ -148,20 +170,12 @@ elif [ -t 0 ] && [ -t 1 ]; then
     printf "Enter member task IDs (space/comma separated, N-M ranges or parent:N; blank for none): "
     read -r _line </dev/tty 2>/dev/null || _line=""
     if [ -n "$_line" ]; then
-        # Re-enter through the same argv parser for parent: support.
+        # Same parser as the argv path — a typo, a comma-joined parent: token,
+        # and a zero-match parent: all behave identically at the prompt.
         # shellcheck disable=SC2086
         set -- $_line
         PREBOUND=1
-        _raw_out=$(mktemp)
-        for _tok in "$@"; do
-            if [[ "$_tok" =~ ^[Pp]arent:([0-9]+)$ ]]; then
-                expand_parent_token "${BASH_REMATCH[1]}" >> "$_raw_out" || true
-            else
-                expand_ids "$_tok" >> "$_raw_out"
-            fi
-        done
-        while IFS= read -r _id; do MEMBER_IDS+=("$_id"); done < <(awk '!seen[$0]++' "$_raw_out")
-        rm -f "$_raw_out"
+        bind_members "$@"
     fi
 fi
 

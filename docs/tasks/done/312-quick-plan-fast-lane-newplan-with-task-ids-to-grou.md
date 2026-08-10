@@ -214,6 +214,12 @@ docs/sprintbias/scripts/split.sh
 docs/sprintbias/scripts/chat.sh
 docs/guides/command-matrix.md
 
+Rework round 1 (2026-08-10):
+docs/sprintbias/help/_registry
+docs/sprintbias/scripts/create-plan.sh
+docs/sprintbias/scripts/check-commands.sh
+src/ (mirrored via ./ship.sh — v0.0.85)
+
 ## Questions
 
 **Status: READY**
@@ -249,8 +255,10 @@ removing.
 
 ### Remaining work
 
-None of the five Rework (round 1) items has landed yet. All were re-verified as
-still open:
+None — all five Rework (round 1) items landed on 2026-08-10 and shipped in
+v0.0.85. See **Resolved** at the end of Rework (round 1) for what changed and
+how each was verified. The findings that drove them are kept below for the
+record:
 
 - **Registry pipe still breaks two shipped surfaces.**
   `help/_registry:26` still reads `<name> [task-id...|parent:N]`. Reproduced:
@@ -306,23 +314,51 @@ tokens with a reduced copy of the argv loop, so it silently drops members and ca
 create the empty plan success criterion 4 forbids.
 
 **Improve:**
-- [ ] Rewrite the `newplan` row in `docs/sprintbias/help/_registry` so no field
+- [x] Rewrite the `newplan` row in `docs/sprintbias/help/_registry` so no field
       contains a literal `|` (e.g. usage `<name> [ids / N-M / parent:N]`).
       Verify `./sprint.sh help` shows the full summary on one clean row and
       `./sprint.sh newplan --demo` no longer reports an unknown demo.
-- [ ] Factor the argv member-token loop in `docs/sprintbias/scripts/create-plan.sh`
+- [x] Factor the argv member-token loop in `docs/sprintbias/scripts/create-plan.sh`
       (comma splitting, `parent:N` match, unrecognized-token error, zero-match
       fail-loud) into one function and call it from BOTH the argv path and the
       interactive prompt path, so the two behave identically.
-- [ ] With that shared parser in place, confirm at the interactive prompt:
+- [x] With that shared parser in place, confirm at the interactive prompt:
       `335,parent:336` binds both (today the comma-joined `parent:` token is
       silently dropped), a typo like `parnt:335` errors instead of being ignored,
       and a `parent:N` with zero open matches fails loud rather than writing an
       empty plan.
-- [ ] In `expand_parent_token`, resolve the parent's own open-stage lookup from
+- [x] In `expand_parent_token`, resolve the parent's own open-stage lookup from
       `SPRINTBIAS_OPEN_STAGES` instead of the hardcoded
       `docs/tasks/backlog next doing blocked` list — the error message already
       claims that array is the source of truth, so the two must not drift.
-- [ ] Add a registry-format check to `docs/sprintbias/scripts/check-commands.sh`
+- [x] Add a registry-format check to `docs/sprintbias/scripts/check-commands.sh`
       that fails when a row has more than 5 pipe-delimited fields, so this class
       of breakage cannot ship silently again.
+
+**Resolved (2026-08-10).** All five landed and shipped in v0.0.85.
+
+- **Registry row** is now `<name> [ids / parent:N]` — no literal `|`. Dropped
+  `N-M` from the hint to fit `sprint.sh:89`'s 32-char pad, so the row renders
+  aligned with the summary intact; ranges stay documented in `help/newplan.md`.
+  `./sprint.sh newplan --demo` plays again.
+- **One parser, both paths.** `collect_member_tokens` (comma split, ranges,
+  `parent:N`, loud error on anything else) plus `bind_members` (dedupe +
+  no-empty-silent-plan guard) in `create-plan.sh`; the argv branch and the
+  interactive branch both call `bind_members` and nothing else.
+- **Interactive prompt verified on an isolated board**, driven through a real
+  pty: `9003,parent:9001` → binds 9003 + 9001 + 9002 (previously bound 9003 and
+  silently dropped the parent token); `parnt:9001` → `unrecognized member token`,
+  0 plans written; `parent:9999` → `matched no open tasks`, 0 plans written. The
+  argv path produces identical results, and `parent:900` still refuses to pull
+  9001/9002 (exact-id guard survives the open-stage refactor).
+- **Spec correction on the registry guard.** The rework note assumed the mangled
+  row split into exactly 5 fields and that a field-count cap would miss it — it
+  actually splits into 6, so the cap does catch it. Both guards are implemented
+  anyway: a >5-field cap, and 5th-field validity (when present it must name a
+  real `learning/<demo>.py`), which catches a stray pipe that lands on a legal
+  field count. Each was proved by planting the corresponding malformed row.
+- **Mirrored.** `./ship.sh` → v0.0.85; `src/docs/sprintbias/help/_registry` is
+  clean, so the breakage is resolved for installed users.
+
+Verified after the changes: `docs/tests/run-all.sh` 22/22 green; `./sprint.sh
+validate` 127/127 valid; `validate --commands` and `validate --docs` green.
