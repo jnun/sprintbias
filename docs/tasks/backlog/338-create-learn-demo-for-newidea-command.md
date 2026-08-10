@@ -27,6 +27,15 @@
      matters. Loose Gherkin (Given/When/Then) is welcome, not required.
      2-5 sentences, plain English. -->
 
+A newcomer with a half-formed idea that solves a real problem has no way to
+*see* what `newidea` does before running it, so capture feels risky and the
+command's value is invisible. The learning catalog (plan 18) needs one short,
+watchable vignette — safe theater — of a person turning a fuzzy thought into a
+captured, named idea file with `newidea`, touching nothing in their project.
+This is a standalone demo `docs/sprintbias/learning/newidea.py`, per plan 18's
+per-command coverage decision (the earlier "fold into session.py" argument is
+superseded).
+
 
 
 ## Success criteria

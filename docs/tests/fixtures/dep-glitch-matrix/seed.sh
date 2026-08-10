@@ -502,8 +502,12 @@ EOF
 
 ## Intentionally omitted members (drift cases)
 
-- #9082 — has **Plan**: ${PLAN_ID} on the task but is omitted here
-- #9010, #9013, #9041, #9042 — missing files (dangling / fold / split / replace)
+Ids are code-quoted here so this prose does not itself parse as a member line
+(sprintbias_plan_member_ids reads only "- #ID" bullets) — otherwise #9082's
+"declared on the task, absent from the plan" drift case would silently heal.
+
+- \`#9082\` — has **Plan**: ${PLAN_ID} on the task but is omitted here
+- \`#9010\`, \`#9013\`, \`#9041\`, \`#9042\` — missing files (dangling / fold / split / replace)
 
 ## Fold / split ledger (for classifiers)
 

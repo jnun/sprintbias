@@ -1,7 +1,12 @@
-<!-- SprintBias v0.0.61 -->
+<!-- SprintBias v0.0.77 -->
 # SprintBias
 
 Project management in markdown files. Folders and plain text.
+
+> If this file is named `SPRINTDOCUMENTATION.md` in your project, it is still
+> the SprintBias manual — the installer used that name because you already had
+> a `DOCUMENTATION.md` of your own. Pointers in `CLAUDE.md` / `AGENTS.md` target
+> whichever filename landed.
 
 ## Guiding principles
 
@@ -35,7 +40,7 @@ Task files live in `docs/tasks/*/` and describe outcomes in plain language:
 ## Boundaries
 
 **Framework files (do not edit):**
-- `DOCUMENTATION.md`
+- `DOCUMENTATION.md` (or `SPRINTDOCUMENTATION.md`, if you already had one)
 - `sprint.sh`
 - `docs/sprintbias/` (framework scripts, AI instructions) — except `DOC_STATE.md`, your own ID/state file
 
@@ -82,7 +87,7 @@ This file governs `docs/`. Read it before modifying any task, bug, or feature.
 | **Cause** | Unresolved choice, open question, contradiction, or missing clarification *on this task* | A prerequisite task has not finished yet |
 | **Where it lives** | `blocked/` folder | Stays in `next/` (or wherever it was); no folder move |
 | **How `work` treats it** | Never runs it (it is not READY in the queue) | Holds it until every `**Depends on**` prerequisite reaches `review/` or `done/`, then releases it |
-| **How you fix it** | Answer the questions (`chat <id>`), then re-enter through the gate | Finish the prerequisite — or record the edge if it was missing |
+| **How you fix it** | Answer each open question (`chat <id>`), write the answer as instruction in the task body, delete the question, then re-enter through the gate | Finish the prerequisite — or record the edge if it was missing |
 
 The software analogy: you would not say an app is *blocked by* a Python module. You would say it **depends on** that module and **requires** it to be installed. Same here — a task that lists `**Depends on**: 42` is **dependent** (on hold until 42 lands), not blocked. A whole chain of dependent tasks has *zero* blocked tasks even when only one can start right now.
 
@@ -96,13 +101,15 @@ Reserve **blocked** / **BLOCKED** for “a decision or clarification is needed.�
 
 **COMPLETE vs. `done/` — don't conflate them either:**
 - **COMPLETE** is a *workability verdict* (gate, plan start, folder sweep, drift check): the work is already present in the codebase. The stamp is `**Status: COMPLETE**` under `## Questions` (or a sweep status line). Routing is to **`review/`** for human approval — never a silent leap into `done/`.
+- **Open questions** live under `### Questions for the developer`. Flow: ask → answer → convert the answer into instruction in Problem / Success criteria / Notes → delete the question. READY and promotion into `next/` need a clear list (`None — task is fully defined.`).
 - **`docs/tasks/done/`** is a *lifecycle folder*: you (or an explicit move) put the task there after approving review. Folder location is status; COMPLETE is not a folder name and is not written as a plan status.
 - The one **automated** `review/ → done/` move is `./sprint.sh promote`: a task with **Tests** naming suite scripts that all run green closes itself; work with `none` stays in `review/` for a human. That is how a plan whose tasks are all suite-backed reaches "every member in `done/`" without hand-moves, ready for `./sprint.sh plan done <id>`.
+- **Two gates, one lifecycle.** The same dependency edge gates both ends of a task's life: **`Depends on` gates `work`** (a task does not *run* until every prerequisite reaches `review/`/`done/`), and **`Tests` gates `promote`** (a task does not *close* until its suite scripts pass **and** its prerequisites are already closed). So `promote` closes in dependency order — a `review/` task whose prerequisite is still open is *held* (not moved), named with its stage, and released automatically on a later run once that prerequisite closes. A dependent never lands in `done/` ahead of the work it needs. `./sprint.sh validate` mirrors this on the close side with a report-only **Tests**-field check, so a **Tests** path that is a typo, missing, or outside `docs/tests/` is named loudly instead of stranding a task in `review/` forever.
 
 **Plans vs. the folders above — don't conflate them either:**
 - The six folders above are **lifecycle status**: a task lives in exactly one, and moving it *is* how status changes.
 - A **plan** (`docs/plans/N-name.md`) is a **relational index, not a status.** It is one file that names a clump of related tasks and lists their IDs. The member tasks are **never moved into it** — each stays in its own lifecycle folder and flows through `backlog → next → …` on its own. A plan is never a lifecycle stage and is never counted or moved as a task; it carries a `**Status:** DRAFT | READY | STARTED` for its own life: `DRAFT` while authoring, `READY` once authored and safe for `plan start` / `loop --refill`, and `STARTED` — a one-way switch set by `plan start` — once its members have been committed to `next/`. Retirement is deletion: when every member sits in `docs/tasks/done/`, `./sprint.sh plan done <id>` removes the file. There is no stored `DONE` and no `NEXT` plan status. Two disambiguations: a plan `**Status:**` is **not** a task folder (`next/` is a lifecycle stage; `STARTED` is a plan field), and plan-level `READY` is **not** the task-level `**Status: READY**` the gate stamps on each member. `docs/plans/` is a sibling of `docs/tasks/`, not a stage inside it.
-- Member IDs are references only: moving or working a member task needs no edit to the plan file. Author with `./sprint.sh newplan` / `./sprint.sh chat plan <id>`; optionally critique with `./sprint.sh plan think <id>`; commit into the sprint with `./sprint.sh plan start <id>` (gates each member; READY → `next/`). Single-task promote uses the same gate: `bash docs/sprintbias/scripts/promote-to-sprint.sh <task-file>`. The plan file itself never moves. `./sprint.sh status` rolls up each plan by resolving its members' current folders.
+- Member IDs are references only: moving or working a member task needs no edit to the plan file. Author with `./sprint.sh newplan` / `./sprint.sh chat plan <id>`; optionally critique with `./sprint.sh plan think <id>`; commit into the sprint with `./sprint.sh plan start <id>` (gates **every** listed member — no hard size cap; soft warning over 10 members; READY → `next/`). Single-task promote uses the same gate: `bash docs/sprintbias/scripts/promote-to-sprint.sh <task-file>`. The plan file itself never moves. `./sprint.sh status` rolls up each plan by resolving its members' current folders.
 
 **Do not assume** old file dates mean abandoned. A task from months ago in `done/` is completed history.
 
@@ -190,6 +197,7 @@ Help groups: **create · chat · plan · work · look · keep**.
 ./sprint.sh work [N] [count N] [--fast] # Execute READY tasks from next/ — `work N` works one task by id; `count N` caps how many run (--force skips the gate; --audit --excellence chain quality audits)
 ./sprint.sh loop [--refill] [--retry] # Autopilot — plan start (gates as it commits) then work, drain the queue
 ./sprint.sh gate [folder] [limit]     # Off-spine quality gate: re-gate next/ (--force) or report on backlog/doing/blocked
+./sprint.sh settle [id] [--dry-run]   # Accept (Suggestion: …) open questions — fold into Notes, clear list; demote next/ that still need a human
 ./sprint.sh split <path>              # Split a large task into subtasks
 ./sprint.sh polish [limit] [--rounds N]  # Sweep review/: reopen tasks worth another pass
 ./sprint.sh polish <id|file>          # Deep-judge one finished task (by id or path); file enhancements to backlog/
@@ -210,6 +218,7 @@ Help groups: **create · chat · plan · work · look · keep**.
 # Keep — maintenance
 ./sprint.sh validate [--fix] [--dry-run]  # Integrity-check task IDs + deps (--docs: help/ flag drift; --commands: catalog completeness)
 ./sprint.sh cleanup [--delete|--force|--all]  # Clean stale files from docs/tmp/
+./sprint.sh config                    # Interactive: set AI provider + default model (no AI)
 ./sprint.sh model show/list/set [k v] # See/list/set the AI model per role (no AI)
                                       #   pin one run: work/chat/gate/polish --model <id>
 ./sprint.sh help                      # Show all commands
@@ -289,11 +298,119 @@ Use templates in each folder:
 - `docs/bugs/.TEMPLATE-bug.md`
 - `docs/tests/.TEMPLATE-test.md`
 
-## Updating SprintBias
+## Choosing your AI provider and model
+
+Your provider and per-command models live in `docs/sprintbias/config`
+(`CLI=`, `PROVIDER=`, `MODEL_DEFAULT=`, `MODEL_<ROLE>=`). The quickest way to
+set them is the interactive wizard:
+
+```bash
+./sprint.sh config     # pick provider (Claude Code / Grok Build) + default model
+```
+
+You can also edit the file directly or use `./sprint.sh model set <role>
+<model>` for a single command. These choices are semi-permanent: they persist
+across updates until you change them.
+
+**Pin a specific model** (e.g. an older, steadier release) instead of the
+floating tier default. On Claude Code the empty default resolves to the `opus`
+alias, which the CLI expands to the *latest* Opus; set an explicit id to hold a
+version:
+
+```bash
+./sprint.sh model set default claude-opus-4-8   # every command
+./sprint.sh model set work claude-opus-4-8       # just `work`
+./sprint.sh model show                           # see the effective model per role
+```
+
+### Local config overlay (`config.local`)
+
+For a personal, semi-permanent override that **never ships and is never
+committed**, create `docs/sprintbias/config.local` — same `KEY=VALUE` format as
+`config`. Any key there wins over `config`; setting a key empty (`KEY=`) clears
+`config`'s value locally. It is gitignored, so your pin never lands in the repo
+or (in the SprintBias source tree) in the distribution.
+
+```bash
+# docs/sprintbias/config.local
+CLI=grok                       # use Grok for your runs
+MODEL_DEFAULT=claude-opus-4-8  # pin a steadier model for yourself
+```
+
+Precedence, highest first: environment variable
+(`SPRINTBIAS_MODEL_<ROLE>` / `SPRINTBIAS_CLI` …) → per-run flag
+(`--model <id>`, `-c` / `-g`) → `config.local` → `config` → tier default. Use
+env vars or per-run flags for a single shell or invocation; use `config.local`
+for a machine-local default that sticks.
+
+## Installing SprintBias
 
 Website: [sprintbias.com](https://sprintbias.com) · Source: [github.com/jnun/sprintbias](https://github.com/jnun/sprintbias)
 
-To update to a newer version, re-run setup from the SprintBias repo:
+From a clone of this repo (or the one-liner installer), `./setup.sh` installs
+SprintBias **into your project** — not into this repository.
+
+### Two doors
+
+One question at the start:
+
+| Choice | Runtime |
+|--------|---------|
+| **[Enter]** | Claude Code (`CLI=claude`, `PROVIDER=claude-code`) |
+| **[g]** | Grok Build (`CLI=grok`, `PROVIDER=grok-build`) |
+
+Both doors run the **same** file scaffold. The only difference is the AI CLI
+written into `docs/sprintbias/config`. Change it later by editing that file or
+using `./sprint.sh -c` / `-g` for a single run.
+
+### Silent scaffold (Easy Button)
+
+On the default path (accept defaults after the door), setup asks **no**
+AI-file questions. It ensures, in order:
+
+1. `GETSTARTED.md` (this quick start)
+2. `CLAUDE.md` and `AGENTS.md` (short pointers at this manual)
+3. This manual as `DOCUMENTATION.md` — or as **`SPRINTDOCUMENTATION.md`** if
+   you already own a non-SprintBias `DOCUMENTATION.md`
+4. `.gitignore` entries SprintBias needs
+5. `README.md` — created with a one-line pointer at this manual when you have
+   no README; when you already own one, our small block is prepended above your
+   text
+
+Missing files are created. Files we already installed are upgraded when our
+version marker is older. A re-run at the **same** version is a no-op on those
+files.
+
+### Your files stay yours
+
+Scaffold files we fully own carry a version stamp
+(`<!-- SprintBias vX.Y.Z -->` in Markdown, `# SprintBias vX.Y.Z` in
+`.gitignore`). **We only overwrite whole files we can prove are ours** (marker
+present and older). If a file exists without our marker, it is yours: we
+prepend our small block or skip — never blind-clobber on the default path.
+Under `More options?`, conflicted pointer files offer **Prepend** (Enter) or
+**Overwrite** (`o`); Overwrite is the only deliberate path that replaces a
+user-owned file.
+
+A `README.md` you already own is deferred the same way `CLAUDE.md` and
+`AGENTS.md` are: the default path silently prepends our pointer block above
+your text, and `More options?` offers **Prepend** or **Overwrite** for it.
+
+### More options?
+
+After the batch: `More options? [y/N]` (Enter = No). Yes can include:
+
+- Per-file Prepend / Overwrite for user-owned scaffold files (when any)
+- **GitHub Issues sync** (workflows + issue/PR templates)
+- **Add all AI instructions** (Cursor / Windsurf / Copilot dotfiles)
+
+Those stay opt-in so the first run stays one or two keystrokes.
+
+### Updating an install
+
+Re-run setup from the SprintBias repo (or the curl installer). Same path is
+how you upgrade framework files **and** how you turn on anything still behind
+`More options?`.
 
 ```bash
 cd /path/to/sprintbias
@@ -308,7 +425,7 @@ Or from your project:
 curl -fsSL https://raw.githubusercontent.com/jnun/sprintbias/main/install.sh | bash
 ```
 
-Your DOC_STATE.md values (task IDs, bug IDs) are preserved during updates.
+Your `DOC_STATE.md` counters (task IDs, bug IDs, plan IDs) are preserved.
 
 ---
 

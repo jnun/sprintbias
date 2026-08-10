@@ -147,13 +147,25 @@ sprintbias_provider_exec() {
       --name)                name="$2";          shift 2 ;;
       --append-system-prompt) system_prompt="$2"; shift 2 ;;
       --skip-permissions)    skip_permissions=1; shift ;;
+      # Callers must not need Claude-only flags; profiles own them. Drop if
+      # a legacy call site still passes --verbose (we re-add when stream-json).
+      --verbose)             shift ;;
       --)                    shift; extra_args+=("$@"); break ;;
       *)                     extra_args+=("$1"); shift ;;
     esac
   done
 
+  # Normalize Grok-oriented format names to Claude's stream-json so dual-host
+  # call sites and shared logs stay one contract.
+  case "$output_format" in
+    streaming-json|streaming-messages-json) output_format="stream-json" ;;
+  esac
+
   # ── Decide on live streaming ──────────────────────────────────────
   # SPRINTBIAS_STREAM: 0 = never, 1 = always, unset/other = auto (stderr TTY).
+  # Auto-upgrade only from buffered json → stream-json (live progress). Callers
+  # that already request stream-json (work.sh) keep the raw NDJSON path; this
+  # profile still adds --verbose below (required for Claude stream-json + -p).
   local stream=0
   if [ "$output_format" = "json" ] && command -v python3 >/dev/null 2>&1; then
     case "${SPRINTBIAS_STREAM:-auto}" in
@@ -217,8 +229,9 @@ sprintbias_provider_exec() {
     [ -n "$effective_format" ] && cmd+=(--output-format "$effective_format")
     [ -n "$budget" ]           && cmd+=(--max-budget-usd "$budget")
     [ -n "$name" ]             && cmd+=(--name "$name")
-    # stream-json in -p mode requires --verbose
-    [ "$stream" -eq 1 ]        && cmd+=(--verbose)
+    # stream-json in -p mode requires --verbose — whether auto-upgraded from
+    # json or requested by the call site (work). Never require callers to know.
+    [ "$effective_format" = "stream-json" ] && cmd+=(--verbose)
 
     if [ "$skip_permissions" -eq 1 ]; then
       cmd+=(--dangerously-skip-permissions)
@@ -337,6 +350,7 @@ sprintbias_provider_interactive() {
       # Print-only / one-shot flags are meaningless in a live session — consume
       # them so they never leak onto the interactive command line.
       --max-turns|--output-format|--budget) shift 2 ;;
+      --verbose)              shift ;;
       --)                     shift; extra_args+=("$@"); break ;;
       *)                      extra_args+=("$1"); shift ;;
     esac

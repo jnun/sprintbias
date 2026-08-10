@@ -6,13 +6,18 @@
 #
 # Sourced automatically by lib.sh when SPRINTBIAS_CLI=grok.
 #
-# Verified against `grok --help` (2026-07-30): -p/--single, -m/--model,
+# Verified against `grok --help` (2026-08-07): -p/--single, -m/--model,
 # --max-turns, --tools (internal IDs), --permission-mode, --always-approve,
-# --output-format (plain|json|streaming-json), --rules.
+# --output-format (plain|json|streaming-json|streaming-messages-json), --rules.
 #
-# Intentionally NOT ported from claude.sh: stream-json progress filter,
-# transient resume loop, wall-clock timeout. Grok event shapes differ
-# (text/thought/end; sessionId camelCase). Optional recovery is a follow-up.
+# Claude → Grok format aliases (call sites like work.sh pass Claude names):
+#   stream-json → streaming-messages-json  (Anthropic Messages NDJSON; matches
+#     work.sh's progress filter and Claude-shaped result events)
+#   --verbose is Claude-only (required for Claude stream-json); dropped here.
+#
+# Intentionally NOT ported from claude.sh: transient resume loop, wall-clock
+# timeout. Native Grok streaming-json events (text/thought/end) differ from
+# Claude; use streaming-messages-json when callers want Claude-shaped streams.
 
 # Map Claude-style / neutral tool names → Grok internal IDs for headless --tools.
 # Prints the comma-separated allowlist on success.
@@ -75,6 +80,8 @@ sprintbias_provider_exec() {
       --name)                 [ -n "$2" ] && dropped+=("session name"); name="$2"; shift 2 ;;
       --append-system-prompt) system_prompt="$2"; shift 2 ;;
       --skip-permissions)     skip_permissions=1; shift ;;
+      # Claude stream-json requires --verbose; Grok has no equivalent flag.
+      --verbose)              shift ;;
       --)                     shift; extra_args+=("$@"); break ;;
       *)                      extra_args+=("$1"); shift ;;
     esac
@@ -88,6 +95,14 @@ sprintbias_provider_exec() {
       "$list" >&2
     _SPRINTBIAS_GROK_DROP_WARNED=1
   fi
+
+  # Map Claude / neutral output-format names onto Grok CLI values.
+  # work.sh (and Claude-shaped filters) pass stream-json; Grok rejects it.
+  # streaming-messages-json is Anthropic Messages NDJSON — same event types
+  # (assistant / result) the work progress filter already understands.
+  case "$output_format" in
+    stream-json) output_format="streaming-messages-json" ;;
+  esac
 
   # Map tool allowlist; fail-open (omit) if unmapped names appear.
   local mapped_tools=""
@@ -161,6 +176,7 @@ sprintbias_provider_interactive() {
       --skip-permissions)     skip_permissions=1; shift ;;
       # Headless / one-shot flags — consume so they never leak onto the TUI.
       --max-turns|--output-format|--budget) shift 2 ;;
+      --verbose)              shift ;;
       --)                     shift; extra_args+=("$@"); break ;;
       *)                      extra_args+=("$1"); shift ;;
     esac

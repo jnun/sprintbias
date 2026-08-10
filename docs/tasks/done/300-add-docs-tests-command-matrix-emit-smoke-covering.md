@@ -104,15 +104,18 @@ stays in `review/` and exits 0; `sync.sh:31` exits 1 on "No 'origin' remote"
 before any commit/push), so each is a cheap `expect_noai` case.
 
 **Improve:**
-- [ ] Add `expect_noai "promote" promote` to the keep/work section and document
+- [x] Add `expect_noai "promote" promote` to the keep/work section and document
       the intentional short-circuit inline (review/ task carries no `Tests`
       field → promote leaves it in place, no AI, exit 0).
-- [ ] Add `expect_noai "sync" sync` and document its short-circuit inline (the
+- [x] Add `expect_noai "sync" sync` and document its short-circuit inline (the
       sandbox git repo has no `origin` remote, so `sync` refuses before any
       network access — non-AI bash refusal, no banner).
-- [ ] Update the header comment / `## Completed` claim so "walks every command
+- [x] Update the header comment / `## Completed` claim so "walks every command
       in the matrix" is accurate once both are covered (bump the assertion
       count in the summary note if you keep one).
+      Also covered matrix-new `settle` as `expect_noai` (pure shell open-Q
+      accept; fixture already clear → no-op). Full suite: **156 assertions,
+      0 failed** (`bash docs/tests/test-command-matrix-smoke.sh`).
 
 ## Questions
 
@@ -131,29 +134,18 @@ The main deliverable is done and verified against the current code:
   `▸ Provider: <cli> (<tier>) · mode: emit`), `assert_no_banner` (non-AI paths
   silent). Tier strings match `lib.sh` — `-g` → `grok (grok-build)`, `-c` →
   `claude (claude-code)` — confirmed against `sprintmd_ai_tier` mappings.
-- Coverage of the target catalog is complete **except** the two commands the
-  rework flags: create ×6, chat ×5, plan ×3, work/gate/split/loop, polish ×3,
-  look ×5, keep (profile, profile show, validate, cleanup, deps) are all present.
+- Coverage of the target catalog is complete: create ×6, chat ×5, plan ×3,
+  work/gate/split/loop/promote/settle, polish ×3, look ×5, keep (profile,
+  profile show, sync, validate, cleanup, deps, model show/list) are all present.
 - Intentional short-circuits are documented inline (`plan start --commit-only`,
   `plan done` on an unfinished plan, empty `deps`/`--code` paths) — matches the
   success criteria.
 
 ### Remaining work
 
-Rework round 1, all three items, still open (none applied yet — the test file
-contains no `promote` or `sync` case):
-
-1. Add `expect_noai "promote" promote` in the work/keep section. Confirmed safe:
-   `promote.sh` header is "Pure shell, NO AI"; the seeded `review/` task (61)
-   carries no `Tests` field, so promote leaves it in place and exits 0 — a clean
-   non-AI, no-banner case. Document the short-circuit inline.
-2. Add `expect_noai "sync" sync`. Confirmed safe: `sync.sh` refuses on the branch
-   check or the missing-`origin` check (the sandbox `git init` adds neither a
-   commit nor a remote) before any network access — non-AI bash refusal, no
-   banner. Document the short-circuit inline.
-3. Update the header comment and the `## Completed` claim so "walks every command
-   in the matrix" is accurate, and bump the assertion count in the prose summary
-   (the script computes its count dynamically, so only the narrative needs it).
+None — rework round 1 applied. `promote`, `sync`, and matrix-new `settle` are
+`expect_noai` cases with inline short-circuit notes. Suite green:
+`156 passed, 0 failed`.
 
 `docs/tests/` is dev-internal and does not ship, so no `./ship.sh` run is needed
 (consistent with every other `test-*.sh`).

@@ -323,6 +323,12 @@ expect_ai "gate (default next/)" gate
 expect_ai "gate <folder>"        gate backlog
 expect_ai "split <path>"         split docs/tasks/next/60-ready-alpha.md
 expect_ai "loop"                 loop
+# Intentional short-circuit: promote is pure shell (NO AI). Fixture 61 has no
+# **Tests** field → skipped, stays in review/, exit 0 — no provider banner.
+expect_noai "promote"            promote
+# Intentional short-circuit: settle folds (Suggestion: …) open questions in
+# pure bash. Fixture next/ task is already clear → no-op summary, no AI.
+expect_noai "settle"             settle
 
 # ── polish — post-work quality, all three argument shapes ──
 echo "Polish modes:"
@@ -342,6 +348,9 @@ expect_noai "learn (catalog)" learn
 echo "Keep family:"
 expect_ai   "profile (create)" profile
 expect_noai "profile show"     profile show
+# Intentional short-circuit: sandbox git has no origin remote, so sync refuses
+# before any network access (exit 1) — non-AI bash refusal, no banner.
+expect_noai "sync"             sync
 expect_noai "validate"         validate
 expect_noai "cleanup"          cleanup
 # deps reaches its AI half only when a manifest is present (empty tree is an

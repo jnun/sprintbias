@@ -114,7 +114,7 @@ next_count=$(find "$DOCS_DIR/tasks/next" -maxdepth 1 -name '*.md' 2>/dev/null | 
 
 if [ "$blocked_count" -gt 0 ]; then
     echo "Tasks in blocked/ need a decision or clarification before work can start."
-    echo "Run './sprint.sh chat <task-id>' on a blocked task to resolve open questions."
+    echo "Run './sprint.sh chat <task-id>' on a blocked task to answer open questions and write each answer as instruction in the body."
 elif [ "$doing_count" -gt 0 ]; then
     echo "Focus on completing the active task in 'doing/'."
 elif [ "$next_count" -gt 0 ]; then

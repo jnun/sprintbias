@@ -9,6 +9,10 @@
 # code `./sprint.sh gate` runs). READY → stamp + next/; BLOCKED → blocked/;
 # COMPLETE → review/. --commit-only skips the gate for pure backlog→next mv.
 #
+# Size: promote EVERY listed member — no hard cap on plan size. A soft warning
+# prints when the plan has more than 10 members (still promotes all). Plans are
+# free to be larger; the warning is a nudge, not a gate.
+#
 # Misplaced members in next/ (no READY stamp): demote to backlog/ so a bad mv
 # is self-healing. Default mode then gates them with everyone else; --commit-only
 # leaves them in backlog (not re-promoted unvetted).
@@ -43,26 +47,8 @@ unset _arg
 
 # ── Plan helpers ─────────────────────────────────────────────────────
 
-list_plans() {
-  local f id title status
-  for f in "$PLANS_DIR"/*.md; do
-    [ -f "$f" ] || continue
-    case "$(basename "$f")" in .TEMPLATE-*|TEMPLATE-*) continue ;; esac
-    id=$(basename "$f" | grep -oE '^[0-9]+' || true)
-    [ -n "$id" ] || continue
-    title=$(grep -m1 '^# ' "$f" 2>/dev/null | sed 's/^# *//; s/^Plan [0-9]*: *//')
-    status=$(grep -m1 -E '^\*\*Status:\*\*' "$f" 2>/dev/null | sed 's/.*\*\*Status:\*\*[[:space:]]*//' | tr -d '[:space:]')
-    [ -n "$status" ] || status="(no status)"
-    printf '  %s  %s  [%s]\n' "$id" "${title:-$(basename "$f" .md)}" "$status"
-  done
-}
-
-find_plan() {
-  local id="$1" match
-  match=$(find "$PLANS_DIR" -maxdepth 1 -name "${id}-*.md" 2>/dev/null | head -1) || true
-  [ -n "$match" ] && printf '%s' "$match" && return 0
-  return 1
-}
+list_plans() { sprintbias_list_plans; }
+find_plan() { sprintbias_find_plan "$1"; }
 
 plan_status() {
   grep -m1 -E '^\*\*Status:\*\*' "$1" 2>/dev/null \
@@ -193,12 +179,24 @@ case "$STATUS" in
 esac
 
 # ── Collect members ──────────────────────────────────────────────────
+# Every listed member is in scope — no hard cap. Soft warn only when large.
 
 MEMBER_IDS=$(grep -oE '^- (\[[ xX]\] )?#[0-9]+' "$PLAN_FILE" 2>/dev/null | grep -oE '[0-9]+' | awk '!seen[$0]++' || true)
 if [ -z "$MEMBER_IDS" ]; then
   echo "Plan $PLAN_ID has no member tasks."
   echo "Add members with: ./sprint.sh chat plan $PLAN_ID"
   exit 1
+fi
+
+MEMBER_COUNT=0
+for _ in $MEMBER_IDS; do MEMBER_COUNT=$((MEMBER_COUNT + 1)); done
+# Soft size nudge only — still promotes every member. Not a refuse threshold.
+PLAN_SIZE_WARN=10
+if [ "$MEMBER_COUNT" -gt "$PLAN_SIZE_WARN" ]; then
+  echo "⚠ Plan $PLAN_ID has $MEMBER_COUNT members (over $PLAN_SIZE_WARN)."
+  echo "  Promoting all of them — plan start has no hard member cap."
+  echo "  If the sprint feels unwieldy, split into smaller plans later; size alone does not block start."
+  echo ""
 fi
 
 mkdir -p "$BACKLOG_DIR" "$NEXT_DIR"
@@ -363,13 +361,13 @@ fi
 # ── Summary ──────────────────────────────────────────────────────────
 echo ""
 if [ "$EMITTED" -eq 1 ]; then
-  echo "▸ Plan $PLAN_ID: gating ${#MOVE_PATHS[@]} backlog member(s) — run the review prompt(s) above."
-  echo "  Each READY member is promoted into next/; BLOCKED → blocked/, COMPLETE → review/."
+  echo "▸ Plan $PLAN_ID ($MEMBER_COUNT members): gating ${#MOVE_PATHS[@]} backlog member(s) — run the review prompt(s) above."
+  echo "  Gate every listed member (no subset). READY → next/; BLOCKED → blocked/, COMPLETE → review/."
 elif [ "$COMMIT_ONLY" -eq 1 ]; then
-  echo "▸ Plan $PLAN_ID committed (--commit-only): moved $READY_MOVED task(s) into next/ (gate skipped — not vetted)"
+  echo "▸ Plan $PLAN_ID committed (--commit-only): $MEMBER_COUNT members — moved $READY_MOVED into next/ (gate skipped — not vetted)"
   [ "$DEMOTED" -gt 0 ] && echo "  (demoted $DEMOTED unstamped next/ → backlog/)"
 else
-  echo "▸ Plan $PLAN_ID started: $READY_MOVED ready → next/, $BLOCKED_CT blocked, $COMPLETE_CT complete"
+  echo "▸ Plan $PLAN_ID started ($MEMBER_COUNT members): $READY_MOVED ready → next/, $BLOCKED_CT blocked, $COMPLETE_CT complete"
   [ "$DEMOTED" -gt 0 ] && echo "  (demoted $DEMOTED unstamped next/ → backlog/ before gate)"
   [ "$ERR_CT" -gt 0 ] && echo "  ($ERR_CT gate error(s) — left in backlog/)"
 fi

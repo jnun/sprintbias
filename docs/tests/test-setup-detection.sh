@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
-# Test: setup.sh detection/merge helpers
+# Test: setup.sh detection/merge helpers and the scaffold conflict machinery
 #
 # setup.sh writes into other people's projects, so its "did WE already install
-# this?" decisions are the highest-stakes logic in the repo. Those decisions
-# live in two pure helpers — already_ours and gitignore_merge — fenced between
-# `# >>> SprintBias detection helpers` / `# <<< SprintBias detection helpers`
-# sentinels in setup.sh. We extract that fenced block verbatim and source it, so
-# these tests exercise the exact shipped logic without running the interactive
-# installer.
+# this?" decisions are the highest-stakes logic in the repo. Two fenced blocks in
+# setup.sh carry them, and we extract both verbatim and source them so every
+# assertion below runs the exact shipped code rather than a restatement of it:
+#
+#   `# >>> SprintBias detection helpers` — pure string logic (already_ours,
+#     gitignore_merge, sprint_marker_version, ver_lt). No file I/O, no state.
+#   `# >>> SprintBias scaffold helpers`   — the version-marker machinery that
+#     acts on real paths (classify_target, pointer_block/readme_block, prepend /
+#     replace, apply_conflict, resolve_conflict_interactive, resolve_manual_file).
+#
+# The scaffold block touches files and prints through msg_*, so its tests run in
+# a temp working directory with CURRENT_VERSION / MANUAL_FILE set and the msg_*
+# reporters stubbed — the same inputs the installer supplies, minus the UI.
 
 set -euo pipefail
 
@@ -15,18 +22,28 @@ PASS=0
 FAIL=0
 SETUP_SH="$(cd "$(dirname "$0")/../.." && pwd)/setup.sh"
 
-# --- Extract the pure helper block from setup.sh and source it ---
+# --- Extract the fenced helper blocks from setup.sh and source them ---
 HELPERS="$(mktemp)"
-trap 'rm -f "$HELPERS"' EXIT
+SCAFFOLD="$(mktemp)"
+WORK="$(mktemp -d)"
+trap 'rm -f "$HELPERS" "$SCAFFOLD"; rm -rf "$WORK"' EXIT
 awk '/# >>> SprintBias detection helpers/{f=1;next} /# <<< SprintBias detection helpers/{f=0} f' \
     "$SETUP_SH" > "$HELPERS"
+awk '/# >>> SprintBias scaffold helpers/{f=1;next} /# <<< SprintBias scaffold helpers/{f=0} f' \
+    "$SETUP_SH" > "$SCAFFOLD"
 
 if [ ! -s "$HELPERS" ]; then
     echo "FAIL: could not extract detection helpers from $SETUP_SH (sentinels missing?)"
     exit 1
 fi
+if [ ! -s "$SCAFFOLD" ]; then
+    echo "FAIL: could not extract scaffold helpers from $SETUP_SH (sentinels missing?)"
+    exit 1
+fi
 # shellcheck disable=SC1090
 source "$HELPERS"
+# shellcheck disable=SC1090
+source "$SCAFFOLD"
 
 assert_true() {
     local desc="$1"; shift
@@ -218,6 +235,230 @@ assert_false "0.0.58 is not < 0.0.58" ver_lt "0.0.58" "0.0.58"
 
 echo "Test 16: newer version is NOT less than older"
 assert_false "0.1.0 is not < 0.0.99" ver_lt "0.1.0" "0.0.99"
+
+# ===========================================================================
+# Scaffold helpers — classification, conflict actions, manual-name routing.
+#
+# From here down the helpers touch real files. Everything runs inside $WORK
+# (a temp dir) against the installer's own state variables, with the reporters
+# stubbed so assertions read file contents, not terminal output.
+# ===========================================================================
+
+CURRENT_VERSION="9.9.9"
+MANUAL_FILE="DOCUMENTATION.md"
+CONFLICTS=()
+FILES_COPIED=1          # non-zero: setup.sh's ((FILES_COPIED++)) is fine at 0,
+                        # but this test runs under `set -e`, where it is not.
+msg_success() { :; }
+msg_step()    { :; }
+msg_error()   { :; }
+msg_warning() { :; }
+
+cd "$WORK"
+
+USER_BODY='# My Project
+
+Our own instructions live here.'
+
+echo "Test 17: classify_target names all four states of a pointer-style file"
+rm -f CLAUDE.md
+assert_eq "missing file -> absent" "absent" "$(classify_target CLAUDE.md)"
+
+printf '%s\n' "$(pointer_block)" > CLAUDE.md
+assert_eq "file we just wrote -> ours-current:VER" "ours-current:9.9.9" \
+    "$(classify_target CLAUDE.md)"
+
+# Same file, product moved on: our older marker authorizes an in-place upgrade.
+CURRENT_VERSION="9.9.10"
+assert_eq "our older marker -> ours-old:VER" "ours-old:9.9.9" \
+    "$(classify_target CLAUDE.md)"
+# 9.9.9 < 9.9.10 is the numeric compare — a string compare would call it current.
+CURRENT_VERSION="9.9.9"
+
+printf '%s\n' "$USER_BODY" > CLAUDE.md
+assert_eq "unmarked user file -> theirs" "theirs" "$(classify_target CLAUDE.md)"
+
+echo "Test 18: apply_conflict prepend keeps the user's content, replace does not"
+printf '%s\n' "$USER_BODY" > CLAUDE.md
+apply_conflict pointer CLAUDE.md CLAUDE.md prepend
+prepended="$(cat CLAUDE.md)"
+assert_contains "prepend keeps the user's body" "$prepended" "Our own instructions live here."
+assert_contains "prepend adds our versioned marker" "$prepended" "<!-- SprintBias v9.9.9 -->"
+assert_eq "prepend puts our marker on line 1" "<!-- SprintBias v9.9.9 -->" "$(head -n1 CLAUDE.md)"
+
+printf '%s\n' "$USER_BODY" > CLAUDE.md
+apply_conflict pointer CLAUDE.md CLAUDE.md replace
+replaced="$(cat CLAUDE.md)"
+assert_not_contains "replace drops the user's body" "$replaced" "Our own instructions live here."
+assert_contains "replace leaves our block" "$replaced" "<!-- SprintBias v9.9.9 -->"
+
+echo "Test 18b: an unrecognized action falls back to prepend (never to overwrite)"
+# apply_conflict's case is `prepend|*)` — anything we can't parse must take the
+# safe branch, because the unsafe one destroys a user's file.
+printf '%s\n' "$USER_BODY" > CLAUDE.md
+apply_conflict pointer CLAUDE.md CLAUDE.md bogus-action
+assert_contains "unknown action still keeps the user's body" "$(cat CLAUDE.md)" \
+    "Our own instructions live here."
+
+echo "Test 18c: the silent default path prepends every deferred conflict"
+# The non-interactive branch (no "More options?") is the path almost every
+# install takes. It runs apply_deferred_conflicts over the CONFLICTS queue; that
+# helper must parse each "kind|target|name" entry and apply prepend — keeping the
+# user's body, never overwriting. Driven behaviorally, not by grepping source.
+printf '%s\n' "$USER_BODY" > CLAUDE.md
+printf '%s\n' "$USER_BODY" > AGENTS.md
+CONFLICTS=("pointer|CLAUDE.md|CLAUDE.md" "pointer|AGENTS.md|AGENTS.md")
+apply_deferred_conflicts
+assert_eq "prepend put our marker on line 1 of CLAUDE.md" "<!-- SprintBias v9.9.9 -->" \
+    "$(head -n1 CLAUDE.md)"
+assert_contains "CLAUDE.md keeps the user's body" "$(cat CLAUDE.md)" \
+    "Our own instructions live here."
+assert_eq "prepend put our marker on line 1 of AGENTS.md" "<!-- SprintBias v9.9.9 -->" \
+    "$(head -n1 AGENTS.md)"
+assert_contains "AGENTS.md keeps the user's body" "$(cat AGENTS.md)" \
+    "Our own instructions live here."
+CONFLICTS=()
+
+echo "Test 19: the interactive binary is Enter=Prepend / o=Overwrite, nothing else"
+printf '%s\n' "$USER_BODY" > CLAUDE.md
+menu="$(printf '\n' | resolve_conflict_interactive pointer CLAUDE.md CLAUDE.md)"
+assert_contains "Enter keeps the user's body (prepend)" "$(cat CLAUDE.md)" \
+    "Our own instructions live here."
+assert_contains "menu offers Prepend on Enter" "$menu" "[Enter]  Prepend"
+assert_contains "menu offers Overwrite on o" "$menu" "o)       Overwrite"
+
+printf '%s\n' "$USER_BODY" > CLAUDE.md
+printf 'o\n' | resolve_conflict_interactive pointer CLAUDE.md CLAUDE.md >/dev/null
+assert_not_contains "o overwrites the user's body" "$(cat CLAUDE.md)" \
+    "Our own instructions live here."
+
+# No third branch: any other keystroke is Prepend, and the menu never says Leave.
+printf '%s\n' "$USER_BODY" > CLAUDE.md
+other="$(printf 'q\n' | resolve_conflict_interactive pointer CLAUDE.md CLAUDE.md)"
+assert_contains "an unlisted key falls through to prepend" "$(cat CLAUDE.md)" \
+    "Our own instructions live here."
+assert_not_contains "no Leave option is offered" "$other" "Leave"
+
+echo "Test 20: MANUAL_FILE routes to SPRINTDOCUMENTATION.md when the manual is theirs"
+printf '%s\n' '# Our internal API docs' > DOCUMENTATION.md   # no marker -> theirs
+assert_eq "user-owned DOCUMENTATION.md -> theirs" "theirs" \
+    "$(classify_target DOCUMENTATION.md)"
+assert_eq "manual retargets to SPRINTDOCUMENTATION.md" "SPRINTDOCUMENTATION.md" \
+    "$(resolve_manual_file)"
+
+MANUAL_FILE="$(resolve_manual_file)"
+assert_contains "AI pointer block names the retargeted manual" "$(pointer_block)" \
+    "SPRINTDOCUMENTATION.md"
+assert_contains "README block names the retargeted manual" "$(readme_block)" \
+    "SPRINTDOCUMENTATION.md"
+
+echo "Test 20b: MANUAL_FILE stays DOCUMENTATION.md when the manual is ours (or absent)"
+printf '<!-- SprintBias v9.9.9 -->\n# Manual\n' > DOCUMENTATION.md
+assert_eq "our own manual -> DOCUMENTATION.md" "DOCUMENTATION.md" "$(resolve_manual_file)"
+rm -f DOCUMENTATION.md
+assert_eq "absent manual -> DOCUMENTATION.md" "DOCUMENTATION.md" "$(resolve_manual_file)"
+MANUAL_FILE="$(resolve_manual_file)"
+
+echo "Test 21: README is on the versioned-marker path, like every other scaffold"
+# Before #359 the README was recognized only by the text "managed by
+# [SprintBias]". It now carries the same <!-- SprintBias vX.Y.Z --> marker as
+# the AI pointers, so classify_target governs it and upgrades are in-place.
+block="$(readme_block)"
+assert_contains "readme_block stamps the versioned marker" "$block" "<!-- SprintBias v9.9.9 -->"
+assert_contains "readme_block closes the marker" "$block" "<!-- end SprintBias -->"
+assert_contains "readme_block keeps the human-readable attribution" "$block" \
+    "managed by [SprintBias]"
+
+printf '%s\n' "$block" > README.md
+assert_eq "a README we wrote classifies exactly like a pointer scaffold" \
+    "ours-current:9.9.9" "$(classify_target README.md)"
+
+# The legacy text-only pointer is the migration case, not the recognizer: it
+# classifies as "theirs" and scaffold_readme upgrades it onto the marker path.
+printf '%s\n\n%s\n' \
+    '> **Project documentation** → see DOCUMENTATION.md (managed by [SprintBias](https://sprintbias.com))' \
+    "$USER_BODY" > README.md
+assert_eq "legacy text pointer alone is not a marker" "theirs" "$(classify_target README.md)"
+scaffold_readme
+assert_eq "scaffold_readme migrates it onto the marker path" "ours-current:9.9.9" \
+    "$(classify_target README.md)"
+upgraded="$(cat README.md)"
+assert_contains "upgrade keeps the user's body" "$upgraded" "Our own instructions live here."
+assert_eq "upgrade leaves exactly one pointer line" "1" \
+    "$(grep -c 'managed by \[SprintBias\]' README.md)"
+
+echo "Test 22: the deferral policy — a theirs target is queued, not touched"
+# scaffold_pointer / scaffold_readme must NOT write a user-owned file inline;
+# they append "kind|target|name" to CONFLICTS and leave the file byte-identical
+# until the conflict pass runs. This is the visible-deferral guarantee.
+CONFLICTS=()
+MANUAL_FILE="DOCUMENTATION.md"
+printf '%s\n' "$USER_BODY" > CLAUDE.md
+before="$(md5 -q CLAUDE.md 2>/dev/null || md5sum CLAUDE.md | cut -d' ' -f1)"
+scaffold_pointer CLAUDE.md CLAUDE.md
+after="$(md5 -q CLAUDE.md 2>/dev/null || md5sum CLAUDE.md | cut -d' ' -f1)"
+assert_eq "scaffold_pointer leaves the theirs file byte-identical" "$before" "$after"
+assert_eq "scaffold_pointer queued exactly one conflict" "1" "${#CONFLICTS[@]}"
+assert_eq "queued entry is kind|target|name" "pointer|CLAUDE.md|CLAUDE.md" "${CONFLICTS[0]}"
+
+printf '%s\n' "$USER_BODY" > README.md
+before="$(md5 -q README.md 2>/dev/null || md5sum README.md | cut -d' ' -f1)"
+scaffold_readme
+after="$(md5 -q README.md 2>/dev/null || md5sum README.md | cut -d' ' -f1)"
+assert_eq "scaffold_readme leaves the theirs file byte-identical" "$before" "$after"
+assert_eq "scaffold_readme queued a second conflict" "2" "${#CONFLICTS[@]}"
+assert_eq "queued readme entry is kind|target|name" "readme|README.md|README.md" "${CONFLICTS[1]}"
+CONFLICTS=()
+
+echo "Test 23: apply_conflict's kind selects the block — readme vs pointer wording"
+# The README speaks to human readers; the AI pointer to agents. Same marker,
+# different body. Swapping the two block choices in apply_conflict must fail here.
+printf '%s\n' "$USER_BODY" > README.md
+apply_conflict readme README.md README.md prepend
+assert_contains "readme kind writes the README attribution line" "$(cat README.md)" \
+    "managed by [SprintBias]"
+assert_not_contains "readme kind does NOT write the agent pointer wording" "$(cat README.md)" \
+    "before making any changes"
+
+printf '%s\n' "$USER_BODY" > CLAUDE.md
+apply_conflict pointer CLAUDE.md CLAUDE.md prepend
+assert_contains "pointer kind writes the agent wording" "$(cat CLAUDE.md)" \
+    "before making any changes"
+assert_not_contains "pointer kind does NOT write the README attribution line" "$(cat CLAUDE.md)" \
+    "managed by [SprintBias]"
+
+echo "Test 24: apply_conflict gitignore — prepend merges, replace rewrites fresh"
+# _write_gitignore_fresh is the installer's most destructive write; drive both
+# actions with a seeded GITIGNORE_CONTENT and a user-owned .gitignore.
+GITIGNORE_CONTENT='.sprint-tmp/
+node_modules/'
+printf '%s\n' 'build/' > .gitignore   # user's own body, no marker
+apply_conflict gitignore .gitignore .gitignore prepend
+merged="$(cat .gitignore)"
+assert_contains "prepend adds the missing SprintBias entry" "$merged" ".sprint-tmp/"
+assert_contains "prepend keeps the user's own entry" "$merged" "build/"
+assert_eq "prepend puts our marker on line 1" "# SprintBias v9.9.9" "$(head -n1 .gitignore)"
+
+printf '%s\n' 'build/' > .gitignore
+apply_conflict gitignore .gitignore .gitignore replace
+replaced="$(cat .gitignore)"
+assert_contains "replace writes the SprintBias entries" "$replaced" ".sprint-tmp/"
+assert_not_contains "replace drops the user's own entry" "$replaced" "build/"
+assert_eq "replace opens with our marker" "# SprintBias v9.9.9" "$(head -n1 .gitignore)"
+rm -f .gitignore
+
+echo "Test 25: install_owned_doc never clobbers a user-owned target"
+# The whole-document installer (GETSTARTED, the manual) must skip a theirs file
+# untouched — the guarantee that makes the SPRINTDOCUMENTATION.md retarget safe.
+printf '%s\n' '# My own GETSTARTED' > SRC-owned.md   # a "shipped" source
+printf '%s\n' "$USER_BODY" > OWNED.md                # a user file with no marker
+before="$(md5 -q OWNED.md 2>/dev/null || md5sum OWNED.md | cut -d' ' -f1)"
+install_owned_doc SRC-owned.md OWNED.md OWNED.md
+after="$(md5 -q OWNED.md 2>/dev/null || md5sum OWNED.md | cut -d' ' -f1)"
+assert_eq "install_owned_doc left the user's file byte-identical" "$before" "$after"
+assert_not_contains "the user's file did not take our content" "$(cat OWNED.md)" \
+    "My own GETSTARTED"
+rm -f SRC-owned.md OWNED.md
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

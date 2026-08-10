@@ -34,10 +34,12 @@ Model layering (highest precedence first):
   2. --model <id> flag            per-run lever (exports SPRINTBIAS_MODEL_DEFAULT
                                   for that one invocation) — the spine commands
                                   work, chat, gate, and polish accept it
-  3. config MODEL_<ROLE>          per-role pin
-  4. config MODEL_DEFAULT         global pin
-  5. tier default                 opus / grok-4.5 on orchestration tiers
-  6. CLI default                  the CLI picks its own (non-orchestration tiers)
+  3. config.local MODEL_<ROLE> / MODEL_DEFAULT   personal overlay: wins over
+                                  config per key, gitignored, never shipped
+  4. config MODEL_<ROLE>          per-role pin
+  5. config MODEL_DEFAULT         global pin
+  6. tier default                 opus / grok-4.5 on orchestration tiers
+  7. CLI default                  the CLI picks its own (non-orchestration tiers)
 
 Per-run override (no config edit): pass --model <id> to a spine command to
 pin the model for that single invocation, e.g.

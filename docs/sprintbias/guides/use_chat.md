@@ -128,12 +128,12 @@ For CLI help on the same surface: `./sprint.sh help chat`.
 when there's more to define, keeps the chain moving without ballooning context.
 
 - **A blocked task re-enters the sprint through the gate.** When you chat through
-  a task that `gate` had parked in `blocked/` and the conversation genuinely
-  resolves it, `chat` runs the same workability promote as `plan start` /
-  folder `[w]` (not a raw move, not a self-stamped READY shortcut). READY →
-  `next/` and runnable with `./sprint.sh work`; otherwise the gate kicks back
-  BLOCKED with a reason. If a real open question remains, `chat` does none of
-  this: the task stays in `blocked/` and it tells you what still needs deciding.
+  a task that `gate` had parked in `blocked/`, each answer becomes instruction
+  in the body and the original question is deleted. When the question list is
+  clear, `chat` runs the same workability promote as `plan start` / folder
+  `[w]`. READY → `next/` and runnable with `./sprint.sh work`; otherwise the
+  gate returns BLOCKED. While a question is still open, the task stays in
+  `blocked/` and `chat` names what still needs answering.
 
 - **The next dependency is picked up in a fresh context.** Defining one task
   often reveals it depends on another task that still needs a decision. Rather than

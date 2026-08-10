@@ -36,6 +36,8 @@ docs/tmp/*
 nohup.out
 # SprintBias ID-allocation mutex (auto-created and removed; never commit a stale one)
 docs/sprintbias/.sprint-alloc.lock/
+# SprintBias personal config overlay (semi-permanent CLI/model pins; never commit)
+docs/sprintbias/config.local
 
 # Archive Files (if users zip up old work)
 *.zip

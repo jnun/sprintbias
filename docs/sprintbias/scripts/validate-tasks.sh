@@ -48,9 +48,10 @@ for arg in "$@"; do
             echo "  — title ID matches filename"
             echo "  — no duplicate task IDs across stages"
             echo "  — **Depends on** / **Dependents** token shape (no cycle detection)"
+            echo "  — **Tests** paths exist, live under docs/tests/, and are runnable (report only)"
             echo ""
             echo "Options:"
-            echo "  --fix       Auto-fix safe issues (title-line ID mismatch only)"
+            echo "  --fix       Auto-fix safe issues (title-line ID + Plan reverse-index drift)"
             echo "  --dry-run   Show what --fix would change without writing"
             echo "  --docs      Check help/*.md for flag drift against scripts"
             echo "  --commands  Check every command is fully surfaced (registry/dispatch/help/manual)"
@@ -140,6 +141,43 @@ check_id_list_field() {
     done <<EOF
 $(sprintbias_iter_id_list "$raw")
 EOF
+}
+
+# check_tests_field FILE — Tests-field integrity (report-only, close-path).
+# promote closes a review/ task only when every **Tests** path (legacy alias
+# **Proven by**) runs green. A path that is a typo, missing, outside docs/tests/,
+# or not a runnable script never promotes and never says why — the task strands
+# in review/ forever (antifragile rule 6). Surface each here instead. Prints one
+# "path → reason" line per problem; empty output means the field is clean. A
+# `none`/empty/missing field is fine (human sign-off). Mirrors the edge check's
+# shape: pure shell, no AI, reports the offending path so a human can fix it.
+check_tests_field() {
+    local file="$1" raw low p
+    raw=$(sprintbias_meta_value "$file" "Tests")
+    [ -z "$raw" ] && raw=$(sprintbias_meta_value "$file" "Proven by")
+    [ -z "$raw" ] && return 0
+    low=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')
+    case "$low" in none|n/a|-) return 0 ;; esac
+    # Split on commas and whitespace, the same shape promote runs.
+    local _paths=()
+    IFS=', ' read -r -a _paths <<< "$raw"
+    for p in "${_paths[@]}"; do
+        [ -n "$p" ] || continue
+        case "$p" in
+            docs/tests/*) ;;
+            *) printf '%s → not under docs/tests/\n' "$p"; continue ;;
+        esac
+        if [ ! -e "$PROJECT_ROOT/$p" ]; then
+            printf '%s → file not found (typo or missing)\n' "$p"; continue
+        fi
+        if [ ! -f "$PROJECT_ROOT/$p" ]; then
+            printf '%s → not a runnable script (not a file)\n' "$p"; continue
+        fi
+        if [ ! -x "$PROJECT_ROOT/$p" ]; then
+            printf '%s → not a runnable script (chmod +x)\n' "$p"; continue
+        fi
+    done
+    return 0
 }
 
 # Rewrite first-line title to match filename ID. Only safe auto-fix remaining.
@@ -311,6 +349,32 @@ if [ -s "$ID_INDEX.plan" ]; then
 fi
 rm -f "$ID_INDEX.plan"
 
+# ── Tests-field integrity (report-only, promote close-path) ──────────
+# The dependency edge is only half the graph; the **Tests** path is the other
+# gate promote runs. A path that is a typo, missing, out-of-tree, or not runnable
+# silently strands a task in review/ — report each with its task id so it never
+# becomes a silent never-promote. Report-only: it never flips the exit code.
+TESTS_ISSUES=0
+TESTS_REPORT=""
+for file in "${TASK_FILES[@]+"${TASK_FILES[@]}"}"; do
+    _tnotes=$(check_tests_field "$file")
+    [ -n "$_tnotes" ] || continue
+    _tid=$(task_id "$(basename "$file")")
+    while IFS= read -r _tn; do
+        [ -n "$_tn" ] || continue
+        TESTS_REPORT="${TESTS_REPORT}  ${YELLOW}⚠${NC}  #${_tid}  Tests: ${_tn}
+"
+        TESTS_ISSUES=$((TESTS_ISSUES + 1))
+    done <<EOF
+$_tnotes
+EOF
+done
+if [ "$TESTS_ISSUES" -gt 0 ]; then
+    echo ""
+    echo "Tests-field integrity (promote close-path — report only):"
+    printf '%s' "$TESTS_REPORT"
+fi
+
 # Print summary
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -325,6 +389,7 @@ if [ "$FIX_MODE" = true ]; then
     [ "$PLAN_FIXED" -gt 0 ] && printf "${BLUE}Plan synced:    %d${NC}\n" "$PLAN_FIXED"
 fi
 [ "$PLAN_DRIFT" -gt 0 ] && printf "${YELLOW}Plan drift:     %d${NC}\n" "$PLAN_DRIFT"
+[ "$TESTS_ISSUES" -gt 0 ] && printf "${YELLOW}Tests issues:   %d (report only)${NC}\n" "$TESTS_ISSUES"
 
 echo ""
 

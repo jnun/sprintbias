@@ -8,7 +8,7 @@ then routes to the right depth:
     as helpful hints and paths (how to implement stays the developer's call)
   - Several jobs bundled together → proposes a breakdown, and on your OK
     creates the sub-tasks with `./sprint.sh newtask` (real IDs, standard
-    template, **Parent** linked back so `plan <n> parent:N` still gathers
+    template, **Parent** linked back so `newplan "…" parent:N` gathers
     them), then chats through each to add real detail. Edges are kept
     reciprocal — the parent is folded into its first child so nothing points
     at a deleted id — and the original is retired once its children exist.
@@ -54,9 +54,9 @@ conversation walks what it found one finding at a time, most-blocking first:
     `## Questions` — almost always mis-filed; the default fix is to move it
     back to `backlog/` to reconsider)
   - stale-ready (a `next/` task with no `**Status: READY**` stamp)
-  - outstanding questions (an unanswered item that leaves a task not truly
-    READY despite its marker) — each surfaced verbatim and, once you answer
-    or decide, written back into the task file as a resolved decision
+  - outstanding questions (an open item that leaves a task short of READY) —
+    each surfaced verbatim; once you answer, the answer becomes body
+    instruction and the question is deleted
   - orphaned parents and dependency cycles
 
 It opens with a ≤3-line summary (queued count, runnable frontier, findings
@@ -160,17 +160,15 @@ What it does:
   - Asks one focused question at a time, targeting the biggest gap
   - Lays out open technical decisions with a recommended default and its
     rationale, flagging security and performance trade-offs
-  - Polishes each answer, then edits immediately (atomic edits, not one
-    rewrite at the end)
+  - Polishes each answer, then edits immediately: convert the answer into
+    instruction in Problem / Success criteria / Notes, delete the question
   - Fills ## Problem and ## Success criteria as a user-story brief (problem
-    + what done looks like); optional ## Notes (hints) and ## References
-    (paths) — never a build script or code snippets
-  - Closes the loop on a blocked task: when the conversation settles the
-    decision or clarification that `gate` parked in blocked/, it re-enters
-    the sprint only through the shared workability gate (same review as
-    `plan start` / folder `[w]`) — READY → next/, or kick back BLOCKED if a
-    decision is still needed. Never a raw move into next/. If a real
-    question still remains, it leaves the task in blocked/ and says so.
+    + what done looks like); optional ## Notes (hints + guidance from answered
+    questions) and ## References (paths)
+  - Closes the loop on a blocked task: when every question is answered and
+    turned into body instruction, it re-enters the sprint through the shared
+    workability gate (same review as `plan start` / folder `[w]`) — READY →
+    next/, or BLOCKED while a question is still open
   - Chains to the next dependency that still needs work in a *fresh* context
     so a long session doesn't pile up tokens: it seeds the next task's
     file with a short "Context from chat" note (the decisions that flow

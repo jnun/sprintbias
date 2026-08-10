@@ -55,14 +55,17 @@ profile and tier gates change. No script should hardcode `grok` flags.
 | `--tools` | **`--tools`** | Grok **internal** tool IDs. **Not** `--allowedTools` |
 | `--permissions` | `--permission-mode` | `default`, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, `plan` |
 | `--skip-permissions` | `--always-approve` | Unattended batch / loop |
-| `--output-format` | `--output-format` | `plain`, `json`, `streaming-json` |
-| `--budget` | (drop) | No verified USD budget flag — warn once |
+| `--output-format` | `--output-format` | `plain`, `json`, `streaming-json`, `streaming-messages-json`. **Alias:** Claude `stream-json` → `streaming-messages-json` (Anthropic Messages NDJSON; keeps `work.sh` progress filter working) |
+| `--verbose` | (drop) | Claude-only (required for Claude `stream-json`); Grok rejects the flag |
+| `--budget` | (drop) | No verified USD budget flag. Call sites gate on `sprintbias_budget_capable`, so this never arrives on the primary path; the drop-and-warn-once stays as fallback |
 | `--name` | (drop) | No direct equivalent — warn once |
 | `--append-system-prompt` | `--rules` | Append rules to system prompt |
 
 **JSON resume field:** headless result uses `sessionId` (camelCase). Resume with
-`grok --resume <id>`. Claude's stream-json filter is **not** ported (Grok
-events: `text` / `thought` / `end`).
+`grok --resume <id>`. Native `streaming-json` events are ACP-shaped (`text` /
+`thought` / `end`). Callers that pass Claude `stream-json` get
+`streaming-messages-json` instead so the shared work progress filter still
+parses `assistant` / `result` events.
 
 ## Tool names
 

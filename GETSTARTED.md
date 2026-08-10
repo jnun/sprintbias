@@ -1,7 +1,12 @@
-<!-- SprintBias v0.0.61 -->
+<!-- SprintBias v0.0.77 -->
 # Getting Started with SprintBias
 
 SprintBias carries an idea all the way to shipped, tested work in five short steps. Run `./sprint.sh help` any time to see every command.
+
+**Install:** `./setup.sh` is a two-door Easy Button (Enter = Claude Code, `g` =
+Grok Build). What it writes, how it protects your files, and what lives under
+`More options?` are documented in **DOCUMENTATION.md → Installing SprintBias**
+(same content if the file is named `SPRINTDOCUMENTATION.md` in your project).
 
 ## The loop
 
@@ -15,7 +20,8 @@ You have an idea. You sharpen it into features. You break features into tasks.
 
 You move tasks to done. You test the result and feed what you learn back in.
 
-DOCUMENTATION.md outlines the entire ruleset for docs.
+DOCUMENTATION.md (or `SPRINTDOCUMENTATION.md`) outlines the entire ruleset for
+docs.
 
 ## Step 1 — Capture the idea
 
@@ -146,7 +152,7 @@ purpose: each one stops so you can fix whatever it reveals before moving on.
 | Step | Command | What it does | You stop to… |
 |------|---------|--------------|--------------|
 | **1. Author** | `./sprint.sh newplan` · `chat plan` · `plan think` (optional) · `plan start` | group work into a plan, optionally critique it, then commit members into `next/` | review the plan before start |
-| **2. Gate** | `./sprint.sh gate` | vets each task in `next/`, marks it `READY` | answer questions / supply clarifications for blocked tasks |
+| **2. Gate** | `./sprint.sh gate` | vets each task in `next/`, marks it `READY` | answer open questions (`chat <id>`), write answers as instruction, re-gate |
 | **3. Work** | `./sprint.sh work` | works the `READY` tasks, each in a fresh AI context → `review/` | review the diffs before you commit |
 
 `plan think` is an optional dual-persona critique of the grouping before you
@@ -196,7 +202,7 @@ in the sections, then commit.
 - `./sprint.sh help` — list every command
 - `./sprint.sh help <command>` — details for one command
 
-For the full reference, read `DOCUMENTATION.md`.
+For the full reference, read `DOCUMENTATION.md` (or `SPRINTDOCUMENTATION.md`).
 
 ---
 

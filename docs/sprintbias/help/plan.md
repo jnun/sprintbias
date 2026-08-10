@@ -6,10 +6,12 @@ writes plan-level analysis to docs/tmp/plan-think.md. Bare `plan think` picks
 a plan.
 
 **plan start [id] [--commit-only]** — gate, then commit that plan's members
-into `next/` (the sprint). `next/` IS the sprint, so workability is decided
-BEFORE a member is runnable: each backlog member is run through the shared
-workability gate (the same review `./sprint.sh gate` runs), and only what
-grades READY sits in `next/` stamped for `work`. Location-aware:
+into `next/` (the sprint). Promotes **every** listed member — no hard cap on
+plan size. A soft warning prints when the plan has more than 10 members; the
+start still continues and gates/promotes all of them. `next/` IS the sprint, so
+workability is decided BEFORE a member is runnable: each backlog member is run
+through the shared workability gate (the same review `./sprint.sh gate` runs),
+and only what grades READY sits in `next/` stamped for `work`. Location-aware:
 
   backlog/  → gate in place, then:
                 READY   → stamp + move to next/
@@ -69,12 +71,17 @@ Provider for this run only (AI subcommands; leading flags; no config rewrite):
   ./sprint.sh -c plan start [id]     # Claude Code
 
 Family order:
-  1. ./sprint.sh newplan "…"
-  2. ./sprint.sh chat plan [id]     # author
+  1. ./sprint.sh newplan "…" [ids|parent:N]   # scaffold (+ fast-lane bind)
+  2. ./sprint.sh chat plan [id]     # author (skip when members already bound)
   3. ./sprint.sh plan think [id]    # optional critique
   4. ./sprint.sh plan start [id]    # gate members, commit READY → next/ (latches STARTED)
+     ./sprint.sh plan start [id] --commit-only   # pure backlog→next, no AI gate
   5. ./sprint.sh work · loop
   6. ./sprint.sh plan done [id]      # all members in done/ → delete the plan file
+
+Use default `plan start` when members need the workability gate. Use
+`--commit-only` when members are already READY-stamped, for tests, or when AI
+is unavailable — the move is deterministic and unvetted.
 
 `loop --refill` runs `plan start` on the next READY plan (lowest id) — the gate
 runs as part of the start, so the sprint refills with vetted work. Only

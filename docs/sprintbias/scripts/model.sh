@@ -10,10 +10,14 @@
 #   1. env  SPRINTBIAS_MODEL_<ROLE>   (this-shell override, never written to disk)
 #   2. --model <id> flag            (per-run lever a spine command exports as
 #                                    SPRINTBIAS_MODEL_DEFAULT for one invocation)
-#   3. config MODEL_<ROLE>          (per-role pin in docs/sprintbias/config)
-#   4. config MODEL_DEFAULT         (global pin)
+#   3. config.local MODEL_<ROLE>    (semi-permanent LOCAL pin; wins over config,
+#                                    never shipped/committed)
+#   4. config      MODEL_<ROLE>     (per-role pin in docs/sprintbias/config)
+#   5. config.local / config MODEL_DEFAULT   (global pin; local wins)
 # and, when all are empty on an orchestration tier, a strong tier default
 # (claude-code → opus, grok-build → grok-4.5) via sprintbias_tier_model.
+# The config.local overlay is the ship-safe place for a personal CLI/model pin
+# in this dev repo — see DOCUMENTATION.md → Local config overlay.
 
 set -euo pipefail
 
@@ -61,8 +65,12 @@ role_line() {
   elif [ -n "${SPRINTBIAS_MODEL_DEFAULT:-}" ]; then
     # The per-run lever a spine command's --model <id> flag exports.
     source="--model / env DEFAULT"
-  elif [ -n "$(sprintbias_cfg "MODEL_$sfx")" ]; then
+  elif [ -n "$(_sprintbias_cfg_read_file "MODEL_$sfx" "$SPRINTBIAS_CONFIG_LOCAL_FILE" || true)" ]; then
+    source="config.local MODEL_$sfx"
+  elif [ -n "$(_sprintbias_cfg_read_file "MODEL_$sfx" "$SPRINTBIAS_CONFIG_FILE" || true)" ]; then
     source="config MODEL_$sfx"
+  elif [ -n "$(_sprintbias_cfg_read_file MODEL_DEFAULT "$SPRINTBIAS_CONFIG_LOCAL_FILE" || true)" ]; then
+    source="config.local MODEL_DEFAULT"
   elif [ -n "$(sprintbias_cfg MODEL_DEFAULT)" ]; then
     source="config MODEL_DEFAULT"
   elif [ -n "$model" ]; then
@@ -87,7 +95,7 @@ cmd_show() {
   local dflt; dflt="$(sprintbias_cfg MODEL_DEFAULT)"
   echo "  Default:  ${dflt:-(none — tier default applies)}"
   echo ""
-  echo -e "${BOLD}Effective model per role${NC}  (env → config → tier default)"
+  echo -e "${BOLD}Effective model per role${NC}  (env → config.local → config → tier default)"
 
   local sfx line model source role
   for sfx in $KNOWN_ROLES; do
@@ -100,7 +108,11 @@ cmd_show() {
   done
 
   echo ""
+  if [ -f "$SPRINTBIAS_CONFIG_LOCAL_FILE" ]; then
+    echo -e "${DIM}Local overlay: docs/sprintbias/config.local (wins over config; never shipped)${NC}"
+  fi
   echo -e "${DIM}Set one with:  ./sprint.sh model set <role> <model>${NC}"
+  echo -e "${DIM}Local pin:     add MODEL_<ROLE>=<model> to docs/sprintbias/config.local${NC}"
   echo -e "${DIM}List choices:  ./sprint.sh model list${NC}"
 }
 

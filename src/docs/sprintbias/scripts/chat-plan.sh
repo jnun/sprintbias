@@ -6,12 +6,13 @@
 #   chat plan        → pick a plan to author (like bare chat backlog)
 #   chat plan <id>   → author/refine that plan conversationally
 #
-# chat shapes; plan acts. This walk only writes docs/plans/<id>-*.md — it never
-# moves or edits task files. Member tasks are chosen from backlog/ by ID
-# reference. The shared Conversation Method (ai/conversation.md) is injected
-# unchanged. Authoring writes only the first two of the plan's three statuses:
-# DRAFT while authoring → READY when the user confirms (the signal plan start /
-# loop --refill gate on). STARTED is latched later by plan start, never here.
+# chat shapes; plan acts. This walk writes docs/plans/<id>-*.md and, after the
+# session, refreshes each member's **Plan** reverse index (plan file remains
+# membership authority). It never moves task files or rewrites task bodies
+# beyond that field. Member tasks are chosen from backlog/ by ID reference.
+# Authoring writes only the first two of the plan's three statuses: DRAFT while
+# authoring → READY when the user confirms (the signal plan start / loop
+# --refill gate on). STARTED is latched later by plan start, never here.
 
 set -euo pipefail
 
@@ -22,26 +23,8 @@ PLAN_ID="${1:-}"
 
 # ── Resolve / pick a plan ────────────────────────────────────────────
 
-list_plans() {
-  local f id title status
-  for f in "$PLANS_DIR"/*.md; do
-    [ -f "$f" ] || continue
-    case "$(basename "$f")" in .TEMPLATE-*|TEMPLATE-*) continue ;; esac
-    id=$(basename "$f" | grep -oE '^[0-9]+' || true)
-    [ -n "$id" ] || continue
-    title=$(grep -m1 '^# ' "$f" 2>/dev/null | sed 's/^# *//; s/^Plan [0-9]*: *//')
-    status=$(grep -m1 -E '^\*\*Status:\*\*' "$f" 2>/dev/null | sed 's/.*\*\*Status:\*\*[[:space:]]*//' | tr -d '[:space:]')
-    [ -n "$status" ] || status="(no status)"
-    printf '  %s  %s  [%s]\n' "$id" "${title:-$(basename "$f" .md)}" "$status"
-  done
-}
-
-find_plan() {
-  local id="$1" match
-  match=$(find "$PLANS_DIR" -maxdepth 1 -name "${id}-*.md" 2>/dev/null | head -1) || true
-  [ -n "$match" ] && printf '%s' "$match" && return 0
-  return 1
-}
+list_plans() { sprintbias_list_plans; }
+find_plan() { sprintbias_find_plan "$1"; }
 
 if [ -z "$PLAN_ID" ]; then
   echo "▸ chat plan — pick a plan to author"
@@ -155,8 +138,9 @@ HOW TO WALK
 RULES
 - One question at a time; wait for the answer.
 - Executive-summary altitude: what and why, not how. No code.
-- WRITES: only $PLAN_FILE. READ anything else to ground recommendations.
-- Do not run plan start, do not mv task files, do not edit tasks."
+- WRITES: only $PLAN_FILE during the walk. READ anything else to ground recommendations.
+- Do not run plan start, do not mv task files, do not edit task bodies (the shell
+  refreshes **Plan** reverse-index fields after this session)."
 
 # ── Interactive contract (same as chat.sh) ───────────────────────────
 if [ "$(sprintbias_ai_mode)" = "exec" ] && ! sprintbias_interactive_ok; then
@@ -173,3 +157,15 @@ sprintbias_run_interactive \
   --permissions "auto" \
   --name "chat-plan-${PLAN_ID}" \
   "Read the plan at $PLAN_FILE and the backlog, size it up, and start authoring — one detail at a time. Write only the plan file."
+
+# Refresh **Plan** reverse index for every member this plan now lists (and any
+# open task that drifted). Plan file remains the membership authority.
+_fixed=0
+while IFS= read -r _line; do
+  [ -n "$_line" ] || continue
+  _fixed=$((_fixed + 1))
+done < <(sprintbias_plan_index_drift --fix 2>/dev/null || true)
+if [ "$_fixed" -gt 0 ]; then
+  echo -e "${DIM}↻ Refreshed **Plan** reverse index on ${_fixed} task(s).${NC}"
+fi
+unset _fixed _line

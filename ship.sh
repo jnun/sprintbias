@@ -77,6 +77,7 @@ TREE_MIRRORS=(
 TREE_EXCLUDES=(
     "DOC_STATE.md"
     "tmp"
+    "config.local"   # personal CLI/model overlay — dev-local, never shipped
 )
 
 # ── Legacy-reference gate ────────────────────────────────────────────

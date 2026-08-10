@@ -366,6 +366,11 @@ cmd_gate() {
     run_script "gate.sh" "$@"
 }
 
+# settle: accept (Suggestion: …) open questions; fold + clear (no AI).
+cmd_settle() {
+    run_script "settle.sh" "$@"
+}
+
 # work: execute the READY queue.
 cmd_work() {
     run_script "work.sh" "$@"
@@ -388,6 +393,11 @@ cmd_deps() {
 # model: show/list/set the AI model per role (keep family, no AI).
 cmd_model() {
     run_script "model.sh" "$@"
+}
+
+# config: interactive provider + default-model configurator (no AI).
+cmd_config() {
+    run_script "config.sh" "$@"
 }
 
 cmd_polish() {
@@ -510,11 +520,13 @@ case "$CMD" in
     chat)          shift; cmd_chat "$@" ;;
     plan)          shift; cmd_plan "$@" ;;
     gate)          shift; cmd_gate "$@" ;;
+    settle)        shift; cmd_settle "$@" ;;
     work)          shift; cmd_work "$@" ;;
     loop)          shift; cmd_loop "$@" ;;
     split)         shift; cmd_split "$@" ;;
     deps)          shift; cmd_deps "$@" ;;
     model)         shift; cmd_model "$@" ;;
+    config)        shift; cmd_config "$@" ;;
     polish)        shift; cmd_polish "$@" ;;
     promote)       shift; cmd_promote "$@" ;;
     sync)          shift; cmd_sync "$@" ;;

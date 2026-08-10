@@ -1,4 +1,4 @@
-# Plan 16: 2026-08-03 correct all file drift
+# Plan 16: Correct all file drift
 
 **Created**: 2026-08-03
 **Status:** DRAFT
@@ -14,16 +14,25 @@
 
 ## Goal
 
-To facilitate creating work chunks, we plan a group of tasks that may be relational
-based on their theme or perhaps even unrelated. The end result is to create a sprint
-or a "up next" group of work to be handled in a work cycle. We are agnostic about the
-size of that work cycle or its timeline. The goal is simply to ensure the tasks are
-well defined, actionable, non conflicting, and dependencies are executed in the order
-that works.
+Leave no silent drift between authoritative surfaces and what open task files,
+docs, and shipped paths claim. Plan membership is owned by `docs/plans/N-*.md`
+member lists; each open task’s **Plan** field is the reverse index and must match
+(primary = lowest plan id when multi-plan). Brand and framework paths resolve to
+SprintBias / `docs/sprintbias/` (and the `src/docs/sprintbias/` mirror via
+`./ship.sh`), not retired `sprintmd` / `sprint.md` forms except documented
+install back-compat. Integrity is proven with current commands:
+`./sprint.sh validate` (reports Plan reverse-index drift; `--fix` rewrites
+mismatched **Plan** fields and title-line IDs), `./sprint.sh validate --docs` /
+`--commands` for help/flag and command-catalog drift, and
+`bash docs/tests/test-no-stale-refs.sh` for rename leftovers on live surfaces.
+When this plan is done, real integrity failures are not buried under drift noise.
 
 ## Why
 
-Our core value is to ship code fast! Grouping work that is well defined does that.
+Drift is cheap to create (hand-edit a plan member list, miss a rebrand form) and
+expensive when `validate` noise or a stale path steers an agent or installer
+wrong. One pass that reconciles reverse indexes and residual names keeps the
+board and the product surface trustworthy without inventing new lifecycle stages.
 
 ## Member tasks
 
@@ -32,4 +41,5 @@ Our core value is to ship code fast! Grouping work that is well defined does tha
      references, not paths: resolve each ID against docs/tasks/*/ for location.
      Moving a member needs no edit here unless syncing checkboxes. -->
 
-- #337 — Audit and correct all Plan reverse-index drift
+- [ ] #337 — Audit and correct all Plan reverse-index drift
+- [ ] #336 — Audit residual sprint.md / sprintmd naming → sprintbias

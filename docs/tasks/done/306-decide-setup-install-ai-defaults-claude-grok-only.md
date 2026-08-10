@@ -68,16 +68,13 @@ below. There is no per-provider file difference; both get `CLAUDE.md` **and**
 **Then:** `More options? [y/N]` (Enter = No). Yes surfaces the things pulled out
 of the default path:
 
+- **Per-file conflict override** (when any deferred `theirs` conflicts exist;
+  resolved **first**). Binary choice per file: **Prepend** (`Enter`) or
+  **Overwrite** (`o`). Default path never asks — it silent-prepends. Leave alone
+  is not a key: decline More options to avoid Overwrite, or accept silent prepend.
 - **GitHub Issues sync.**
 - **`Add all AI instructions? [y/N]`** — the residual non-Claude/non-AGENTS
   dotfiles (`.cursorrules`, `.windsurfrules`, Copilot).
-- **Per-file conflict override.** For each scaffold file whose existing content
-  does **not** match ours, offer a three-way choice — **Replace** (overwrite
-  with ours), **Leave alone** (skip), **Prepend** (inject our versioned block).
-  `Enter` = **Prepend**, so tapping through equals the Easy Button's silent
-  default; **Replace** — the only branch that overwrites a user-owned file — is
-  never reachable without a deliberate keystroke on this opt-in path. The
-  default (non-More-options) path never offers Replace at all.
 
 ### Ownership marker ("is this file ours?")
 
@@ -294,3 +291,73 @@ when a non-ours manual forces that filename — is already recorded under
 
 None — task is fully defined. Every decision it exists to make is made and
 recorded; the follow-on (#307) is created and correctly linked.
+
+## Excellence Audit
+
+### Summary
+
+Task 306 is a decision record, and it holds up: every question it set out to
+answer is answered, the **Install shape (decided)** spec is complete enough that
+#307 built from it without a chat replay, and the sibling tasks it absorbed
+(#303/#304/#305) are genuinely resolved on disk. The latest revision — replacing
+the three-way per-file override with a binary **Prepend** / **Overwrite** and
+resolving conflicts *first* under `More options?` — is a real improvement:
+fewer keys, and the destructive branch now sits behind one deliberate `o`. I
+verified the decision end to end against the shipped installer (fresh install
+both doors, re-run idempotency, user-owned-everything, and the More-options
+override) and it behaves as decided. The one gap with teeth: the decision
+enumerates five scaffold files and `README.md` is not among them, so README
+still runs on the old rules — silently mutated, no versioned marker, and its
+pointer hardcoded to `DOCUMENTATION.md` even when our manual installed as
+`SPRINTDOCUMENTATION.md`.
+
+### Findings
+
+- [ENHANCEMENT] `README.md` sits outside the decided install shape. Verified on
+  a project owning its own `DOCUMENTATION.md`: `CLAUDE.md`/`AGENTS.md` retarget
+  to `SPRINTDOCUMENTATION.md`, but README's injected pointer (setup.sh:471,
+  written at setup.sh:636 — long before `MANUAL_FILE` is resolved at
+  setup.sh:1061) still points at the *user's* `DOCUMENTATION.md`. It also
+  carries no versioned marker, so our block can never be upgraded, and it is
+  not deferred into `CONFLICTS`, so it is the one scaffold file with no
+  `More options?` override. FILED as #359.
+- [ENHANCEMENT] The decided install contract is undocumented. Nothing in
+  `DOCUMENTATION.md`, `GETSTARTED.md`, `docs/sprintbias/`, or `docs/guides/`
+  mentions the two doors, the silent batch, `More options?`, the ownership
+  marker, or the `SPRINTDOCUMENTATION.md` fallback — so GitHub Issues sync (now
+  behind the gate) is effectively unfindable, and the never-clobber contract is
+  invisible to the user it protects. FILED as #360.
+- [NIT] #307's `## Completed` and `## Questions` still describe the **three-way**
+  override (Replace / Leave alone / Prepend) that this task's revision retired;
+  the shipped `resolve_conflict_interactive` is binary. #307's success criteria
+  are correct — only its narrative is stale. Worth a one-line fix when #307 is
+  next touched.
+
+Verified working, no action needed: both doors write the correct `CLI`/`PROVIDER`
+and run an identical batch; re-run at the same version is a clean no-op (one
+marker per file, no double-inject); user-owned `CLAUDE.md`/`AGENTS.md`/
+`.gitignore` bodies survive prepend intact; the `_copy_stamped` `sed` delimiter
+bug from #307's Rework round 1 is fixed and `GETSTARTED.md`/`DOCUMENTATION.md`
+land stamped.
+
+VERDICT: FILED — 2 enhancement task(s)
+
+## Excellence
+
+- **Date**: 2026-08-10
+- **Verdict**: FILED
+- **Tasks filed**: 2
+- **Files reviewed**: 78
+- **Context source**: git working tree diff
+
+Task 306 is a decision record, and it holds up. Every question it set out to answer is answered, the **Install shape (decided)** spec is complete enough that #307 built from it without a chat replay, and the absorbed siblings (#303/#304/#305) are genuinely resolved on disk. The revision in this change — three-way per-file override → binary **Prepend**/**Overwrite**, with conflicts resolved *first* under `More options?` — is a real improvement: fewer keys, and the destructive branch now sits behind one deliberate `o`. I traced the decision end to end against the shipped installer in `/tmp` (fresh install on both doors, re-run idempotency, install over a fully user-owned project, and the More-options override) and it behaves exactly as decided. The gap with teeth: the decision enumerates five scaffold files and `README.md` isn't one of them, so README still runs on the old rules — silently mutated, unmarked, and pointing at the wrong manual.
+
+### Findings
+
+- [ENHANCEMENT] `README.md` sits outside the decided install shape. Verified on a project owning its own `DOCUMENTATION.md`: `CLAUDE.md`/`AGENTS.md` retarget to `SPRINTDOCUMENTATION.md`, but README's pointer (`setup.sh:471`, written at `setup.sh:636` — long before `MANUAL_FILE` resolves at `setup.sh:1061`) still points at the *user's* `DOCUMENTATION.md`. It also carries no versioned marker (so our block can never be upgraded) and isn't deferred into `CONFLICTS` (so it's the one scaffold file with no override).
+- [ENHANCEMENT] The decided install contract is undocumented — nothing in `DOCUMENTATION.md`, `GETSTARTED.md`, `docs/sprintbias/`, or `docs/guides/` mentions the two doors, the silent batch, `More options?`, the ownership marker, or the `SPRINTDOCUMENTATION.md` fallback. GitHub Issues sync moved behind the gate and is now effectively unfindable.
+- [NIT] `docs/tasks/review/307-…md` lines 138 and 263 still describe the retired three-way override; the shipped `resolve_conflict_interactive` is binary. Its success criteria are correct — only the narrative is stale.
+- FILED: docs/tasks/backlog/359-bring-readme-md-into-the-easy-button-install-shape.md
+- FILED: docs/tasks/backlog/360-document-the-two-door-install-shape-in-the-shipped.md
+
+Verified working, no action needed: both doors write correct `CLI`/`PROVIDER` and run an identical batch; re-run at the same version is a clean no-op (one marker per file, no double-inject); user-owned `CLAUDE.md`/`AGENTS.md`/`.gitignore` bodies survive prepend intact; #307's Rework round 1 `sed` delimiter bug is fixed and both docs land stamped. The audit report is appended to the task file; no code was edited and the temp installs are cleaned up.

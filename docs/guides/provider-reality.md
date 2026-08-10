@@ -68,8 +68,9 @@ the burn log; **this guide is the living home**.
 | KK-15 | Grok headless: `--tools` / `--disallowed-tools` / `--max-turns` are headless-only | RESOLVED — works | Interactive TUI ignores them |
 | KK-16 | Grok `--disallowed-tools Agent` blocks subagent spawn | RESOLVED — works | Different surface from Claude allowlists |
 | KK-17 | Emit mode discards `--tools` / permissions / budget from the printed prompt | RESOLVED — works | Surrounding agent keeps its toolset |
-| KK-18 | Budget caps are Claude-only; Grok drops `--budget` with warning | RESOLVED — works | Do not invent USD flags |
+| KK-18 | Budget caps are gated by `sprintbias_budget_capable` (today `claude-code` only) and omitted at source elsewhere; profile drop-with-warning stays as fallback | RESOLVED — works | Do not invent USD flags; add a tier to the capability `case` when it ships a real cap |
 | KK-19 | Canonical shell id is `run_terminal_command`; map accepts `run_terminal_cmd` too | RESOLVED — works | Locked by #291 + `grok-provider-tier.md` |
+| KK-19b | Neutral `stream-json` contract for headless progress | RESOLVED — works | Call sites (esp. `work`) pass `--output-format stream-json` only. Claude profile: keep `stream-json` and auto-add `--verbose`. Grok profile: map → `streaming-messages-json` (Anthropic Messages NDJSON; work progress filter), drop `--verbose`. Never forward Claude-only flags from call sites. Locked by `test-grok-provider.sh` Test 15 (2026-08-07) |
 
 ### Subagents & orchestration
 
@@ -89,11 +90,12 @@ the burn log; **this guide is the living home**.
 
 | ID | Claim | Stamp | Notes |
 |----|--------|-------|-------|
-| KK-30 | Resolution: env → `MODEL_<ROLE>` → `MODEL_DEFAULT` → tier default → CLI default | RESOLVED — works | `sprintbias_tier_model` / `model show` |
+| KK-30 | Resolution: env → `--model` → `config.local` → `config` (`MODEL_<ROLE>` → `MODEL_DEFAULT` per file) → tier default → CLI default | RESOLVED — works | `sprintbias_tier_model` / `model show` |
 | KK-31 | Tier defaults when empty: Claude → `opus`; Grok → `grok-4.5` | RESOLVED — works | Spine commands use `sprintbias_tier_model` |
 | KK-32 | `grok models` may list only `grok-4.5` | RESOLVED — works | Re-check often; `model list` shells out |
 | KK-33 | First-class `./sprint.sh model` show / list / set | RESOLVED — works | #294 — keep family |
 | KK-34 | Per-run model overrides discoverable on help / spine | COVERED by #295 | Env + optional flags |
+| KK-35 | `config.local` overlay: same keys, wins over `config` per-key, `KEY=` clears; gitignored + `ship.sh` `TREE_EXCLUDES` so it never ships/commits | RESOLVED — works | `sprintbias_cfg` reads local→tracked; ship-safe personal pin (CLI/PROVIDER/MODE/MODEL_*/budgets) |
 
 ### Product spine & process
 
@@ -153,7 +155,7 @@ shorten the note — keep the row for grep stability.
 | ID | Question | Stamp | Owner / notes |
 |----|----------|-------|---------------|
 | KU-30 | Grok resume on transient failure | DEFER | Out of plan 11 unless smoke fails |
-| KU-31 | Streaming-json progress narration for parity | DEFER | |
+| KU-31 | Streaming-json progress narration for parity | RESOLVED — works (via messages stream) | Grok maps neutral `stream-json` → `streaming-messages-json`; work filter already understands assistant/result. Native ACP `streaming-json` still unused for work |
 | KU-32 | Wall-clock timeout for wedged Grok exec | DEFER | |
 | KU-33 | always-approve / permission-mode deny interactions | COVERED by #296 | |
 
@@ -198,12 +200,16 @@ We cannot list them. We list **where** they usually appear. Append under
 
 ## Surfaced unknowns
 
+- 2026-08-07 — Grok `work` exec died immediately: `invalid value 'stream-json'` and (next) unexpected `--verbose`. Root cause: `work.sh` hardcoded Claude CLI flags; Grok profile passed them through. Fix: neutral `stream-json` contract + profile maps (KK-19b); unit Test 15.
+
 Append as smoke and real projects hit them.
 
 Format: `- YYYY-MM-DD — short description — disposition (NEW TASK / DEFER / fixed / documented)`
 
 - 2026-07-30 — Grok `--tools` with **invalid** tool id still allowed shell (soft fail). Disposition: documented in #291 / KK-13 / KU-06.
 - 2026-07-30 — Product docs disagree on shell id (`run_terminal_cmd` vs `run_terminal_command`); both work live. Disposition: #291 pin dual-alias; prefer `run_terminal_command`.
+- 2026-08-10 — Easy Button install smoke (#362, v0.0.81) found **no** provider-tier divergence beyond the intended model defaults: both doors install identically (109 files, `All Checks Passed`) and differ only in the `CLI=`/`PROVIDER=` pair. Offline spine confirmed the pair *resolves*: Claude tree → all roles **`opus`** (tier default); Grok tree → all roles **`grok-4.5`** (tier default). `newtask`/`status` output is identical across doors. Scaffold branches (user-owned `DOCUMENTATION.md` → `SPRINTDOCUMENTATION.md`, silent prepend, same-version re-run) are provider-independent. Disposition: documented in `dual-provider-smoke.md` → Last dry run; nothing new to open.
+- 2026-08-10 — Marker shape is not uniform and that is intentional: SprintBias-owned files (`GETSTARTED.md`, the manual) carry an opening `<!-- SprintBias v… -->` stamp only, while prepend targets (`CLAUDE.md`, `AGENTS.md`, `README.md`, `.gitignore`) carry the paired `<!-- end SprintBias -->` wrapper. A marker check that expects both lines everywhere will false-positive. Disposition: documented in `dual-provider-smoke.md`.
 
 ---
 

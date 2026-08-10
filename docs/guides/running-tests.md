@@ -150,7 +150,7 @@ bash docs/tests/test-no-stale-refs.sh
 | `test-context.sh` | `context.sh` | AI context summary |
 | `test-profile.sh` | `profile.sh` | non-AI show/help paths |
 | `test-cleanup-tmp.sh` | `cleanup-tmp.sh` | stale scratch files |
-| `test-setup-detection.sh` | `setup.sh` helpers | install detection / gitignore merge (extracted pure block) |
+| `test-setup-detection.sh` | `setup.sh` helpers | install detection + gitignore merge (pure block) **and** the scaffold/conflict machinery: `classify_target`, deferral policy, `apply_conflict`/`apply_deferred_conflicts`, gitignore prepend/replace, never-clobber, manual-name routing (both fenced blocks, extracted) |
 | `test-no-stale-refs.sh` | rename guards | retired names must not linger in shipped surfaces |
 | `test-grok-provider.sh` | `lib.sh` + grok profile | tier, emit detect, tool map — **not** live TUI |
 | `test-audit-code.sh` | `polish.sh --code` | stub CLI |

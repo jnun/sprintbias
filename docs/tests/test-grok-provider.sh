@@ -284,6 +284,55 @@ do
   fi
 done
 
+echo "Test 15: stream-json dual-host contract (work-shaped argv)"
+# work.sh requests neutral --output-format stream-json. Profiles must translate:
+#   Grok  → streaming-messages-json, never forward --verbose
+#   Claude → stream-json + auto --verbose
+# Regression: Grok CLI rejects stream-json and --verbose (exit 2, zero work).
+_argv_work=$(
+  PATH="$_fake_bin:$PATH" \
+  SPRINTBIAS_CLI=grok SPRINTBIAS_PROVIDER=grok-build SPRINTBIAS_MODE=exec \
+  GROK_AGENT= CLAUDECODE= \
+  bash -c '
+    source "'"$SPRINTBIAS"'/lib.sh"
+    sprintbias_run -p "hi" --model grok-4.5 \
+      --tools "Read,Edit,Write,Bash,Grep,Glob,Agent" \
+      --permissions auto \
+      --output-format stream-json --verbose 2>/dev/null
+  '
+)
+assert_contains "work stream-json → streaming-messages-json" "$_argv_work" "--output-format streaming-messages-json"
+assert_not_contains "work never forwards stream-json to grok" "$_argv_work" "stream-json"
+assert_not_contains "work never forwards --verbose to grok" "$_argv_work" "--verbose"
+assert_contains "work tools map on grok" "$_argv_work" "--tools read_file,search_replace,write,run_terminal_command,grep,list_dir"
+assert_contains "work permissions auto on grok" "$_argv_work" "--permission-mode auto"
+# work.sh itself must not hardcode Claude-only --verbose on the AI line
+if grep -nE -- '--output-format stream-json --verbose' "$SPRINTBIAS/scripts/work.sh" >/dev/null 2>&1; then
+  echo "  FAIL: work.sh still passes Claude-only --verbose with stream-json"
+  FAIL=$((FAIL + 1))
+else
+  echo "  PASS: work.sh uses neutral stream-json (no --verbose on AI line)"
+  PASS=$((PASS + 1))
+fi
+# Claude profile: same call site must keep stream-json and add --verbose
+printf '#!/bin/sh\nprintf "%%s\\n" "$*"\n' > "$_fake_bin/claude"
+chmod +x "$_fake_bin/claude"
+_argv_claude=$(
+  PATH="$_fake_bin:$PATH" \
+  SPRINTBIAS_CLI=claude SPRINTBIAS_PROVIDER=claude-code SPRINTBIAS_MODE=exec \
+  GROK_AGENT= CLAUDECODE= \
+  bash -c '
+    source "'"$SPRINTBIAS"'/lib.sh"
+    sprintbias_run -p "hi" --model opus \
+      --tools "Read,Edit,Write,Bash,Grep,Glob,Agent" \
+      --permissions auto \
+      --output-format stream-json 2>/dev/null
+  '
+)
+assert_contains "claude keeps stream-json" "$_argv_claude" "--output-format stream-json"
+assert_contains "claude auto-adds --verbose for stream-json" "$_argv_claude" "--verbose"
+assert_contains "claude maps tools → allowedTools" "$_argv_claude" "--allowedTools"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

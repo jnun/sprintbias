@@ -13,14 +13,19 @@ without moving anything.
 On **next/** (default) gate:
   - Checks which action items are already complete (and verifies quality)
   - Identifies remaining work
-  - Asks clarifying questions with suggestions when decisions are needed
-  - Writes a ## Questions section into the task file
+  - Surfaces open questions under ### Questions for the developer (each with a
+    suggestion)
+  - Writes a ## Questions section (stamp + findings + open questions)
 
 Verdicts on next/ (workability stamps — **not** lifecycle folders):
-  READY    — task stays in next/, ready for execution
-  BLOCKED  — needs a decision or clarification; moves to blocked/
+  READY    — task stays in next/, ready for execution (question list clear)
+  BLOCKED  — open question still needs an answer; moves to blocked/
   COMPLETE — work already present in the codebase; task moves to **review/**
              (not `docs/tasks/done/`; you approve and move to done/ later)
+
+Questions become instructions: answer → write as instruction in the body →
+delete the question. READY and promotion into next/ need a clear list
+(`None — task is fully defined.`).
 
 On **backlog/**, **doing/**, or **blocked/** gate reports only (read-only):
   COMPLETE  — work already present in the codebase (not the done/ folder)
@@ -48,8 +53,11 @@ re-pay to review the whole queue each run. --force re-reviews all of them.
 
 After running on next/:
   - READY tasks: run ./sprint.sh work to execute them
-  - BLOCKED tasks: supply the decision or clarification (or `./sprint.sh chat <id>`),
-    then re-enter next/ only via the shared gate again — never raw `git mv` into next/
+  - BLOCKED tasks: answer each open question (`./sprint.sh chat <id>`), write
+    each answer as instruction in the body, delete the question, then re-enter
+    next/ via the shared gate again. If every open item already has a
+    `(Suggestion: …)`, run `./sprint.sh settle` (or `settle <id>`) to fold and
+    clear without a full chat.
   - COMPLETE tasks: verify in review/, then move to done/ when you approve
 
 **Invariant:** nothing enters `next/` without this workability review. Surfaces

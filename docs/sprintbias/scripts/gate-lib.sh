@@ -10,8 +10,10 @@
 # stamp, applies the dependency-vs-definition rules, and routes the file by
 # verdict (BLOCKED → blocked/, COMPLETE → review/, READY stays where it is — or moves
 # to a caller-supplied READY_DIR, e.g. `plan start` promoting a vetted backlog
-# member into next/). COMPLETE means work is already in the codebase — not the
-# docs/tasks/done/ lifecycle folder.
+# member into next/). Open items under ### Questions for the developer keep the
+# task BLOCKED until each is answered and turned into body instruction; only then
+# is READY/COMPLETE promotion allowed. COMPLETE means work is already in the
+# codebase — not the docs/tasks/done/ lifecycle folder.
 #
 # Every surface that may send a task into next/ (the sprint) shares this one
 # implementation so verdicts never drift: `gate` (next/ CLI), `plan start`,
@@ -102,6 +104,9 @@ sprintbias_gate_init() {
 
 After writing the verdict, act on it. Always move with: git mv SRC DEST || mv SRC DEST
 (git mv first; plain mv finishes when the file is untracked).
+If '### Questions for the developer' still lists open items, route as BLOCKED
+(even when the stamp first said READY). READY and COMPLETE require that
+subsection to read: None — task is fully defined.
 - BLOCKED → git mv the task file to $SPRINTBIAS_GATE_BLOCKED_DIR/ || mv it there
 - COMPLETE → git mv the task file to $SPRINTBIAS_GATE_REVIEW_DIR/ || mv it there
   (COMPLETE = work already in the codebase; not docs/tasks/done/)
@@ -160,18 +165,51 @@ Your job:
 5. Produce an overall verdict: READY, BLOCKED, or COMPLETE.
 
 Fill the brief first (before stamping READY):
-- ## Problem and ## Success criteria are the durable brief. ## Questions is only
-  an audit overlay — never the only place the work is defined.
+- Write the durable work in ## Problem and ## Success criteria. A later reader
+  understands problem and done from those sections.
+- ## Questions is the gate overlay: workability stamp, code findings, remaining
+  outcomes, and open questions still waiting on a decision.
 - If Problem or Success criteria are empty placeholders (template blanks, only
   empty checkboxes, or "This task is not defined yet") but the title, Notes,
   References, and/or current code make the work unambiguous: WRITE a concise
   high-level Problem and verifiable Success criteria into those sections first,
-  then write ## Questions. A later reader must understand problem and done from
-  the body alone.
-- If you cannot write those sections without a human decision, the task is
-  BLOCKED (or still needs chat) — do not stamp READY and narrate emptiness.
-- Do not invent a mandatory implementation plan in Notes. Optional short hints
-  only. Do not fill ## Completed / ### Files changed — that is after work only.
+  then write ## Questions.
+- When a decision is still needed to write those sections, stamp BLOCKED and put
+  the decision under '### Questions for the developer'.
+- Notes may hold short optional hints and settled guidance from answered
+  questions. Leave ## Completed / ### Files changed for after work.
+
+Questions become instructions (simple loop):
+1. ASK — put each open decision under '### Questions for the developer' as
+   '1. [Question]? (Suggestion: [pick and why])'.
+2. GET the answer from the user or agent.
+3. CONVERT the answer into clear instruction or guidance (positive, direct,
+   concise — "Use Postgres for the store", "Always edit docs/ then ship").
+4. UPDATE the task body with that instruction: ## Success criteria when it
+   defines done; otherwise ## Notes as guidance the implementer follows.
+5. DELETE the original question from '### Questions for the developer' — it has
+   been answered.
+
+When every question is answered this way, write under that heading:
+None — task is fully defined.
+READY and COMPLETE use that line. Open questions mean BLOCKED until the loop
+finishes (task stays out of next/ while questions remain).
+
+**Bar for an open question (strict — most "decisions" fail this bar):**
+An open question is ONLY a product/human fork that changes success criteria or
+scope and cannot be chosen from the task + code + specs alone. If you can write
+a useful (Suggestion: …), **apply that suggestion as body instruction now**
+(Remaining work / Success criteria / Notes) and **do not leave the question on
+the list**. Micro-choices are never open questions — examples that must be
+folded, not asked: icon set (Lucide vs emoji when the design standard already
+picks Lucide), which conformant shell/HTML donor to copy, keep vs rename a
+gallery id when shareable links imply keep, frame count within a stated range,
+static vs trivial CSS animation, "draw the field the criteria already require".
+Implementer judgment ("clear enough to execute") is not a question. Prefer zero
+open questions and a concrete Remaining work list over a thorough FAQ.
+
+**READY requires an empty question list.** If any list item remains under
+### Questions for the developer, the stamp is BLOCKED (the shell enforces this).
 
 How to handle COMPLETE items (already implemented in code):
 - Do NOT suggest removing them. They are context for the developer.
@@ -248,27 +286,31 @@ clear", "always true before define").
 
 ### Remaining work
 Audit of what is still left against the success criteria — for the implementer
-who runs work. Short concrete outcomes, not a full re-statement of Problem, and
-not a rationale for the READY verdict. This section must not be the only place
-the task is defined; the body brief already holds that.
+who runs work. Short concrete outcomes that complement Problem and Success
+criteria (the durable brief already holds the full definition).
 
 ### Questions for the developer
-Numbered list. Only include genuine questions where a decision is needed.
-Each question must include a concrete suggestion with reasoning.
-Format: '1. [Question]? (Suggestion: [recommendation and why])'
+Open questions waiting on a human product decision — numbered list only:
+'1. [Question]? (Suggestion: [pick and why])'
+Leave this list empty whenever possible. If you already know the pick, write it
+into Remaining work / Notes and omit the question entirely (do not park a
+Suggestion here "for later").
 
-If there are no questions, write 'None — task is fully defined.' under this heading.
+When the list is empty, write exactly:
+None — task is fully defined.
+
+READY and COMPLETE use that line. A remaining open question means BLOCKED.
+A READY stamp with any list item under this heading is an integrity error.
 
 If the verdict is BLOCKED, ALSO add a '## BLOCKED' section directly above ## Questions:
 
 ## BLOCKED
 
-One short plain-English paragraph: exactly why this task cannot proceed and what
-decision or clarification is needed. Another agent (or the developer) must be able
-to understand the open question from this section alone, without reading anything else.
-End the paragraph by pointing the developer to chat it through interactively:
-"Run ./sprint.sh chat <task-number> to resolve these questions." A BLOCKED verdict
-means a decision or clarification is needed — this is precisely what chat is for.
+One short plain-English paragraph: what decision is still open and what answer
+would unblock the work. Another agent (or the developer) should understand it
+from this section alone. End by pointing to chat:
+"Run ./sprint.sh chat <task-number> to answer these questions and turn each
+answer into instruction in the task body." Then re-enter through the gate.
 
 If the verdict is not BLOCKED, delete any ## BLOCKED section left from a previous review.
 
@@ -294,14 +336,20 @@ $(sprintbias_subagent_parallel_dispatch gate) Each subagent reviews exactly one 
 follows this contract verbatim, substituting its assigned file path.
 $(sprintbias_subagent_no_nest)
 
+COMPLETE SET — gate EVERY listed file. Do not sample, skip, or stop early after a
+subset (hosts sometimes limit concurrent subagents; if so, run further waves until
+every file has a verdict). The final summary must have exactly $count rows — one
+per listed path. Missing a path is a failure of this orchestration, not a pass.
+
 ────────────────────────────────────────────────────────────
 $(sprintbias_gate_contract "<the task file assigned to this subagent>")${SPRINTBIAS_GATE_MOVE_INSTR}
 ────────────────────────────────────────────────────────────
 
-Task files to review (one subagent each):${_parallel_files}
+Task files to review (one subagent each — all $count required):${_parallel_files}
 
 When every subagent has finished, print a summary table: one row per task with
-its file name and final verdict (READY / BLOCKED / COMPLETE)."
+its file name and final verdict (READY / BLOCKED / COMPLETE). Count the rows —
+if fewer than $count, launch another wave for the missing files and finish them."
 }
 
 # If the review stamped BLOCKED but didn't write a ## BLOCKED section, synthesize
@@ -322,9 +370,10 @@ _sprintbias_gate_ensure_blocked_section() {
     echo ""
     echo "## BLOCKED"
     echo ""
-    echo "Needs decision or clarification (gate review $(date +%Y-%m-%d))."
-    echo "The open questions below must be answered before work can start."
-    echo "Talk them through interactively with: ./sprint.sh chat ${name%%-*}"
+    echo "Needs a decision (gate review $(date +%Y-%m-%d))."
+    echo "Answer each question below, write the answer as instruction in the"
+    echo "task body, delete the question, then re-enter via the gate."
+    echo "Chat: ./sprint.sh chat ${name%%-*}"
     echo "$_qs"
   } >> "$file" \
     || echo "  ⚠ Could not write ## BLOCKED section to $file"
@@ -370,7 +419,18 @@ sprintbias_gate_review() {
 
     # Route by the review's verdict stamp (anchored — body text that merely
     # mentions the verdict vocabulary cannot mis-route, see lib.sh).
-    case "$(sprintbias_review_verdict "$task_file")" in
+    # Open questions still on the list keep the task BLOCKED until each is
+    # answered and turned into body instruction.
+    _verdict="$(sprintbias_review_verdict "$task_file")"
+    # Invariant: open questions mean BLOCKED — rewrite the stamp (not only the
+    # route) so next/ never keeps a READY file that work must refuse.
+    if { [ "$_verdict" = "READY" ] || [ "$_verdict" = "COMPLETE" ]; } \
+         && sprintbias_has_open_questions "$task_file"; then
+      _verdict="BLOCKED"
+      sprintbias_set_review_status "$task_file" "BLOCKED" || true
+      echo "  ⚠ Open questions remain — overriding stamp to BLOCKED (cannot stay READY)" >&2
+    fi
+    case "$_verdict" in
       BLOCKED)
         move_file "$task_file" "$SPRINTBIAS_GATE_BLOCKED_DIR/$task_name"
         _sprintbias_gate_ensure_blocked_section "$SPRINTBIAS_GATE_BLOCKED_DIR/$task_name"
@@ -399,6 +459,7 @@ sprintbias_gate_review() {
         SPRINTBIAS_GATE_VERDICT="NOSTAMP"
         ;;
     esac
+    unset _verdict
   else
     SPRINTBIAS_GATE_ERROR=$(grep -oE 'API Error[^"]*' "$log_file" 2>/dev/null | tail -1 || true)
     SPRINTBIAS_GATE_VERDICT="FAILED"

@@ -214,6 +214,10 @@ for dir in "$NEXT_DIR" "$BLOCKED_DIR" "$REVIEW_DIR"; do
   fi
 done
 
+# Integrity first: READY/COMPLETE + open questions must not sit in next/.
+# Demote those before the skip logic can treat a false READY as "already done".
+sprintbias_sweep_ready_open_questions "$NEXT_DIR" "$BLOCKED_DIR"
+
 # Skip tasks that already carry a review verdict so a re-run after a partial
 # failure (API error mid-batch) retries only what's missing instead of
 # re-reviewing — and re-paying for — the whole queue. --force re-reviews all.
@@ -223,7 +227,9 @@ while IFS= read -r f; do
   [ -n "$f" ] || continue
   # Only READY skips: a BLOCKED/COMPLETE-stamped task sitting in next/ means the
   # user re-queued it after addressing the questions — re-review it.
-  if [ "$FORCE" -ne 1 ] && [ "$(sprintbias_review_verdict "$f")" = "READY" ]; then
+  # Open questions on a READY stamp were demoted above, so this skip is safe.
+  if [ "$FORCE" -ne 1 ] && [ "$(sprintbias_review_verdict "$f")" = "READY" ] \
+       && ! sprintbias_has_open_questions "$f"; then
     SKIPPED_REVIEWED=$((SKIPPED_REVIEWED + 1))
     continue
   fi

@@ -18,8 +18,8 @@
 #                                output-captured run so it never looks hung
 #   kebab_case STRING          — lowercase, hyphenated slug
 #   sprintbias_slug NAME [MAX]    — kebab_case + length cap + empty guard (returns 1)
-#   sprintbias_cfg KEY            — read a value from docs/sprintbias/config
-#   sprintbias_cfg_set KEY VALUE  — update or append a value in config
+#   sprintbias_cfg KEY            — read a value: config.local overrides config
+#   sprintbias_cfg_set KEY VALUE  — update or append a value in the tracked config
 #   sprintbias_resolve_model SFX  — model resolution: env > config > default;
 #       provider-foreign ids remapped (opus on grok → grok-4.5, etc.)
 #   sprintbias_coerce_model MODEL — remap Claude/Grok-only ids for active tier
@@ -34,6 +34,11 @@
 #   sprintbias_task_stage ID        — lifecycle stage folder name (or empty)
 #   sprintbias_task_path ID         — path to the task file (or empty)
 #   sprintbias_review_verdict FILE — READY/BLOCKED/COMPLETE stamp from a gate review
+#   sprintbias_open_questions / sprintbias_has_open_questions FILE
+#   sprintbias_set_review_status FILE STATUS — rewrite stamp in last ## Questions
+#   sprintbias_accept_suggestions FILE — fold (Suggestion: …) into Notes; clear Qs
+#   sprintbias_demote_open_questions FILE [BLOCKED_DIR] — READY+openQ → blocked/
+#   sprintbias_sweep_ready_open_questions [NEXT] [BLOCKED] — bulk demote next/
 #   sprintbias_log_path KIND NAME — timestamped log path under docs/tmp
 #   sprintbias_load_profile [cli] — source the provider profile (sprintbias_provider_exec)
 #   sprintbias_ai_tier            — capability tier: claude-code|grok-build|cursor|openai|generic
@@ -77,6 +82,8 @@
 #     sprintbias_set_task_plan FILE VALUE — write the **Plan** field (none|id)
 #     sprintbias_reconcile_task_plan ID — refresh one task's **Plan** from the plans
 #     sprintbias_plan_index_drift [--fix] — report/repair Plan drift both ways
+#     sprintbias_find_plan ID — path to docs/plans/ID-*.md or fail
+#     sprintbias_list_plans — one line per plan: id, title, [STATUS], done/total
 
 _SPRINTBIAS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -274,14 +281,36 @@ sprintbias_slug() {
 }
 
 SPRINTBIAS_CONFIG_FILE="${SPRINTBIAS_CONFIG_FILE:-${_SPRINTBIAS_LIB_DIR}/config}"
+# Semi-permanent LOCAL overlay: same KEY=VALUE format, read with precedence
+# OVER the tracked config, never shipped (ship.sh excludes it) and gitignored
+# so a personal CLI/model pin never lands in the repo or the distribution.
+# A key present here wins; present-but-empty (KEY=) deliberately clears the
+# tracked value. Pins here are still below env vars and per-run --model. See
+# DOCUMENTATION.md → Local config overlay.
+SPRINTBIAS_CONFIG_LOCAL_FILE="${SPRINTBIAS_CONFIG_LOCAL_FILE:-${_SPRINTBIAS_LIB_DIR}/config.local}"
 
 # ── Config reader ────────────────────────────────────────────────────
-# Reads KEY from the flat config file. Returns empty string if the key
-# is absent or the file doesn't exist.
+# Read KEY, preferring config.local over config. Prints the value (possibly
+# empty) and returns 0 when KEY is present in FILE; returns 1 when absent so
+# the caller can fall through to the next file.
+_sprintbias_cfg_read_file() {
+    local key="$1" file="$2"
+    [ -f "$file" ] || return 1
+    awk -F= -v k="$key" '
+        !/^[[:space:]]*#/ && $1 == k { val = substr($0, length(k) + 2); found = 1 }
+        END { if (found) { print val } else { exit 1 } }
+    ' "$file"
+}
+
+# Reads KEY from the config, with config.local taking precedence. Returns an
+# empty string if the key is absent from both (or neither file exists). A key
+# written as `KEY=` in config.local overrides a non-empty tracked value with
+# empty — the documented way to clear a shipped/tracked pin locally.
 sprintbias_cfg() {
     local key="$1"
-    [ -f "$SPRINTBIAS_CONFIG_FILE" ] || return 0
-    awk -F= -v k="$key" '!/^[[:space:]]*#/ && $1 == k { print substr($0, length(k)+2) }' "$SPRINTBIAS_CONFIG_FILE" | tail -1
+    _sprintbias_cfg_read_file "$key" "$SPRINTBIAS_CONFIG_LOCAL_FILE" && return 0
+    _sprintbias_cfg_read_file "$key" "$SPRINTBIAS_CONFIG_FILE" && return 0
+    return 0
 }
 
 # ── Config writer ────────────────────────────────────────────────────
@@ -310,9 +339,11 @@ sprintbias_cfg_set() {
 #   env SPRINTBIAS_MODEL_<SUFFIX>  per-role, this-shell override
 #   env SPRINTBIAS_MODEL_DEFAULT   per-run lever — what a spine command's
 #                                --model <id> flag exports for one invocation
-#   config MODEL_<SUFFIX>        per-role pin in docs/sprintbias/config
-#   config MODEL_DEFAULT         global pin
+#   config MODEL_<SUFFIX>        per-role pin (config.local overrides config)
+#   config MODEL_DEFAULT         global pin  (config.local overrides config)
 #   empty                        CLI picks its own
+# The two config reads go through sprintbias_cfg, so a semi-permanent local pin
+# in docs/sprintbias/config.local wins over the tracked config at each key.
 # Non-empty results are coerced for the active provider (see
 # sprintbias_coerce_model) so a leftover MODEL_GATE=opus after switching to
 # Grok never reaches the CLI as an unknown model id.
@@ -452,7 +483,7 @@ sprintbias_conversation_method() {
 sprintbias_next_blocked_resolution() {
     local path_a
     if [ "$(sprintbias_ai_mode)" = "emit" ] && sprintbias_orchestration_capable; then
-        path_a="Hand this off to a FRESH context — do NOT resolve the dependency inline here. $(sprintbias_subagent_spawn_phrase "the dependency that needs a decision (in blocked/)" chain), aimed at the MOST-UPSTREAM one first (the dependency whose own '**Depends on**' has no unresolved blocked deps left; break ties by lowest id). Its entire instruction: 'Run ./sprint.sh chat <dep-id> and carry that task as far toward READY as you can on your own — read any *Context from chat* note in its file, refine it, and if a question genuinely needs the human, leave it in the file's ## Questions section and report it back.' Tell the user you spun up a fresh agent for <dep-id> and say in one line what it is picking up."
+        path_a="Hand this off to a FRESH context — do NOT resolve the dependency inline here. $(sprintbias_subagent_spawn_phrase "the dependency that needs a decision (in blocked/)" chain), aimed at the MOST-UPSTREAM one first (the dependency whose own '**Depends on**' has no unresolved blocked deps left; break ties by lowest id). Its entire instruction: 'Run ./sprint.sh chat <dep-id> and carry that task as far toward READY as you can on your own — read any *Context from chat* note in its file, refine it, and for each answered question convert the answer into body instruction and delete the question; leave only still-open questions under ### Questions for the developer and report those back.' Tell the user you spun up a fresh agent for <dep-id> and say in one line what it is picking up."
     else
         path_a="Hand this off — do NOT resolve the dependency inline here. Tell the user the exact command to run in a FRESH window:  ./sprint.sh chat <dep-id>  (for the most-upstream dependency still in blocked/). Keeping each session's context small is the point of chaining out."
     fi
@@ -561,6 +592,303 @@ sprintbias_review_verdict() {
         | sed 's/\*//g; s/Status: //')
     [ "$v" = "DONE" ] && v="COMPLETE"
     printf '%s' "$v"
+}
+
+# sprintbias_open_questions FILE -> one plain line per still-open question (stdout).
+# Sources (same convention as chat-sprint / gate):
+#   (a) '### Questions for the developer' under ## Questions
+#   (b) a strict inline "Open questions:" label in ## Notes
+# Keeps top-level list items; drops resolved/answered/decided/settled/none
+# sentinels — first word after the marker, or mid-line "— resolved" / "(resolved)".
+# Empty output = all questions answered (turned into body instruction). Prefer
+# fold-into-body + delete over mid-line markers; markers only prevent false holds.
+sprintbias_open_questions() {
+    local file="$1"
+    {
+        awk '
+            /^### Questions for the developer[[:space:]]*$/ { cap=1; next }
+            cap && /^(## |### )/ { cap=0 }
+            cap { print }
+        ' "$file"
+        awk '
+            /^[#>*[:space:]]*[Oo]pen [Qq]uestions?[[:space:]:*]*$/ { cap=1; next }
+            cap && (/^[[:space:]]*$/ || /^(## |### )/) { cap=0 }
+            cap { print }
+        ' "$file"
+    } 2>/dev/null \
+        | grep -E '^([-*]|[0-9]+\.)[[:space:]]' \
+        | grep -viE '^([-*]|[0-9]+\.)[[:space:]]+\**(resolved|answered|decided|settled|none)\b' \
+        | grep -viE '(—|–|-)[[:space:]]*\**(resolved|answered|decided|settled)\b' \
+        | grep -viE '\((resolved|answered|decided|settled)\)' \
+        | sed -E 's/^([-*]|[0-9]+\.)[[:space:]]*//; s/\*\*//g; s/[[:space:]]+/ /g' \
+        || true
+}
+
+# sprintbias_has_open_questions FILE -> exit 0 when a question still needs an
+# answer. Open questions keep the task out of work and out of next/ until each
+# answer is written as body instruction and the question is deleted.
+sprintbias_has_open_questions() {
+    local qs
+    qs="$(sprintbias_open_questions "$1")"
+    [ -n "$qs" ]
+}
+
+# sprintbias_set_review_status FILE STATUS
+# Rewrite **Status: …** in the LAST ## Questions section (creates stamp line if
+# the section exists without one). STATUS is READY | BLOCKED | COMPLETE.
+sprintbias_set_review_status() {
+    local file="$1" status="$2"
+    [ -f "$file" ] || return 1
+    case "$status" in
+        READY|BLOCKED|COMPLETE) ;;
+        *) return 1 ;;
+    esac
+    python3 - "$file" "$status" <<'PY' || return 1
+import re, sys
+path, status = sys.argv[1], sys.argv[2]
+text = open(path, encoding="utf-8").read()
+parts = re.split(r"(?m)^(?=## Questions\s*$)", text)
+if len(parts) < 2:
+    sys.exit(1)
+head, last = "".join(parts[:-1]), parts[-1]
+stamp = f"**Status: {status}**"
+if re.search(r"(?m)^\*\*Status: (READY|BLOCKED|COMPLETE|DONE)\*\*", last):
+    last = re.sub(
+        r"(?m)^\*\*Status: (READY|BLOCKED|COMPLETE|DONE)\*\*",
+        stamp,
+        last,
+        count=1,
+    )
+else:
+    # Insert stamp right after the ## Questions heading.
+    last = re.sub(
+        r"(?m)^(## Questions\s*\n)",
+        r"\1\n" + stamp + "\n",
+        last,
+        count=1,
+    )
+open(path, "w", encoding="utf-8").write(head + last)
+PY
+}
+
+# sprintbias_accept_suggestions FILE
+# For each still-open question that carries (Suggestion: …), fold the suggestion
+# into ## Notes as a settled decision line and delete the question. Questions
+# without a suggestion stay. When the list is empty, write
+# "None — task is fully defined." under ### Questions for the developer.
+# Prints: settled=N remaining=M
+# Exit 0 always when file exists (even if nothing settled).
+sprintbias_accept_suggestions() {
+    local file="$1"
+    [ -f "$file" ] || return 1
+    python3 - "$file" <<'PY'
+import re, sys
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+
+q_heads = list(re.finditer(r"(?m)^## Questions\s*$", text))
+if not q_heads:
+    print("settled=0 remaining=0")
+    sys.exit(0)
+qh_start = q_heads[-1].start()
+# From last ## Questions to EOF (or keep rest of file after we splice)
+tail = text[qh_start:]
+dev = re.search(r"(?m)^### Questions for the developer\s*\n", tail)
+if not dev:
+    print("settled=0 remaining=0")
+    sys.exit(0)
+dev_body_rel = dev.end()
+# End of developer-questions body: next ## / ### heading after the dev heading
+rest_after_dev = tail[dev_body_rel:]
+end_m = re.search(r"(?m)^(?:## |### )", rest_after_dev)
+if end_m:
+    body = rest_after_dev[: end_m.start()]
+    after_body = rest_after_dev[end_m.start() :]
+else:
+    body = rest_after_dev
+    after_body = ""
+
+# Parse list items; join continuation lines (indented or non-marker non-blank).
+raw_lines = body.splitlines()
+items = []  # full multi-line strings without trailing newline
+cur = None
+for line in raw_lines:
+    if re.match(r"^([-*]|[0-9]+\.)\s", line):
+        if cur is not None:
+            items.append(cur)
+        cur = line
+    elif cur is not None and line.strip() and not re.match(r"^(## |### )", line):
+        cur += " " + line.strip()
+    else:
+        if cur is not None:
+            items.append(cur)
+            cur = None
+if cur is not None:
+    items.append(cur)
+
+sug_re = re.compile(r"\(\s*Suggestion\s*:\s*(.+?)\)\s*$", re.IGNORECASE | re.DOTALL)
+sug_re_any = re.compile(r"\(\s*Suggestion\s*:\s*(.+?)\)", re.IGNORECASE | re.DOTALL)
+
+def is_sentinel(plain: str) -> bool:
+    if re.match(r"(?i)^(resolved|answered|decided|settled|none)\b", plain):
+        return True
+    if re.search(r"(?i)(?:—|–|\-)\s*(resolved|answered|decided|settled)\b", plain):
+        return True
+    if re.search(r"(?i)\((resolved|answered|decided|settled)\)", plain):
+        return True
+    return False
+
+settled = []
+keep = []
+for chunk in items:
+    plain = re.sub(r"^([-*]|[0-9]+\.)\s*", "", chunk.strip())
+    plain = re.sub(r"\*\*", "", plain)
+    plain = re.sub(r"\s+", " ", plain).strip()
+    if is_sentinel(plain):
+        continue
+    m = sug_re.search(chunk) or sug_re_any.search(chunk)
+    if m:
+        suggestion = re.sub(r"\s+", " ", m.group(1).strip())
+        topic = sug_re_any.sub("", plain)
+        topic = re.sub(r"\s+", " ", topic).strip(" ?.")
+        if len(topic) > 120:
+            topic = topic[:117] + "..."
+        settled.append((topic, suggestion))
+    else:
+        keep.append(chunk.strip())
+
+if keep:
+    renum = []
+    n = 1
+    for k in keep:
+        if re.match(r"^\d+\.\s", k):
+            renum.append(re.sub(r"^\d+\.\s", f"{n}. ", k, count=1))
+            n += 1
+        else:
+            renum.append(k)
+    new_body = "\n".join(renum) + "\n"
+else:
+    new_body = "None — task is fully defined.\n"
+
+new_tail = tail[:dev_body_rel] + new_body + after_body
+text = text[:qh_start] + new_tail
+
+if settled:
+    notes_lines = ["- **Settled (accept suggestions):**"]
+    for topic, sug in settled:
+        notes_lines.append(f"  - {topic}: {sug}" if topic else f"  - {sug}")
+    block = "\n".join(notes_lines) + "\n"
+    nm = re.search(r"(?m)^## Notes\s*$", text)
+    if nm:
+        # Insert block at end of ## Notes (before next ## heading)
+        notes_start = nm.end()
+        rest = text[notes_start:]
+        nxt = re.search(r"(?m)^## ", rest)
+        if nxt:
+            insert_at = notes_start + nxt.start()
+            text = text[:insert_at].rstrip() + "\n\n" + block + "\n" + text[insert_at:]
+        else:
+            text = text.rstrip() + "\n\n" + block + "\n"
+    else:
+        q_heads = list(re.finditer(r"(?m)^## Questions\s*$", text))
+        at = q_heads[-1].start() if q_heads else len(text)
+        text = text[:at] + "## Notes\n\n" + block + "\n" + text[at:]
+
+open(path, "w", encoding="utf-8").write(text)
+print(f"settled={len(settled)} remaining={len(keep)}")
+PY
+}
+
+# sprintbias_demote_open_questions FILE [BLOCKED_DIR]
+# Invariant enforcer: READY/COMPLETE + still-open questions must not stay in
+# next/. Rewrites stamp to BLOCKED, ensures a ## BLOCKED section, moves the
+# file into BLOCKED_DIR (default docs/tasks/blocked). Loud report on stderr.
+# Exit 0 if demoted, 1 if not applicable (no open Qs, or already blocked path
+# without READY/COMPLETE stamp needing fix).
+sprintbias_demote_open_questions() {
+    local file="$1"
+    local blocked_dir="${2:-docs/tasks/blocked}"
+    local name id qs verdict dest
+    [ -f "$file" ] || return 1
+    sprintbias_has_open_questions "$file" || return 1
+    verdict="$(sprintbias_review_verdict "$file")"
+    name="$(basename "$file")"
+    id="${name%%-*}"
+    qs="$(sprintbias_open_questions "$file")"
+
+    # Always fix stamp when open questions remain under READY/COMPLETE, or when
+    # the file still lives under next/ with open questions (integrity bug).
+    case "$verdict" in
+        READY|COMPLETE|"")
+            sprintbias_set_review_status "$file" "BLOCKED" || true
+            ;;
+    esac
+
+    mkdir -p "$blocked_dir"
+    dest="$blocked_dir/$name"
+    # If already in blocked/, still rewrite stamp + ensure section; no move.
+    if [ ! "$file" -ef "$dest" ] 2>/dev/null; then
+        case "$file" in
+            */next/*|*/doing/*)
+                move_file "$file" "$dest"
+                file="$dest"
+                ;;
+        esac
+    fi
+
+    # Ensure ## BLOCKED section (reuse gate helper if loaded; else local).
+    if declare -F _sprintbias_gate_ensure_blocked_section >/dev/null 2>&1; then
+        _sprintbias_gate_ensure_blocked_section "$file"
+    elif ! grep -q '^## BLOCKED' "$file" 2>/dev/null; then
+        {
+            echo ""
+            echo "## BLOCKED"
+            echo ""
+            echo "Open questions remain — cannot stay READY in next/."
+            echo "Answer each, write the answer as instruction in the body,"
+            echo "delete the question, then: ./sprint.sh settle $id  or  ./sprint.sh chat $id"
+            echo "Or accept every (Suggestion: …) with: ./sprint.sh settle $id"
+            echo ""
+            echo "$qs" | sed 's/^/- /'
+        } >> "$file"
+    fi
+
+    printf '⊘ %s: READY/COMPLETE + open questions — demoted to blocked/\n' "$id" >&2
+    printf '  Open questions still pending:\n' >&2
+    printf '%s\n' "$qs" | sed 's/^/    • /' >&2
+    printf '  Fix:  ./sprint.sh settle %s   # accept all (Suggestion: …) and clear them\n' "$id" >&2
+    printf '    or  ./sprint.sh chat %s     # answer with a human, fold into body\n' "$id" >&2
+    printf '  Then re-enter: bash docs/sprintbias/scripts/promote-to-sprint.sh %s\n' "$file" >&2
+    printf '  File: %s\n' "$file" >&2
+    return 0
+}
+
+# sprintbias_sweep_ready_open_questions [NEXT_DIR] [BLOCKED_DIR]
+# Scan next/ for READY/COMPLETE (or any) tasks that still have open questions;
+# demote each. Prints a banner when any move. Exit 0. Sets
+# SPRINTBIAS_SWEEP_DEMOTED to the count.
+sprintbias_sweep_ready_open_questions() {
+    local next_dir="${1:-docs/tasks/next}"
+    local blocked_dir="${2:-docs/tasks/blocked}"
+    local f n=0
+    SPRINTBIAS_SWEEP_DEMOTED=0
+    [ -d "$next_dir" ] || return 0
+    for f in "$next_dir"/*.md; do
+        [ -f "$f" ] || continue
+        if sprintbias_has_open_questions "$f"; then
+            if sprintbias_demote_open_questions "$f" "$blocked_dir"; then
+                n=$((n + 1))
+            fi
+        fi
+    done
+    SPRINTBIAS_SWEEP_DEMOTED=$n
+    if [ "$n" -gt 0 ]; then
+        printf '\n▸ Integrity sweep: demoted %s next/ task(s) with open questions → blocked/\n' "$n" >&2
+        printf '  A READY stamp with open questions is invalid — work will not run them.\n' >&2
+        printf '  Bulk-clear suggested answers:  ./sprint.sh settle\n' >&2
+        printf '  Or answer one task:            ./sprint.sh chat <id>\n\n' >&2
+    fi
+    return 0
 }
 
 # sprintbias_meta_value FILE FIELD -> value of '**FIELD**:' (empty if absent).
@@ -1001,6 +1329,49 @@ sprintbias_plan_index_drift() {
     return 0
 }
 
+# sprintbias_find_plan ID -> path to docs/plans/ID-*.md, or fail (return 1).
+# Shared by plan start/done/think and chat plan so pickers never diverge.
+sprintbias_find_plan() {
+    local id="$1" match
+    [[ "$id" =~ ^[0-9]+$ ]] || return 1
+    match=$(find "$SPRINTBIAS_PLANS_DIR" -maxdepth 1 -name "${id}-*.md" 2>/dev/null | head -1) || true
+    [ -n "$match" ] && printf '%s' "$match" && return 0
+    return 1
+}
+
+# sprintbias_plan_member_rollup PLAN_FILE -> "done/total" counts from live folders.
+sprintbias_plan_member_rollup() {
+    local f="$1" mid stage done=0 total=0
+    [ -f "$f" ] || { printf '0/0'; return 0; }
+    while IFS= read -r mid; do
+        [ -n "$mid" ] || continue
+        total=$((total + 1))
+        stage=$(sprintbias_task_stage "$mid" 2>/dev/null || true)
+        [ "$stage" = "done" ] && done=$((done + 1))
+    done <<EOF
+$(sprintbias_plan_member_ids "$f")
+EOF
+    printf '%s/%s' "$done" "$total"
+}
+
+# sprintbias_list_plans -> one line per plan for interactive pickers:
+#   "  ID  Title  [STATUS]  done/total"
+sprintbias_list_plans() {
+    local f id title status rollup
+    for f in "$SPRINTBIAS_PLANS_DIR"/*.md; do
+        [ -f "$f" ] || continue
+        case "${f##*/}" in .TEMPLATE-*|TEMPLATE-*) continue ;; esac
+        id=$(sprintbias_plan_file_id "$f")
+        [[ "$id" =~ ^[0-9]+$ ]] || continue
+        title=$(grep -m1 '^# ' "$f" 2>/dev/null | sed 's/^# *//; s/^Plan [0-9]*: *//')
+        status=$(grep -m1 -E '^\*\*Status:\*\*' "$f" 2>/dev/null \
+            | sed 's/.*\*\*Status:\*\*[[:space:]]*//' | tr -d '[:space:]')
+        [ -n "$status" ] || status="(no status)"
+        rollup=$(sprintbias_plan_member_rollup "$f")
+        printf '  %s  %s  [%s]  %s done\n' "$id" "${title:-${f##*/}}" "$status" "$rollup"
+    done
+}
+
 # ── DOC_STATE (ID allocation) and templates ──────────────────────────
 
 SPRINTBIAS_DOC_STATE="${SPRINTBIAS_DOC_STATE:-docs/sprintbias/DOC_STATE.md}"
@@ -1141,6 +1512,21 @@ sprintbias_ai_tier() {
 sprintbias_orchestration_capable() {
     case "$(sprintbias_ai_tier)" in
         claude-code|grok-build) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# ── Budget-capable tiers ─────────────────────────────────────────────
+# True when the provider CLI can enforce a per-run USD spending cap, so a
+# `--budget` argument means something to it. Today only Claude Code has a
+# verified flag (`--max-budget-usd`); Grok Build and the generic tiers have
+# none, so the cap is omitted at the call site rather than handed over and
+# dropped. A provider that gains a real USD cap becomes capable by adding its
+# tier to this case — no new branch at any call site. Every place that builds
+# `--budget` (work, polish, deps) asks this instead of naming a provider.
+sprintbias_budget_capable() {
+    case "$(sprintbias_ai_tier)" in
+        claude-code) return 0 ;;
         *) return 1 ;;
     esac
 }

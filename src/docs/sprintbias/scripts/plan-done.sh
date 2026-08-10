@@ -28,26 +28,8 @@ unset _arg
 
 # ── Plan helpers (shared shape with plan-start.sh) ───────────────────
 
-list_plans() {
-  local f id title status
-  for f in "$PLANS_DIR"/*.md; do
-    [ -f "$f" ] || continue
-    case "$(basename "$f")" in .TEMPLATE-*|TEMPLATE-*) continue ;; esac
-    id=$(basename "$f" | grep -oE '^[0-9]+' || true)
-    [ -n "$id" ] || continue
-    title=$(grep -m1 '^# ' "$f" 2>/dev/null | sed 's/^# *//; s/^Plan [0-9]*: *//')
-    status=$(grep -m1 -E '^\*\*Status:\*\*' "$f" 2>/dev/null | sed 's/.*\*\*Status:\*\*[[:space:]]*//' | tr -d '[:space:]')
-    [ -n "$status" ] || status="(no status)"
-    printf '  %s  %s  [%s]\n' "$id" "${title:-$(basename "$f" .md)}" "$status"
-  done
-}
-
-find_plan() {
-  local id="$1" match
-  match=$(find "$PLANS_DIR" -maxdepth 1 -name "${id}-*.md" 2>/dev/null | head -1) || true
-  [ -n "$match" ] && printf '%s' "$match" && return 0
-  return 1
-}
+list_plans() { sprintbias_list_plans; }
+find_plan() { sprintbias_find_plan "$1"; }
 
 # Where does a member live? Prints the stage name (backlog/next/.../done) or
 # empty if no task file exists anywhere.

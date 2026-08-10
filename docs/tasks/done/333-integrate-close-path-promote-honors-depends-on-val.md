@@ -7,9 +7,15 @@
 **Depends on**: 328, 330
 **Dependents**: 332
 **Parent**: none
-**Tests**: none
+**Tests**: docs/tests/test-promote.sh
 **Refined**: 1
 **Reworked**: 0
+
+# Rules
+
+* Review the current state of the project before editing source code
+* Build clear, elegant code
+* Build antifragile code
 
 ## Problem
 
@@ -37,29 +43,29 @@ The completion path must read as **two gates, one lifecycle**:
 
 ## Success criteria
 
-- [ ] `promote` closes in dependency order: a `review/` task whose **Depends
+- [x] `promote` closes in dependency order: a `review/` task whose **Depends
       on** prereq is not yet in `review/`/`done/` is held (not moved), with a
       reason line naming the open prereq and its stage — `Depends on` gates the
       close the same way it gates the run. Uses the #328 classify helper; a
       missing/folded prereq id is classified, never treated as satisfied.
-- [ ] `validate` gains a **Tests**-field integrity pass (alongside the edge
+- [x] `validate` gains a **Tests**-field integrity pass (alongside the edge
       check): every non-`none` **Tests** path exists, lives under `docs/tests/`,
       and is a runnable script. Typo / missing / out-of-tree / non-executable
       each reported with the task id and the offending path. Report-only is
       fine; reads **Proven by** as legacy alias.
-- [ ] `docs/tests/test-promote.sh` proves `promote` end-to-end with throwaway
+- [x] `docs/tests/test-promote.sh` proves `promote` end-to-end with throwaway
       fixtures under a temp board: **Tests** green → `done/`; a failing test →
       stays in `review/`, run exits 1; `none`/missing → skipped, does not fail
       the run; out-of-tree path → held with guardrail message; **Proven by**
       alias still read; a task held by an open **Depends on** prereq → not
       moved; plan-retire hint fires when a plan's members all reach `done/`.
       Discovered by `run-all.sh`; no live AI.
-- [ ] Once `test-promote.sh` is green, set this task's **Tests** to
+- [x] Once `test-promote.sh` is green, set this task's **Tests** to
       `docs/tests/test-promote.sh` — the close path closes itself.
-- [ ] `promote` help, `validate` help, DOCUMENTATION.md, and
+- [x] `promote` help, `validate` help, DOCUMENTATION.md, and
       `docs/guides/command-matrix.md` describe the two-gate completion path
       (Depends on → work, Tests → promote) in one consistent framing.
-- [ ] `bash docs/tests/run-all.sh` and `./sprint.sh validate --commands` /
+- [x] `bash docs/tests/run-all.sh` and `./sprint.sh validate --commands` /
       `--docs` green after the changes.
 
 ## Notes
@@ -82,10 +88,10 @@ The completion path must read as **two gates, one lifecycle**:
 
 ## References
 
-docs/sprintmd/scripts/promote.sh
-docs/sprintmd/help/promote.md
-docs/sprintmd/scripts/validate-tasks.sh
-docs/sprintmd/help/validate.md
+docs/sprintbias/scripts/promote.sh
+docs/sprintbias/help/promote.md
+docs/sprintbias/scripts/validate-tasks.sh
+docs/sprintbias/help/validate.md
 docs/tests/run-all.sh
 docs/tests/fixtures/dep-glitch-matrix/
 docs/guides/command-matrix.md
@@ -110,3 +116,53 @@ docs/plans/15-dependency-integrity-and-work-completion-path.md
 ### Questions for the developer
 
 None — scope follows the plan 15 language contract and antifragile rules.
+
+## Completed
+
+The close path is integrated as two gates, one lifecycle, and it now proves
+itself. Verified state on disk:
+
+- **`promote` honors `Depends on`.** `promote.sh` carries `task_held_by()`,
+  which reads `**Depends on**` via `sprintbias_iter_id_list` and classifies each
+  prereq with #328's `sprintbias_classify_dep` (missing/folded → classified,
+  never assumed satisfied). A `review/` task whose prereq is not yet in
+  `review/`/`done/` is held (not moved), with a `#ID → stage` reason line and a
+  `Held = …` next-step block. Holds self-clear on a later run; a dependency hold
+  is not a failure (exit stays 0). Reuses the cached suite runner and the
+  `docs/tests/` guardrail already in the script.
+- **`validate` checks `Tests`.** `validate-tasks.sh` adds `check_tests_field()`
+  (report-only), run over every task file: each non-`none` `**Tests**` path must
+  exist, live under `docs/tests/`, and be a runnable executable — typo, missing,
+  out-of-tree, and non-executable are each reported with the task id and path.
+  Reads legacy `**Proven by**` as an alias. Mirrors the edge-check shape; never
+  flips the exit code.
+- **Suite proves `promote`.** `docs/tests/test-promote.sh` exercises all seven
+  scenarios (green→done, fail→stay+exit 1, none/missing→skip, out-of-tree→held
+  guardrail, `**Proven by**` alias, open-`Depends on` hold + self-clear,
+  plan-retire hint) against a throwaway temp board — no live AI, no touch of real
+  `docs/tasks/`. Auto-discovered by `run-all.sh` (`test-*.sh` glob). This task's
+  `**Tests**` field is set to `docs/tests/test-promote.sh`.
+- **Two-gate framing landed** in `promote.md`, `validate.md`, `DOCUMENTATION.md`,
+  and `docs/guides/command-matrix.md` (Depends on → work, Tests → promote).
+
+Verification run:
+
+- `bash docs/tests/test-promote.sh` → 22 passed, 0 failed.
+- `bash docs/tests/run-all.sh` → 20 scripts, all green.
+- `./sprint.sh validate --commands` → 27 commands fully surfaced.
+- `./sprint.sh validate --docs` → no flag drift.
+
+Note: changes live under `docs/sprintbias/` still need `./ship.sh` to mirror
+into `src/` and bump the version — left to the developer per the no-commit rule.
+
+### Files changed
+
+docs/sprintbias/scripts/promote.sh
+docs/sprintbias/scripts/validate-tasks.sh
+docs/sprintbias/help/promote.md
+docs/sprintbias/help/validate.md
+docs/tests/test-promote.sh
+DOCUMENTATION.md
+docs/guides/command-matrix.md
+docs/tasks/doing/333-integrate-close-path-promote-honors-depends-on-val.md
+

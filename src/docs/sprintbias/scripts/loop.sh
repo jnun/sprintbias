@@ -75,8 +75,9 @@ count_tasks() { find "$1" -maxdepth 1 -name "*.md" 2>/dev/null | wc -l | tr -d '
 
 # The limit is checked between iterations, not mid-task. A task that starts at
 # 3h59m of a 4h cap runs to completion — deliberate: killing a task mid-flight
-# would strand a half-edited tree, and the CLI's own --budget cap already bounds
-# a single run. Treat --hours as "stop starting new work after N hours".
+# would strand a half-edited tree. On a tier that supports spending caps (today
+# Claude Code) the CLI's own --budget also bounds a single run; other tiers run
+# uncapped. Treat --hours as "stop starting new work after N hours".
 time_up() {
   [ "$MAX_HOURS" -gt 0 ] || return 1
   local elapsed=$(( SECONDS - TOTAL_START ))

@@ -23,7 +23,7 @@
 newidea       | create   | [name]              | Create a new idea (no name = AI Q&A)
 newfeature    | create   | [name]              | Create a new feature (no name = AI Q&A)
 newtask       | create   | <description>       | Create a new task
-newplan       | create   | <name> [task-id...] | Create a plan — a named list of task IDs grouping related work
+newplan       | create   | <name> [task-id...|parent:N] | Create a plan — named task-ID list; parent:N binds open parent+children (fast lane)
 newbug        | create   | <description>       | Report a new bug | bug
 newtest       | create   | <name>              | Create a test loop to validate a deployed thing
 
@@ -34,6 +34,7 @@ plan          | plan     | think/start/done [id] | think: dual-persona plan crit
 work          | work     | [N] [count N] [--fast] | Execute — happy path: run READY tasks in next/ → review/ (after plan start). `work N` works one task by id; `count N` caps how many run | work
 loop          | work     | [--refill] [--retry]| Autopilot spine — plan start refill (gates as it commits) then work drain
 gate          | work     | [folder] [limit]    | Off-spine quality gate — re-gate next/ (--force) or report on backlog/doing/blocked (not the happy path) | gate
+settle        | work     | [id] [--dry-run] [--blocked] | Accept (Suggestion: …) open questions — fold into Notes, clear list; demote next/ files that still need a human
 split         | work     | <path>              | Off-spine — one-shot split of a large task into subtasks (no conversation)
 polish        | work     | [limit/id/file] [--code] [--rounds N] | After work — quality sweep review/, deep-judge a task (by id or file), or --code audit
 promote       | work     | [id] [--dry-run]    | Test-gated close — run each review/ task's **Tests**, all green → done/
@@ -53,3 +54,4 @@ validate      | keep     | --commands          | Check every command is fully su
 cleanup       | keep     | [--delete/--force/--all] | Clean stale scratch files
 deps          | keep     |                     | File a backlog task auditing outdated/vulnerable deps
 model         | keep     | show/list/set [k v] | See the effective AI model per role, list provider models, or set a default (no AI)
+config        | keep     |                     | Interactively set the AI provider and default model in docs/sprintbias/config (no AI)

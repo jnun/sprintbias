@@ -88,51 +88,32 @@ full, then a rework round (below) opened three fixes that are **not yet applied*
   think-before-start; `_registry` maps `plan → feature-plan` (verified in the
   Completed section, not re-run here).
 
-**One correctness defect, already caught by the rework:** the two plan-authoring
-commands are misstaged against `help/chat.md:84–93`. There, `chat plan <id>`
-takes a **plan** id (never a task id) and only *records existing member IDs into
-the plan file* — it does not draft tasks — and the real order is `newplan`
-(scaffold) → `chat plan` (author) → `plan think` → `plan start`. The demo instead
-has Act 1 (`feature-plan.py:174`) run `chat plan dark-mode` to *draft three new
-backlog tasks*, then `newplan` afterward (line 196), and the outro spine
-(line 295) reads `chat plan → plan think → plan start → work` — omitting `newplan`
-and keeping the inverted order. This is exactly what the demo's own bar forbids:
-"stages one that already runs." It is the remaining work below.
+**Correctness defect (rework round 1) — fixed:** Act 1 no longer stages
+`chat plan dark-mode` as a task-drafter. Tasks are created first (`newtask` +
+`chat` split), then `newplan` scaffolds, then `chat plan 7` authors by plan id,
+then `plan think` / `plan start`. Outro spine matches.
 
 ### Remaining work
 
-Apply the three unchecked rework items (all clear, no decisions pending):
-
-1. **Re-order the acts** to match `help/chat.md`: create the tasks first, then
-   `newplan dark-mode 51 52 53` to scaffold, then `chat plan 7` (a **plan** id,
-   authoring/recording into the existing plan — not drafting tasks), then
-   `plan think 7`, then `plan start 7`.
-2. **Fix Act 1's "feature fans into tasks" beat** to use an honest task-creating
-   depiction (`newtask`, or `chat` on the feature) instead of `chat plan`, so the
-   three tasks exist in `backlog/` before `newplan` binds them.
-3. **Update the outro spine** (`feature-plan.py:295`) and the through-line block
-   so the recap matches the corrected acts in order, including the
-   `newplan`-scaffold / `chat plan`-author step.
-
-**Dependencies (sequencing, not blockers).** Hard depend on **313** (learn engine
-+ flat `learning/` home + launcher + trust guard) — already recorded in
-`**Depends on**`. The rework itself needs no new prerequisite; it edits an
-existing file against already-shipped `help/chat.md` semantics.
-
-### Questions for the developer
-
-1. Act 1 task-creation depiction — `newtask` (three explicit creates) or a
-   `chat`-on-the-feature sweep? (Suggestion: a short `chat` conversation on the
-   feature that emits 51/52/53 into `backlog/`. It keeps the cinematic
-   assistant-driven feel the demo already uses, and `chat backlog` genuinely
-   mutates task files — unlike `chat plan` — so it stays honest. Either is fine;
-   not blocking.)
+None — rework round 1 applied. Act 1 captures with `newtask` then `chat <id>`
+splits the too-big parent into three backlog children (real chat breakdown
+path). Act 2 scaffolds with `newplan … 51 52 53`, authors with `chat plan 7`
+(plan id). Acts 3–4 unchanged (`plan think 7` → `plan start 7`). Outro spine:
+`newtask → chat → newplan → chat plan → plan think → plan start → work`.
 
 ## Completed
 
-Shipped **S3** as `docs/sprintmd/learning/feature-plan.py` — a self-contained
-python3 + stdlib demo that plays the feature → plan → **plan think** → plan
-start arc. Named it **`feature-plan`** (answering the open question): plain
+**Rework round 1 (applied):** fixed command staging in
+`docs/sprintbias/learning/feature-plan.py` so the demo stages the real
+`help/chat.md` / `help/plan.md` order — no longer invents `chat plan` as a
+task-drafter. Act 1: `newtask "ship dark mode"` → `chat 50` splits into 51/52/53.
+Act 2: `newplan dark-mode 51 52 53` scaffold → `chat plan 7` author (plan id).
+Outro spine updated. Chose the chat-split path (not three explicit newtasks)
+for cinematic feel while staying on a command that actually creates tasks.
+
+Shipped **S3** as `docs/sprintbias/learning/feature-plan.py` — a self-contained
+python3 + stdlib demo that plays the feature → tasks → plan → **plan think** →
+plan start arc. Named it **`feature-plan`** (answering the open question): plain
 language, matches the arc, auto-registers under 313's launcher with no wiring
 change.
 
@@ -174,9 +155,9 @@ release; and this demo lands via 313's `next/` sprint sequencing). No commit per
 task rules.
 
 ### Files changed
-docs/sprintmd/learning/feature-plan.py
-docs/sprintmd/help/_registry
-docs/tasks/doing/324-learn-demo-feature-becomes-a-plan-feature-tasks-pl.md
+docs/sprintbias/learning/feature-plan.py
+docs/sprintbias/help/_registry
+docs/tasks/blocked/324-learn-demo-feature-becomes-a-plan-feature-tasks-pl.md
 
 <!-- When this task is finished, leave an audit trail of what it touched.
      Reviews and the change manifest read this. Copy the two headings
@@ -215,15 +196,15 @@ watched" (`feature-plan.py:295`) inherits the error — it reads `chat plan → 
 think → plan start → work`, omitting `newplan` and keeping the reversed order.
 
 **Improve:**
-- [ ] Re-order the acts to match `help/chat.md`: first create the tasks, then
+- [x] Re-order the acts to match `help/chat.md`: first create the tasks, then
       `newplan dark-mode 51 52 53` to scaffold the plan, then `chat plan 7`
       (a **plan id**, not `dark-mode`) to author it, then `plan think 7`, then
       `plan start 7`. `chat plan` must be shown authoring/recording into an
       existing plan, not drafting tasks.
-- [ ] Fix Act 1's "feature fans into tasks" beat to use an honest
+- [x] Fix Act 1's "feature fans into tasks" beat to use an honest
       task-creating depiction (e.g. `newtask`, or `chat` on the feature) rather
       than `chat plan` — the three tasks must exist before `newplan` binds them.
-- [ ] Update the outro "spine you just watched" line (`feature-plan.py:295`)
+- [x] Update the outro "spine you just watched" line (`feature-plan.py:295`)
       and, if needed, the through-line block so the recap matches the acts
       actually shown, in the corrected order (include the plan-scaffold/author
       step).

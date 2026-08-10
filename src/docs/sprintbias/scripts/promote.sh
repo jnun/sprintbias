@@ -10,6 +10,15 @@
 # is `none` (or missing) stays in review/ for a human: automation never guesses
 # a task is finished; it demands a passing suite script that says so.
 #
+# Two gates, one lifecycle. **Depends on** gates the close the same way it gates
+# the run: a review/ task whose prerequisite is not yet in review/ or done/ is
+# held (not moved), so a dependent never lands in done/ ahead of the work it
+# needs. **Tests** gates the close: a task closes only when its suite scripts
+# pass AND its prerequisites are already closed. The Depends-on hold uses #328's
+# sprintbias_classify_dep, so a missing/folded prereq is classified, never
+# assumed satisfied. Holds self-clear: a later promote closes newly-eligible
+# dependents (a chain closes over successive runs — single pass, no --drain).
+#
 # After promoting, name any plan whose every member now sits in done/ so the
 # developer can retire it with `./sprint.sh plan done <id>`. Retirement stays an
 # explicit step — promote never deletes a plan.
@@ -74,6 +83,31 @@ task_tests() {
   printf '%s' "$v"
 }
 
+# task_held_by FILE — the Depends-on close gate. A review/ task must not close
+# while a prerequisite is still open: a dependent must never reach done/ ahead
+# of the work it needs. A prereq counts as satisfied ONLY when it has itself
+# reached review/ or done/; every other classification (backlog/next/doing/
+# blocked, folded, or missing) holds the dependent. Uses #328's classify helper
+# so a missing/folded id is classified, never assumed done. Prints one
+# "#ID → stage" reason line per unsatisfied prereq; empty output means clear.
+# Always exits 0 — a no-match under set -e must not kill the caller.
+task_held_by() {
+  local f="$1" raw kind id cls
+  raw=$(sprintbias_meta_value "$f" "Depends on")
+  [ -z "$raw" ] && return 0
+  while read -r kind id; do
+    [ "$kind" = "id" ] || continue
+    cls=$(sprintbias_classify_dep "$id" missing)
+    case "$cls" in
+      review|done) ;;  # prerequisite closed enough to release the dependent
+      *) printf '#%s → %s\n' "$id" "$cls" ;;
+    esac
+  done <<EOF
+$(sprintbias_iter_id_list "$raw")
+EOF
+  return 0
+}
+
 # Label prefix: "(dry-run) " only when the flag is set (DRY_RUN=0 is non-empty,
 # so ${DRY_RUN:+…} would wrongly fire — test the value explicitly).
 DRY_LABEL=""
@@ -101,8 +135,9 @@ echo "▸ promote  ${DRY_LABEL}review/ → done/ (test-gated)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-PROMOTED=0; FAILED=0; SKIPPED=0
+PROMOTED=0; FAILED=0; SKIPPED=0; HELD=0
 declare -a PROMOTED_IDS=()
+SKIP_SAMPLE=""   # basename of first skipped task (exact close path for single-id runs)
 
 for f in "${TASKS[@]}"; do
   name=$(basename "$f")
@@ -113,6 +148,22 @@ for f in "${TASKS[@]}"; do
   if [ -z "$proven" ] || [ "$(printf '%s' "$proven" | tr '[:upper:]' '[:lower:]')" = "none" ]; then
     echo "  ○ #$id  no **Tests** — stays in review/ for human sign-off"
     SKIPPED=$((SKIPPED + 1))
+    [ -z "$SKIP_SAMPLE" ] && SKIP_SAMPLE="$name"
+    continue
+  fi
+
+  # Depends-on gate: a task with green Tests still may not close while a
+  # prerequisite is open. Hold it (do not run its tests, do not move) and name
+  # each unsatisfied prereq with its stage. Self-clearing on a later run.
+  held=$(task_held_by "$f")
+  if [ -n "$held" ]; then
+    echo "  ⊘ #$id  held in review/ — **Depends on** prerequisite not yet closed:"
+    while IFS= read -r hr; do
+      [ -n "$hr" ] && echo "        $hr  (needs review/ or done/)"
+    done <<EOF
+$held
+EOF
+    HELD=$((HELD + 1))
     continue
   fi
 
@@ -156,7 +207,44 @@ done
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "▸ ${DRY_LABEL}$PROMOTED promoted, $FAILED failed, $SKIPPED skipped (no test)"
+echo "▸ ${DRY_LABEL}$PROMOTED promoted, $FAILED failed, $HELD held (dep), $SKIPPED skipped (no test)"
+
+# ── How to finish what promote could not auto-close ──────────────────
+# Skips are not failures (exit 0) but they leave a dead-end-looking summary
+# unless we say what to do next — same contract work prints when it lands
+# tasks in review/ with Tests: none.
+if [ "$SKIPPED" -gt 0 ]; then
+  echo ""
+  echo "  Skipped = **Tests** is missing or \`none\`. promote only moves review/ → done/"
+  echo "  when the field names suite scripts under docs/tests/ and every one exits 0."
+  echo ""
+  echo "  Close them:"
+  if [ -n "$SKIP_SAMPLE" ] && { [ -n "$ONLY_ID" ] || [ "$SKIPPED" -eq 1 ]; }; then
+    echo "    Human — approve, then move (git mv first; plain mv if untracked):"
+    echo "      git mv $REVIEW_DIR/$SKIP_SAMPLE $DONE_DIR/$SKIP_SAMPLE || mv $REVIEW_DIR/$SKIP_SAMPLE $DONE_DIR/$SKIP_SAMPLE"
+  else
+    echo "    Human — approve each task, then move (git mv first; plain mv if untracked):"
+    echo "      git mv $REVIEW_DIR/<file>.md $DONE_DIR/ || mv $REVIEW_DIR/<file>.md $DONE_DIR/"
+  fi
+  echo "    Auto next time — edit the task header, then re-run promote:"
+  echo "      **Tests**: docs/tests/<suite>.sh"
+  echo "  After every plan member is in done/:  ./sprint.sh plan done <id>"
+fi
+if [ "$FAILED" -gt 0 ]; then
+  echo ""
+  echo "  Failed = a named suite exited non-zero, the file is missing, or the path"
+  echo "  is outside docs/tests/. Fix the suite (or **Tests** path), then:"
+  echo "      ./sprint.sh promote${ONLY_ID:+ $ONLY_ID}"
+fi
+if [ "$HELD" -gt 0 ]; then
+  echo ""
+  echo "  Held = a **Depends on** prerequisite is still open (not yet in review/ or"
+  echo "  done/). promote closes in dependency order so a dependent never lands in"
+  echo "  done/ ahead of the work it needs — Depends on gates the close the same way"
+  echo "  it gates the run. Close the prerequisite first (promote or finish it), then"
+  echo "  re-run — the dependent releases automatically:"
+  echo "      ./sprint.sh promote${ONLY_ID:+ $ONLY_ID}"
+fi
 
 # ── Name plans now fully in done/ so they can be retired ─────────────
 if [ "$PROMOTED" -gt 0 ] && [ -d "$PLANS_DIR" ]; then

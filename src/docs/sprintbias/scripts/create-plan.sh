@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# create-plan.sh — Create an plan. See: ./sprint.sh help newplan
+# create-plan.sh — Create a plan. See: ./sprint.sh help newplan
 #
 # A plan is a RELATIONAL INDEX over tasks, not a container: one file that names
 # a clump of related tasks and lists their IDs. The tasks never move here — each
@@ -7,7 +7,8 @@
 # own. This script allocates a plan ID (a dedicated DOC_STATE counter, exactly
 # like task/bug IDs), writes docs/plans/N-name.md from the template, and fills
 # in the member list from task IDs given on the command line or picked from
-# backlog/ (the defining period, before work starts). No task file is touched.
+# backlog/ (the defining period, before work starts). Binding also stamps each
+# member's **Plan** reverse index (see sprintbias_reconcile_task_plan).
 set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
@@ -21,16 +22,18 @@ fi
 
 NAME="${1:-}"
 if [ -z "$NAME" ]; then
-    echo "Usage: $0 \"<plan name>\" [task-id ...]"
+    echo "Usage: $0 \"<plan name>\" [task-id | parent:N ...]"
     echo ""
     echo "A plan is a named list of task IDs — a relational grouping over tasks"
     echo "that each stay in their own lifecycle folder. Pass member task IDs as"
-    echo "extra arguments (numbers and N-M ranges), or omit them to pick from"
-    echo "backlog/ interactively."
+    echo "extra arguments (numbers, N-M ranges, and parent:N to bind an open"
+    echo "parent plus its open children), or omit them to pick from backlog/"
+    echo "interactively."
     echo ""
     echo "Examples:"
     echo "  $0 \"Method accuracy audit\" 213 214 215"
     echo "  $0 \"Method accuracy audit\" 213-220"
+    echo "  $0 \"Finish split of 335\" parent:335"
     exit 1
 fi
 shift || true
@@ -61,9 +64,74 @@ expand_ids() {
     done
 }
 
+# expand_parent_token N — open parent (if any) + open-stage children stamped
+# **Parent**: N exactly. Emits one id per line. Notes on stdout stderr for
+# "parent retired" when children match but parent is not open.
+expand_parent_token() {
+    local pid="$1" stage f id pval parent_open=0 child_count=0
+    # Parent itself only if open-stage.
+    if hit=$(sprintbias_find_task "$pid" \
+                docs/tasks/backlog docs/tasks/next docs/tasks/doing docs/tasks/blocked); then
+        printf '%s\n' "$pid"
+        parent_open=1
+    fi
+    for stage in "${SPRINTBIAS_OPEN_STAGES[@]}"; do
+        for f in "docs/tasks/$stage"/*.md; do
+            [ -f "$f" ] || continue
+            id=$(task_id "$(basename "$f")")
+            [ -n "$id" ] || continue
+            [ "$id" = "$pid" ] && continue
+            pval=$(sprintbias_meta_value "$f" "Parent")
+            pval="${pval//[[:space:]]/}"
+            # Exact id match — parent:33 must not pull Parent 335 / 133.
+            [ "$pval" = "$pid" ] || continue
+            printf '%s\n' "$id"
+            child_count=$((child_count + 1))
+        done
+    done
+    if [ "$parent_open" -eq 0 ] && [ "$child_count" -gt 0 ]; then
+        echo "  note: parent #$pid is not open — binding children only" >&2
+    fi
+}
+
 MEMBER_IDS=()
+PREBOUND=0
+HAD_PLAIN_IDS=0
+PARENT_TOKENS=0
+
 if [ "$#" -gt 0 ]; then
-    while IFS= read -r _id; do MEMBER_IDS+=("$_id"); done < <(expand_ids "$@" | awk '!seen[$0]++')
+    PREBOUND=1
+    _raw_out=$(mktemp)
+    for _tok in "$@"; do
+        _tok="${_tok//,/ }"
+        for _tok in $_tok; do
+            if [[ "$_tok" =~ ^[Pp]arent:([0-9]+)$ ]]; then
+                PARENT_TOKENS=$((PARENT_TOKENS + 1))
+                expand_parent_token "${BASH_REMATCH[1]}" >> "$_raw_out" || true
+            elif [[ "$_tok" =~ ^([0-9]+)-([0-9]+)$ ]] || [[ "$_tok" =~ ^[0-9]+$ ]]; then
+                HAD_PLAIN_IDS=1
+                expand_ids "$_tok" >> "$_raw_out"
+            elif [[ "$_tok" =~ ^[Pp]arent: ]]; then
+                echo -e "${RED}ERROR: invalid parent token '$_tok' (use parent:N with a numeric id).${NC}"
+                rm -f "$_raw_out"
+                exit 1
+            else
+                echo -e "${RED}ERROR: unrecognized member token '$_tok'.${NC}"
+                echo "Use task ids, N-M ranges, or parent:N."
+                rm -f "$_raw_out"
+                exit 1
+            fi
+        done
+    done
+    while IFS= read -r _id; do MEMBER_IDS+=("$_id"); done < <(awk '!seen[$0]++' "$_raw_out")
+    rm -f "$_raw_out"
+    # parent:N alone with zero matches → fail loud (no empty silent plan).
+    if [ "$PARENT_TOKENS" -gt 0 ] && [ "$HAD_PLAIN_IDS" -eq 0 ] && [ "${#MEMBER_IDS[@]}" -eq 0 ]; then
+        echo -e "${RED}ERROR: parent: token(s) matched no open tasks.${NC}"
+        echo "Open stages are: ${SPRINTBIAS_OPEN_STAGES[*]}."
+        echo "Include the parent only if it is still open; children need **Parent**: N exactly."
+        exit 1
+    fi
 elif [ -t 0 ] && [ -t 1 ]; then
     # Interactive: a plan is the defining period, so offer backlog/ — the tasks
     # you choose before work starts. (next/blocked/doing/review/done are all
@@ -77,9 +145,24 @@ elif [ -t 0 ] && [ -t 1 ]; then
     done
     [ "$_any" -eq 0 ] && echo "  (backlog is empty — you can still enter any task ID)"
     echo ""
-    printf "Enter member task IDs (space/comma separated, N-M ranges ok; blank for none): "
+    printf "Enter member task IDs (space/comma separated, N-M ranges or parent:N; blank for none): "
     read -r _line </dev/tty 2>/dev/null || _line=""
-    while IFS= read -r _id; do MEMBER_IDS+=("$_id"); done < <(expand_ids $_line | awk '!seen[$0]++')
+    if [ -n "$_line" ]; then
+        # Re-enter through the same argv parser for parent: support.
+        # shellcheck disable=SC2086
+        set -- $_line
+        PREBOUND=1
+        _raw_out=$(mktemp)
+        for _tok in "$@"; do
+            if [[ "$_tok" =~ ^[Pp]arent:([0-9]+)$ ]]; then
+                expand_parent_token "${BASH_REMATCH[1]}" >> "$_raw_out" || true
+            else
+                expand_ids "$_tok" >> "$_raw_out"
+            fi
+        done
+        while IFS= read -r _id; do MEMBER_IDS+=("$_id"); done < <(awk '!seen[$0]++' "$_raw_out")
+        rm -f "$_raw_out"
+    fi
 fi
 
 # ── Allocate the plan ID (serialized, like newtask/newbug) ───────────
@@ -161,7 +244,19 @@ else
     echo "  No members yet — edit the file to add '- #ID — title' lines."
 fi
 echo ""
-echo "Next: author with ./sprint.sh chat plan <id>, optionally critique with"
-echo "./sprint.sh plan think <id>, then commit with ./sprint.sh plan start <id>"
-echo "(or commit one member via: bash docs/sprintbias/scripts/promote-to-sprint.sh <task-file>)."
+if [ "$PREBOUND" -eq 1 ] && [ "${#MEMBER_IDS[@]}" -gt 0 ]; then
+    # Fast lane: members already known — skip authoring ceremony as the default next step.
+    echo "Next (fast lane — members already bound):"
+    echo "  ./sprint.sh plan start $NEW_ID     # gate members → next/ (latches STARTED)"
+    echo "  ./sprint.sh work                  # execute READY work from next/"
+    echo ""
+    echo "Optional: refine goal/members with ./sprint.sh chat plan $NEW_ID"
+    echo "          or critique with ./sprint.sh plan think $NEW_ID"
+    echo "If members are already READY-stamped and you want a pure move (no AI gate):"
+    echo "  ./sprint.sh plan start $NEW_ID --commit-only"
+else
+    echo "Next: author with ./sprint.sh chat plan $NEW_ID, optionally critique with"
+    echo "./sprint.sh plan think $NEW_ID, then commit with ./sprint.sh plan start $NEW_ID"
+    echo "(or commit one member via: bash docs/sprintbias/scripts/promote-to-sprint.sh <task-file>)."
+fi
 echo "The plan file itself never moves."

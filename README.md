@@ -12,7 +12,7 @@ No database. No SaaS. No login.
 **[sprintbias.com](https://sprintbias.com)** · **[GitHub](https://github.com/jnun/sprintbias)**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.0.61-blue.svg)](https://github.com/jnun/sprintbias/releases)
+[![Version](https://img.shields.io/badge/version-0.0.77-blue.svg)](https://github.com/jnun/sprintbias/releases)
 ![AI: Claude · Grok](https://img.shields.io/badge/AI-Claude%20%C2%B7%20Grok-8A2BE2.svg)
 
 </div>
@@ -25,7 +25,14 @@ cd sprintbias
 ./setup.sh ~/code/my-app     # your project path
 ```
 
-That puts the board into **your project** — not into this repo. Then, from your project:
+That puts the board into **your project** — not into this repo.
+
+**Install is an Easy Button:** one door pick — **Enter** = Claude Code, **`g`** =
+Grok Build — then a silent scaffold (docs, pointers, gitignore). Your own files
+are not clobbered; optional GitHub Issues sync and extra AI dotfiles sit behind
+`More options?`. Details: [DOCUMENTATION.md → Installing SprintBias](DOCUMENTATION.md#installing-sprintbias).
+
+Then, from your project:
 
 ---
 
@@ -40,11 +47,11 @@ That puts the board into **your project** — not into this repo. Then, from you
 
 That’s the whole loop: capture work, see it, ship it.
 
-Group related tasks when you’re ready:
+Group related tasks when you’re ready (fast lane when ids are known):
 
 ```bash
-./sprint.sh newplan "Auth" 12 13
-./sprint.sh plan start <id>
+./sprint.sh newplan "Auth" 12 13          # or: newplan "Auth" parent:12
+./sprint.sh plan start <id>               # gate → next/
 ./sprint.sh work
 # or keep going:
 ./sprint.sh loop --refill --retry

@@ -140,13 +140,13 @@ When a task depends on another, the system answers without archaeology:
 
 ## Member tasks
 
-- [ ] #327 — Lock task header language Plan Dependents Tests
-- [ ] #328 — Add shared dependency-graph helpers classify rewrite fold
-- [ ] #329 — Enforce reciprocal edges and fold-split-retire rewrite protocol
-- [ ] #330 — Upgrade work completion path outcome stamps and missing-prereq class
-- [ ] #331 — Sync plan membership bidirectionally onto task Plan field
-- [ ] #333 — Integrate close path: promote honors Depends on, validate checks Tests, suite proves promote
-- [ ] #332 — Suite tests and docs for dependency integrity and completion path
+- [x] #327 — Lock task header language Plan Dependents Tests
+- [x] #328 — Add shared dependency-graph helpers classify rewrite fold
+- [x] #329 — Enforce reciprocal edges and fold-split-retire rewrite protocol
+- [x] #330 — Upgrade work completion path outcome stamps and missing-prereq class
+- [x] #331 — Sync plan membership bidirectionally onto task Plan field
+- [x] #333 — Integrate close path: promote honors Depends on, validate checks Tests, suite proves promote
+- [x] #332 — Suite tests and docs for dependency integrity and completion path
 
 ## How to run
 

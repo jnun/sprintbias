@@ -94,7 +94,7 @@ After creating all sub-tasks, read each newly created file and fill the durable 
 - Set **Depends on**: to the previous sub-task number if ordering matters, or 'none' if independent
 - Set the **Parent**: field to the numeric ID of THIS parent task (${TASK_NAME%%-*}).
   Write just the number, e.g. '**Parent**: ${TASK_NAME%%-*}'. This is what
-  './sprint.sh plan N \"parent:${TASK_NAME%%-*}\"' matches to gather the children,
+  './sprint.sh newplan \"…\" parent:${TASK_NAME%%-*}' matches to gather the children,
   so it must be exact — do not omit it.
 How to implement is the developer's decision — do not write a step-by-step build plan into the child.
 ${_DELETE_INSTR}

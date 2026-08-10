@@ -186,19 +186,49 @@ rm -rf /tmp/smoke-claude /tmp/smoke-grok
 
 ## Last dry run
 
-Recorded from a real run of steps 1–3's install/config/model spine (the
-CLI-execution `work` step is the operator's to run with a configured CLI):
+**2026-08-10 — VERSION 0.0.81** (task **#362**, first smoke after the Easy
+Button install contract and the README rewire in #359). `./ship.sh --dry-run`
+reported `src/` already matching the live tree, so `setup.sh` installed from
+current `src/`. Non-interactive throughout: `SPRINT_TARGET=<dir> ./setup.sh`
+with door + `More options?` answers piped on stdin.
 
 | Check | Claude leg | Grok leg |
 |-------|-----------|----------|
-| `setup.sh` non-interactive install | ✅ `All Checks Passed`, 101 files | ✅ `All Checks Passed` |
+| `setup.sh` non-interactive install | ✅ `All Checks Passed`, 109 files | ✅ `All Checks Passed`, 109 files |
 | `config` provider tier | ✅ `CLI=claude` / `PROVIDER=claude-code` | ✅ `CLI=grok` / `PROVIDER=grok-build` |
-| `model show` provider-correct default | ✅ roles → `opus` (tier default) | ✅ roles → `grok-4.5` (tier default) |
-| `newtask` + `status` | ✅ task created, counted in Backlog | ✅ task created, counted |
+| Version markers (`<!-- SprintBias v0.0.81 -->`) in GETSTARTED / DOCUMENTATION / CLAUDE / AGENTS / README | ✅ all five | ✅ all five |
+| Offline spine: `model show` | ✅ `CLI: claude` / `Provider: claude-code`; all roles **`opus`** (tier default) | ✅ `CLI: grok` / `Provider: grok-build`; all roles **`grok-4.5`** (tier default) |
+| Offline spine: `newtask "Smoke: reject empty input on the login form"` | ✅ `docs/tasks/backlog/1-smoke-reject-empty-input-on-the-login-form.md` | ✅ same path |
+| Offline spine: `status` | ✅ `Backlog: 1` | ✅ `Backlog: 1` |
 
-**Verdict:** install path, provider picker, config write, and model surface pass
-on both hosts. The agent-execution (`work`) step is provider-configured and left
-to the release operator per this protocol.
+Scaffold-branch legs (Claude door, run once each):
+
+| Branch | Result |
+|--------|--------|
+| User-owned `DOCUMENTATION.md` | ✅ user file untouched; manual lands as `SPRINTDOCUMENTATION.md`; CLAUDE, AGENTS, **and README** all point at that name — no stray `DOCUMENTATION.md` pointer |
+| User-owned `CLAUDE.md` + existing `README.md`, default path (no More options) | ✅ silent prepend of the marked block above the user's content, both files |
+| Re-run at the same version | ✅ no-op — every scaffold file reported `up to date (v0.0.81)`, both files byte-identical, exactly one marker pair each |
+
+**Verdict:** PASS. Both doors install clean, both write the right provider tier,
+both stamp all five scaffold files, the offline spine runs without either CLI
+binary, and the resolved tier defaults diverge exactly where they should
+(`opus` vs `grok-4.5`) — nothing beyond the provider tier. The manual-rename
+branch keeps every pointer (README included) on `SPRINTDOCUMENTATION.md`, the
+default path prepends without asking, and a same-version re-run is idempotent.
+
+Note: `GETSTARTED.md` carries an opening `<!-- SprintBias v… -->` stamp with no
+`<!-- end SprintBias -->` — by design. It is a wholly SprintBias-owned file, so
+there is nothing of the user's to close the block against; only prepend targets
+(`CLAUDE.md`, `AGENTS.md`, `README.md`, `.gitignore`) get the paired wrapper.
+
+Spine note: when the smoke runs inside an agent session that exports
+`SPRINTBIAS_CLI` / `SPRINTBIAS_PROVIDER`, unset those (and legacy
+`SPRINTMD_*`) before `model show` so the measurement reads the *installed*
+tree's config, not the parent session's per-run override.
+
+The only remaining operator step that needs a configured CLI on `PATH` is
+**`work` / `chat`**. The offline spine (`model show`, `newtask`, `status`) is
+proven above with neither binary required — matching Preconditions.
 
 ---
 

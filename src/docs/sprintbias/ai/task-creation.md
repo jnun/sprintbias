@@ -43,9 +43,30 @@ criteria, not as a prescribed implementation path.
 | After-work audit trail | `## Completed` → `### Files changed` |
 
 The durable brief is **Problem + Success criteria**. Notes and References assist
-the developer; they never replace the brief. Gate's `## Questions` is an audit
-overlay (status, code already present, open decisions) — never the only place
-the work is defined.
+the developer. Gate's `## Questions` holds the workability stamp, code findings,
+remaining outcomes, and open questions still waiting on a decision. Write the
+work itself in Problem and Success criteria.
+
+### Questions become instructions
+
+1. **Ask** the question under `### Questions for the developer` (with a
+   suggestion when it is a real decision).
+2. **Get** the answer from the user or agent.
+3. **Convert** the answer into clear instruction or guidance (positive, direct,
+   concise).
+4. **Update** the task body — `## Success criteria` when it defines done;
+   otherwise `## Notes` as guidance the implementer follows.
+5. **Delete** the original question — it has been answered.
+
+When every question has been answered this way, that subsection reads
+`None — task is fully defined.` Open questions keep the task **BLOCKED** and out
+of `next/` until the loop finishes.
+
+**Do not park micro-choices as open questions.** If you can write a useful
+`(Suggestion: …)`, apply it as body instruction and omit the question. Only
+product forks that change success criteria need a human. Bulk-accept path:
+`./sprint.sh settle` (folds every remaining Suggestion, demotes anything still
+open).
 
 ## Instruct positively
 

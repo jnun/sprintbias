@@ -58,9 +58,11 @@ keep	Housekeeping			Integrity, config, sync, deps
 
 **`chat` shapes. `plan` acts. `work` does.**
 
-- A plan is scaffolded by `newplan`, authored by **`chat plan`**, then acted on
-  by decisive plan verbs: `plan think` (automated dual-persona critique),
-  `plan start` (commit members into `next/`, gating as it promotes).
+- A plan is scaffolded by `newplan` (optional members: ids, ranges, `parent:N`).
+  When members are pre-bound, fast-lane next step is `plan start` → `work`
+  without full `chat plan` ceremony. Otherwise author with **`chat plan`**, then
+  decisive plan verbs: `plan think` (optional critique), `plan start` (gate +
+  commit to `next/`; `--commit-only` skips the AI gate).
 - There is no bare conversational `plan`. Authoring lives in `chat` so one
   engine owns every human-in-the-loop walk.
 - The unit of work stays a **task** (file under `docs/tasks/`, created by
@@ -79,7 +81,7 @@ Command		Mints
 newidea [name]	Idea to refine (no name = AI Q&A; with name = template)
 newfeature [name]	Feature spec (no name = AI Q&A; with name = template)
 newtask		Task (the unit of work)
-newplan		Plan (named list of task IDs)
+newplan		Plan (named list of task IDs; trailing ids / ranges / parent:N bind members)
 newbug		Bug report (inbox)
 newtest		Test loop for a deployed thing
 
@@ -100,7 +102,7 @@ artifact, never only in the chat.
 
 Command		Does
 plan think [id]	Automated dual-persona critique of a plan
-plan start [id]	Gate members and commit them into `next/` (latches Status: STARTED)
+plan start [id]	Gate every member and commit into `next/` (no hard size cap; warn over 10; latches STARTED)
 plan done [id]	Retire — delete the plan once every member is in `done/`
 
 `next/` **is** the sprint. A plan file never moves; only member tasks do. A plan
@@ -117,6 +119,7 @@ work \<id\>		Work ONE task by number; auto-gate into next/ if out of frame, else
 work count N	Execute at most N READY tasks (replaces the old bare-number cap)
 loop			Autopilot: plan start refill + work drain
 gate [folder]	READY-gate next/ (default), or quality report on another folder
+settle [id]	Accept (Suggestion: …) open questions; demote READY+openQ out of next/
 split \<path\>	One-shot: one large task → atomic children (no conversation)
 polish …		Post-work quality: sweep review/, deep-judge a task (id/file), or --code
 promote [id]	Test-gated close: run each review/ task's **Tests**, all green → done/
@@ -138,18 +141,22 @@ both ends of a task's life:
 - **`Depends on` gates `work`.** A task does not *run* until every prerequisite
   reaches `review/` or `done/`. `work` holds a dependent until then.
 - **`Tests` gates `promote`.** A task does not *close* until the suite scripts
-  named in its **Tests** field all pass. `promote` is the one automated
-  `review/ → done/` move; a task with `Tests: none` waits for human sign-off.
+  named in its **Tests** field all pass **and** its `Depends on` prerequisites
+  are already closed. `promote` is the one automated `review/ → done/` move; a
+  task with `Tests: none` waits for human sign-off.
+
+`promote` closes in dependency order: a `review/` task whose `Depends on`
+prerequisite is not yet in `review/`/`done/` is *held* (not moved), named with
+its stage, and released automatically once that prerequisite closes — a
+dependent never lands in `done/` ahead of the work it needs, and a chain closes
+over successive `promote` runs. `validate` mirrors this on the close side with a
+report-only **Tests**-field pass: a path that is a typo, missing, out-of-tree,
+or non-runnable is named with its task id, so a broken **Tests** path is loud,
+never a silent never-promote.
 
 When a plan's every member reaches `done/`, `promote` names it for retirement
 via `plan done` (which then deletes the plan file). See
 `docs/guides/running-tests.md` for the suite ladder.
-
-*In flight (plan 15, task #333):* `promote` will also honor `Depends on` —
-closing in dependency order so a dependent never lands in `done/` while its
-prerequisite is still open — and `validate` will guard the **Tests** field so a
-path that is missing or outside `docs/tests/` is reported, never a silent
-never-promote.
 
 ### look — read, don't mutate
 
@@ -181,6 +188,7 @@ model			Show / list / set effective AI model per role (no AI; config only)
 model show		Print CLI, tier, and effective model per role with source
 model list		Models the current provider offers (Grok: `grok models`; Claude: known aliases)
 model set KEY VALUE	Write `MODEL_DEFAULT` or `MODEL_<ROLE>` into config
+config			Interactive: set AI provider + default model in config (no AI)
 
 ### Global launcher flags — not commands
 

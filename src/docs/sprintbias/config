@@ -1,5 +1,12 @@
 # SprintBias Configuration
 # Edit freely. Changes preserved across updates. Format: KEY=VALUE
+#
+# Local overlay: create docs/sprintbias/config.local (same KEY=VALUE format) for
+# semi-permanent personal pins — CLI, PROVIDER, MODE, MODEL_* — that win over
+# this file, are gitignored, and never ship. A key set there overrides the value
+# here; setting it empty (KEY=) clears this file's value locally. Use it to pin,
+# say, MODEL_DEFAULT=claude-opus-4-8 for yourself without changing the default
+# everyone else gets. Precedence: env var → --model flag → config.local → config.
 
 # AI CLI binary for exec mode. Verified first-class profiles: claude, grok.
 # Any other name falls back to a generic prompt passthrough. Inside an AI
@@ -30,7 +37,7 @@ MODE=
 # default on claude-code / grok-build via sprintbias_tier_model).
 # Use a model id your CLI understands (grok models / claude docs). Claude-only
 # names (opus, sonnet, haiku) on grok-build are auto-remapped to grok-4.5.
-MODEL_DEFAULT=
+MODEL_DEFAULT=claude-opus-4-8
 
 # Per-script models. Empty = fall back to MODEL_DEFAULT.
 # Interactive + spine flows (chat, gate, work, polish, …): when left empty on
@@ -56,8 +63,11 @@ MODEL_PLAN_THINK=
 MODEL_DRIFT=
 
 # Budget caps per invocation (USD). Empty = no cap.
-BUDGET_WORK=5.00
-BUDGET_AUDIT=3.00
+# Applied on tiers whose CLI supports a spending cap — today Claude Code only.
+# On every other tier (Grok Build, Cursor, OpenAI, generic) these are ignored
+# and the run is uncapped; nothing is sent to the provider.
+BUDGET_WORK=10.00
+BUDGET_AUDIT=5.00
 
 # Code audit max iterative passes
 AUDIT_MAX_PASSES=2

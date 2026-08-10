@@ -191,26 +191,24 @@ else
   _STAGE_MOVE="Each child is created in backlog/, but the original lives in ${STAGE}/ — move every finished child there with: git mv docs/tasks/backlog/<child-file> $TASK_DIR/<child-file> || mv docs/tasks/backlog/<child-file> $TASK_DIR/<child-file>  so this work stays in ${STAGE}/. "
 fi
 
-# ── Close-the-loop: a blocked task (needs decision/clarification) that chat
-# resolves re-enters the sprint only through the shared workability gate (same
-# as plan start / chat-folder [w]). Chat settles the open questions; gate stamps
-# READY or kicks back BLOCKED when a decision is still needed. Never raw-mv into
-# next/ and never self-stamp READY as a shortcut.
+# ── Close-the-loop: a blocked task that chat answers re-enters the sprint only
+# through the shared workability gate (same as plan start / chat-folder [w]).
+# Answered questions become body instruction; the gate stamps READY when the
+# list is clear, or BLOCKED when a question is still open.
 if [ "$STAGE" = "blocked" ]; then
   _CLOSE_LOOP_INSTR="
 1b. CLOSE THE LOOP (this task is in blocked/):
-gate parked this task in blocked/ because a decision or clarification was needed.
-If — and ONLY if — the conversation has genuinely resolved it (no open decision
-or clarification remains and it now reads as fully defined), promote it via the
-shared gate — do NOT raw git mv into next/ and do NOT write **Status: READY**
-yourself as a shortcut:
-1. DELETE any stale '## BLOCKED' section if the open questions are resolved.
+gate parked this task because a question was still open. When every question is
+answered — each answer written as instruction in Problem / Success criteria /
+Notes, each original question deleted, and '### Questions for the developer'
+reads 'None — task is fully defined.' — promote via the shared gate:
+1. DELETE any stale '## BLOCKED' section once the question list is clear.
 2. Run the promote helper (project root):
      bash docs/sprintbias/scripts/promote-to-sprint.sh $TASK_FILE
    That runs the workability gate: READY → next/, BLOCKED → blocked/ (reason in
    file), COMPLETE → review/. Tell the user the one-line result.
-If ANY open question remains, do NONE of this: leave the file in blocked/ and say
-plainly what still needs deciding."
+While any open question remains, leave the file in blocked/ and name what still
+needs answering."
 else
   _CLOSE_LOOP_INSTR=""
 fi
@@ -226,13 +224,18 @@ fi
 if [ "$STAGE" != "blocked" ]; then
   _DEMOTE_INSTR="
 
-═══ IF A DECISION OR CLARIFICATION IS STILL NEEDED — RECORD, THEN DEMOTE ═══
-If instead the session ends with a question that genuinely must be answered before anyone can work this task (a real decision/clarification, not a minor nicety — and not merely waiting on another task), then it needs BLOCKED status — do not leave it in ${STAGE}/ as if it were ready. Do these in order:
-1. RECORD the open questions: make the file END with a '## Questions' section whose first line is EXACTLY:
+═══ IF A DECISION IS STILL OPEN — RECORD, THEN DEMOTE ═══
+If the session ends with a real choice still needed before work can start (a
+decision on this task, beyond ordinary dependency waits), move it to BLOCKED:
+1. RECORD the open question(s): make the file END with a '## Questions' section
+   whose first line is EXACTLY:
      **Status: BLOCKED**
-   Under it, state the decision(s) or clarification(s) needed plainly (a '### Questions for the developer' list) so a later chat or report can pick them up. Replace any earlier '## Questions' section, don't add a second.
+   Under '### Questions for the developer', list each as
+   'N. [Question]? (Suggestion: [pick and why])'. Replace any earlier
+   '## Questions' section with one clean section.
 2. DEMOTE it:  git mv $TASK_FILE docs/tasks/blocked/$TASK_NAME || mv $TASK_FILE docs/tasks/blocked/$TASK_NAME
-3. TELL THE USER PLAINLY that you moved this task out of ${STAGE}/ into blocked/ and why — name the decision or clarification in one line, since a user who ran chat on a task they thought was finished will not expect the demotion.
+3. TELL THE USER PLAINLY that you moved this task out of ${STAGE}/ into blocked/
+   and name the open question in one line.
 4. Then give the same leave-session cue as the finish path (step 5 below)."
 else
   _DEMOTE_INSTR=""
@@ -259,7 +262,7 @@ fi
 # emit mode on orchestration-capable tiers spawns a brand-new subagent;
 # exec mode can't open a window, so it prints the command for the user to run.
 if [ "$(sprintbias_ai_mode)" = "emit" ] && sprintbias_orchestration_capable; then
-  _CONTINUE_INSTR="Then CONTINUE THE CHAIN in a fresh context so this session's tokens don't pile up: $(sprintbias_subagent_spawn_phrase "<next-id>" chain). Its entire instruction: 'Run ./sprint.sh chat <next-id> and carry that task as far toward READY as you can on your own — read the *Context from chat* note already in its file, refine it, and if a question genuinely needs the human, leave it in the file's ## Questions section and report it back.' Tell the user you have spun up a fresh agent for <next-id> and say in one line what it is picking up."
+  _CONTINUE_INSTR="Then CONTINUE THE CHAIN in a fresh context so this session's tokens don't pile up: $(sprintbias_subagent_spawn_phrase "<next-id>" chain). Its entire instruction: 'Run ./sprint.sh chat <next-id> and carry that task as far toward READY as you can on your own — read the *Context from chat* note already in its file, refine it, and for each answered question convert the answer into body instruction and delete the question; leave only still-open questions under ### Questions for the developer and report those back.' Tell the user you have spun up a fresh agent for <next-id> and say in one line what it is picking up."
 else
   _CONTINUE_INSTR="Then, to keep each session's context small, do NOT keep going here. Tell the user the next task to define and the exact command to run in a FRESH window:  ./sprint.sh chat <next-id>  — the *Context from chat* note you just wrote means that fresh session already has what it needs."
 fi
@@ -350,7 +353,14 @@ The task file is at: $TASK_FILE — read it now, before you say anything.${_PROF
 
 $_METHOD
 
-YOUR GOAL: Turn a rough task into a crisp user-story brief any developer (human or AI) can pick up — fill in a stub, refine one rough job, split several jobs, or stress-test one that already looks done. Result: clear problem + what done looks like; optional hints and paths. How to implement is the developer's decision. You raise open questions; the implementer writes the code.
+YOUR GOAL: Turn a rough task into a crisp user-story brief any developer (human or AI) can pick up — fill in a stub, refine one rough job, split several jobs, or stress-test one that already looks done. Result: clear problem + what done looks like; optional hints and paths; every answered question turned into instruction in the body. How to implement is the developer's choice guided by those instructions.
+
+Questions become instructions:
+1. ASK one focused question (with a suggestion when it is a real decision).
+2. GET the answer.
+3. CONVERT the answer into clear instruction or guidance.
+4. UPDATE the task body (Success criteria when it defines done; otherwise Notes).
+5. DELETE the original question — it has been answered.
 
 STEP 0 — SIZE IT UP FIRST:
 In one or two sentences, what this task really is. Then a two-part call:
@@ -366,7 +376,7 @@ Build the durable brief via the REFINE loop. Open: what is the problem, and what
 2. On agreement, CREATE each via CLI:
      ./sprint.sh newtask 'short action-oriented description'
    Fill each new docs/tasks/backlog/ file:
-     - **Parent**: $PARENT_NUM   (exact — './sprint.sh plan N \"parent:$PARENT_NUM\"' matches on this)
+     - **Parent**: $PARENT_NUM   (exact — './sprint.sh newplan \"…\" parent:$PARENT_NUM' matches on this)
      - **Depends on**: previous sub-task number when order matters, else 'none'
      - ## Problem, ## Success criteria, optional ## Notes / ## References — see finished-task shape below
 3. TALK THROUGH each child with the REFINE loop (not one-line stubs).
@@ -379,7 +389,10 @@ Build the durable brief via the REFINE loop. Open: what is the problem, and what
 For EACH detail:
 1. ASK one question — the single most important gap (problem clarity, done definition, scope, dependency, edge case, or a real decision the author must make). One question, no preamble. Prefer sharpening Problem and Success criteria over inventing implementation steps.
 2. POLISH — tighten and read back: \"So the crux is …\" Correct before it lands.
-3. UPDATE the file immediately — one small atomic edit. No batching to the end.
+3. UPDATE the file immediately — one small atomic edit. Convert the answer into
+   instruction in the body (Success criteria when it defines done; otherwise
+   Notes as guidance). Delete any matching open question under
+   '### Questions for the developer'.
 4. MOVE ON — note settled vs thin; return to step 1.
 
 ═══ MODE: STRESS-TEST — already looks defined ═══
@@ -395,17 +408,19 @@ Stop after material findings (typically 3–7). With agreement, sharpen Problem/
 
 WHAT A FINISHED TASK LOOKS LIKE (FILL-IN/REFINE parent and every SPLIT child):
 - ## Problem — clear, simple, high-level: what is wrong and why it matters (2–5 short sentences).
-- ## Success criteria — what done looks like; checkboxes anyone can verify. Meeting these means done. For a library or detailed technical fix, technical needs as outcomes — still not a step outline.
-- ## Notes — optional helpful hints for the developer (decisions, constraints, gotchas). Suggest, don't mandate. Leave empty if nothing useful.
+- ## Success criteria — what done looks like; checkboxes anyone can verify. Meeting these means done. Instructions from answered questions that define done live here.
+- ## Notes — optional hints, plus guidance from answered questions that shape how. Leave empty if nothing useful.
 - ## References — optional direct paths to related docs or code. One path per line.
-- Do not fill ## Completed / ### Files changed — that is after-work only.
+- '### Questions for the developer' — open questions only (with a suggestion). Answered questions are already body instructions; the list holds what is still open.
+- Leave ## Completed / ### Files changed for after work.
 
 RULES:
-- User-story altitude: problem + done. How to implement is the developer's decision. No code or pseudo-code. STRESS-TEST sharpens the brief only — never implements.
+- User-story altitude: problem + done. Implementer chooses how, guided by instructions from answered questions. STRESS-TEST sharpens the brief only.
 - One question at a time; wait for the answer.
-- Edit as each detail settles — small atomic edits.
-- Keep moving — no long parroting.
-- ## Questions (if present) is an audit overlay — never leave the only definition of the work there; promote into Problem/Success.
+- Edit as each detail settles: answer → body instruction → delete the question.
+- Keep moving — short turns.
+- Write the durable brief in Problem and Success criteria. ## Questions holds the stamp, findings, and still-open questions.
+- Open questions keep the task out of next/ until answered and turned into instruction.
 - WRITES: $TASK_FILE, sub-tasks from ./sprint.sh newtask, and the one next-dependency handoff file below. READ anything to check assumptions; write nothing else.
 
 ═══ RECORD THE REFINEMENT — BUMP THE PRE-WORK COUNTER ═══

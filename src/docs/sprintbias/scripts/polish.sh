@@ -345,8 +345,11 @@ $TASK_CONTENT
   TIMESTAMP_BASE=$(date +%Y%m%d-%H%M%S)
   _model_args=()
   [ -n "$MODEL" ] && _model_args=(--model "$MODEL")
+  # Budget only on a cap-capable tier (today Claude Code) — see lib.sh.
   _budget_args=()
-  [ -n "${SPRINTBIAS_BUDGET_AUDIT:-}" ] && _budget_args=(--budget "$SPRINTBIAS_BUDGET_AUDIT")
+  if sprintbias_budget_capable && [ -n "${SPRINTBIAS_BUDGET_AUDIT:-}" ]; then
+    _budget_args=(--budget "$SPRINTBIAS_BUDGET_AUDIT")
+  fi
   _log_name="${TASK_NAME:-adhoc}"
 
   MAX_STEPS=$((MAX_PASSES * 2))
@@ -702,8 +705,11 @@ $CHANGED_FILES
 
   _model_args=()
   [ -n "$MODEL" ] && _model_args=(--model "$MODEL")
+  # Budget only on a cap-capable tier (today Claude Code) — see lib.sh.
   _budget_args=()
-  [ -n "${SPRINTBIAS_BUDGET_AUDIT:-}" ] && _budget_args=(--budget "$SPRINTBIAS_BUDGET_AUDIT")
+  if sprintbias_budget_capable && [ -n "${SPRINTBIAS_BUDGET_AUDIT:-}" ]; then
+    _budget_args=(--budget "$SPRINTBIAS_BUDGET_AUDIT")
+  fi
 
   if [ "$AI_MODE" = "emit" ]; then
     sprintbias_run -p "$PROMPT"
@@ -1014,7 +1020,11 @@ UNCLEAR=0
 TOTAL_START=$SECONDS
 
 _model_args=();  [ -n "$MODEL" ] && _model_args=(--model "$MODEL")
-_budget_args=(); [ -n "${SPRINTBIAS_BUDGET_AUDIT:-}" ] && _budget_args=(--budget "$SPRINTBIAS_BUDGET_AUDIT")
+# Budget only on a cap-capable tier (today Claude Code) — see lib.sh.
+_budget_args=()
+if sprintbias_budget_capable && [ -n "${SPRINTBIAS_BUDGET_AUDIT:-}" ]; then
+  _budget_args=(--budget "$SPRINTBIAS_BUDGET_AUDIT")
+fi
 
 for ((i=0; i<COUNT; i++)); do
   TASK_FILE="${TASK_FILES[$i]}"

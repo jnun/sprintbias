@@ -96,9 +96,9 @@ receive it (pointing a shipped file at it would be a dead link in user trees).
 The guide names exact commands and pass criteria for: fresh `mkdir` +
 `./setup.sh` picking Claude → tiny spine (`model show` → `newtask` → `status` →
 `work`); a second fresh tree picking Grok → same spine; the model show/switch
-step (`./sprint.sh model show|list|set`, with a `docs/sprintmd/config` fallback);
+step (`./sprint.sh model show|list|set`, with a `docs/sprintbias/config` fallback);
 and a compare step. It enforces **ship-before-smoke** (`./ship.sh` mirrors
-`docs/sprintmd → src/`; `setup.sh` installs from `src/`, so the install path is
+`docs/sprintbias → src/`; `setup.sh` installs from `src/`, so the install path is
 what gets tested — no hand-copy). It keeps single-project dual-config as an
 explicit optional bonus (per-run `-c`/`-g` flags), not a requirement. Budget is
 stated as ~30–60 min. Boundary with sibling task 301 (automate the
@@ -132,7 +132,7 @@ docs/tasks/doing/297-dual-provider-smoke-protocol-on-a-fresh-project-fo.md
 commands and pass criteria (not vibes)" — but step 3's model-switch command is
 wrong. `docs/guides/dual-provider-smoke.md:136` writes
 `./sprint.sh model set MODEL_DEFAULT grok-4.5`, yet `cmd_set` in
-`docs/sprintmd/scripts/model.sh:154–182` only accepts `default` or a role name
+`docs/sprintbias/scripts/model.sh:154–182` only accepts `default` or a role name
 as the key (it uppercases the arg and matches `DEFAULT` or `KNOWN_ROLES`, never
 `MODEL_DEFAULT`). Copy-pasting the documented line fails with
 `ERROR: unknown key 'MODEL_DEFAULT'`, and the step-3 pass criteria at line 140

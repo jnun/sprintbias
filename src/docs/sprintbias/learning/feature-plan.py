@@ -2,13 +2,14 @@
 """
 SprintBias — a feature fans out to tasks, then plan think before plan start.
 
-A pretend, cinematic run: a feature-shaped pile of work breaks into concrete
-tasks, the tasks are grouped into a plan (a relational index, not a folder
-dump), a short plan-think pass catches the things that would bite later — an
-empty skeleton member, a missing dependency, two tasks quietly overlapping —
-and only after those are fixed does `plan start` commit the sprint. The lesson:
-don't start on skeletons. Pure theater: it touches nothing in your project —
-no files written, no tasks moved, no network.
+A pretend, cinematic run: a feature-shaped wish is captured as a task, chat
+splits it into concrete children, `newplan` scaffolds a relational plan index,
+`chat plan` authors it (plan id, not a task id), a short plan-think pass
+catches the things that would bite later — an empty skeleton member, a missing
+dependency, two tasks quietly overlapping — and only after those are fixed does
+`plan start` commit the sprint. The lesson: don't start on skeletons. Pure
+theater: it touches nothing in your project — no files written, no tasks moved,
+no network.
 
 No dependencies. Just:  python3 feature-plan.py
 Flags:  --fast (no delays)   --no-color   -h/--help
@@ -170,14 +171,24 @@ def act1():
         "\"dark mode\" isn't one thing you can run. break it into tasks that are.")
 
     beat("You want dark mode. That's a feature — a shape of work, not a task a "
-         "single run can finish. Fan it out into concrete pieces.")
-    prompt_and_type("./sprint.sh chat plan dark-mode")
+         "single run can finish. Capture the wish, then fan it into concrete pieces.")
+    prompt_and_type('./sprint.sh newtask "ship dark mode"')
+    ok(f"Created task: {BLUE}docs/tasks/backlog/50-ship-dark-mode.md{RESET}")
+    nextstep("it's too big — chat will break it into finishable work")
+    nap(0.4)
+
+    beat("Talk the wish open. Chat sizes it up: one job, or several hiding inside?")
+    prompt_and_type("./sprint.sh chat 50")
     print()
-    claude("\"Dark mode\" is three real jobs hiding in a wish. Let me name them "
-           "as tasks that each have a clear finish line.")
+    claude("\"Ship dark mode\" is three real jobs hiding in a wish. I'll split "
+           "it into tasks that each have a clear finish line.")
+    you("yes — tokens, the toggle, and remember the choice across reloads.")
+    claude("Creating three child tasks with real IDs, then retiring the parent "
+           "so nothing points at a hollow wish.")
     nap(0.3)
-    spinner("chat: fanning the feature into tasks", ticks=12, done="3 tasks drafted")
+    spinner("chat: splitting into concrete tasks", ticks=12, done="3 tasks in backlog/")
     line(f"    {GREY}docs/tasks/backlog/{RESET}")
+    moved("50-ship-dark-mode.md", f"{DIM}(retired — folded into children){RESET}")
     moved(" ", f"{BLUE}51-define-theme-color-tokens.md{RESET}")
     moved(" ", f"{BLUE}52-add-dark-mode-toggle-in-settings.md{RESET}")
     moved(" ", f"{BLUE}53-persist-theme-choice.md{RESET}")
@@ -189,13 +200,26 @@ def act1():
 
 def act2():
     act("ACT 2  ·  group them into a plan",
-        "a plan is a relational index — which tasks, and how they relate. not a folder.")
+        "scaffold with newplan, then author with chat plan — a relational index, not a folder.")
 
-    beat("Bind the three into a named plan. This doesn't move any files — it "
-         "records that they're one body of work with a shared goal.")
+    beat("Bind the three into a named plan. newplan scaffolds the file — it does "
+         "not move any task files; it only records the member IDs.")
     prompt_and_type("./sprint.sh newplan dark-mode 51 52 53")
-    ok(f"Created plan: {PURPLE}docs/plans/7-dark-mode.md{RESET}")
+    ok(f"Created plan: {PURPLE}docs/plans/7-dark-mode.md{RESET}  {GREY}(scaffold){RESET}")
+    nextstep("./sprint.sh chat plan 7   → author goal + members into the plan file")
     nap(0.4)
+
+    beat("Now author it. chat plan takes a *plan* id — never a task id — and "
+         "writes only the plan file: Goal, ordered members, Status.")
+    prompt_and_type("./sprint.sh chat plan 7")
+    print()
+    claude("Three members already listed. Goal: ship a working dark theme. "
+           "I'll record the order and mark the plan READY when you confirm.")
+    you("tokens first, then the toggle, then persist. yes — ready.")
+    claude("Goal and members written. Plan 7 is READY to think, then start.")
+    nap(0.3)
+    spinner("chat plan: authoring plan 7", ticks=10, done="DRAFT → READY")
+    nap(0.3)
     plan_card("docs/plans/7-dark-mode.md  ·  Goal: ship a working dark theme", [
         (GREEN,  "●", "51", "define theme color tokens", "READY"),
         (GREEN,  "●", "52", "add dark-mode toggle in settings", "READY"),
@@ -292,7 +316,7 @@ def outro():
          f"{GREY}commit only a plan that holds up{RESET}")
     print()
     line(f"  {DIM}the spine you just watched:{RESET} "
-         f"{CYAN}chat plan → plan think → plan start → work{RESET}")
+         f"{CYAN}newtask → chat → newplan → chat plan → plan think → plan start → work{RESET}")
     print()
     rule("═")
     print()

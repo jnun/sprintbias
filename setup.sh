@@ -457,18 +457,17 @@ PLATFORM="$PLATFORM"
 CONFIG_EOF
 
 # ============================================================================
-# README SETUP
+# DETECTION + DECISION HELPERS
 # ============================================================================
-
-msg_header "Setting up documentation files..."
 
 # Track counters
 FILES_COPIED=0
 
-# README.md — we don't ship one (the user owns theirs). If a README exists,
-# prepend a pointer to DOCUMENTATION.md so readers know where the project
-# docs live. Same pattern as the AI instruction files below.
-README_POINTER='> **Project documentation** → see [`DOCUMENTATION.md`](DOCUMENTATION.md) (managed by [SprintBias](https://sprintbias.com))'
+# README.md — we don't ship one (the user owns theirs), so it takes the same
+# version-marked pointer-block treatment as CLAUDE.md / AGENTS.md. The block is
+# built by readme_block() in the scaffold section below, after $MANUAL_FILE is
+# resolved, so the pointer names our manual even when the user owns
+# DOCUMENTATION.md.
 
 # ----------------------------------------------------------------------------
 # Detection markers + pure decision helpers
@@ -490,7 +489,7 @@ README_POINTER='> **Project documentation** → see [`DOCUMENTATION.md`](DOCUMEN
 # is extracted verbatim by docs/tests/test-setup-detection.sh so the helpers can
 # be unit-tested without running the installer. Keep it self-contained.
 # >>> SprintBias detection helpers (unit-tested) >>>
-SPRINT_README_MARKER='managed by [SprintBias]'                               # in README_POINTER
+SPRINT_README_MARKER='managed by [SprintBias]'                               # in readme_block
 SPRINT_README_MARKER_LEGACY='managed by [sprint.md]'                         # pre-rebrand pointer
 SPRINT_AI_MARKER='single source of truth for how this project is organized' # in every AI pointer + AI_FALLBACK
 SPRINT_GITIGNORE_MARKER='# === SprintBias Recommended Entries ==='            # header written into .gitignore
@@ -618,54 +617,6 @@ prompt_yes_no() {
     done
 }
 
-if [ ! -f "README.md" ]; then
-    echo ""
-    prompt_yes_no README_CHOICE "No README.md found. Create one with a SprintBias documentation pointer?"
-
-    if [ "$README_CHOICE" = "yes" ]; then
-        if printf '%s\n' "$README_POINTER" > "README.md" 2>/dev/null; then
-            msg_success "Created README.md with documentation pointer"
-            ((FILES_COPIED++))
-        else
-            msg_error "Failed to create README.md"
-        fi
-    else
-        msg_step "Skipped README.md creation"
-    fi
-else
-    if already_ours_readme "$(cat "README.md" 2>/dev/null)"; then
-        msg_step "README.md already references DOCUMENTATION.md"
-    else
-        echo ""
-        prompt_yes_no README_PREPEND_CHOICE "README.md exists but does not reference DOCUMENTATION.md. Prepend a SprintBias documentation pointer to it?"
-
-        if [ "$README_PREPEND_CHOICE" = "yes" ]; then
-            tmpfile=""
-            tmpfile="$(mktemp "README.md.XXXXXX")" || tmpfile=""
-            if [ -z "$tmpfile" ]; then
-                msg_error "Failed to create temp file for README.md"
-            else
-                # Make sure a stray temp file never survives an interrupt
-                # or a failed cat/mv. Cleared on successful mv below.
-                trap 'rm -f "$tmpfile"' EXIT INT TERM
-                if { printf '%s\n\n' "$README_POINTER"; cat "README.md"; } > "$tmpfile" 2>/dev/null \
-                   && mv -f "$tmpfile" "README.md"; then
-                    tmpfile=""
-                    trap - EXIT INT TERM
-                    msg_success "Prepended SprintBias documentation pointer to README.md"
-                else
-                    rm -f "$tmpfile"
-                    tmpfile=""
-                    trap - EXIT INT TERM
-                    msg_error "Failed to prepend to README.md"
-                fi
-            fi
-        else
-            msg_step "Preserved README.md (no pointer added)"
-        fi
-    fi
-fi
-
 # ============================================================================
 # COPY DISTRIBUTION FILES — single recursive walk of src/
 # ============================================================================
@@ -782,6 +733,14 @@ _ai_label() {
 # marker is the user's, and we never clobber it. classify_target decides which
 # of four states a path is in; the scaffold_* helpers act on that state and emit
 # one outcome line each so a silent batch still reports what it did.
+#
+# The block between the SENTINEL lines below is extracted verbatim by
+# docs/tests/test-setup-detection.sh and sourced alongside the detection helpers,
+# so the conflict and manual-name decisions are tested as shipped code. These
+# helpers touch files (unlike the detection block) — the test drives them in a
+# temp directory with CURRENT_VERSION / MANUAL_FILE set and msg_* stubbed. Keep
+# every function the installer's conflict UX depends on inside the fence.
+# >>> SprintBias scaffold helpers (unit-tested) >>>
 
 # classify_target TARGET -> echoes: absent | ours-current:VER | ours-old:VER | theirs
 classify_target() {
@@ -798,6 +757,15 @@ classify_target() {
 pointer_block() {
     printf '<!-- SprintBias v%s -->\nRead `%s` before making any changes. It is the single source of truth for how this project is organized, how tasks are managed, and how to use the SprintBias system.\n<!-- end SprintBias -->' \
         "$CURRENT_VERSION" "$MANUAL_FILE"
+}
+
+# The Markdown pointer block we write into the user's README.md. Same versioned
+# marker as pointer_block, different wording — a README speaks to readers, not
+# to agents. Keeps the "managed by [SprintBias]" text so a pre-marker install is
+# still recognized by already_ours_readme.
+readme_block() {
+    printf '<!-- SprintBias v%s -->\n> **Project documentation** → see [`%s`](%s) (managed by [SprintBias](https://sprintbias.com))\n<!-- end SprintBias -->' \
+        "$CURRENT_VERSION" "$MANUAL_FILE" "$MANUAL_FILE"
 }
 
 # _copy_stamped SRC TARGET — copy SRC to TARGET, normalizing its marker line to
@@ -842,6 +810,25 @@ _replace_md_block() {
     rm -f "$tmp"; return 1
 }
 
+# _replace_readme_pointer TARGET BLOCK — upgrade a legacy README pointer (a bare
+# single line, written before we stamped markers) to the marked BLOCK. Drops the
+# old pointer line and the blank lines it left behind at the top, keeping the
+# user's body. _replace_md_block can't do this: there is no marker to match.
+_replace_readme_pointer() {
+    local target="$1" block="$2" tmp body
+    body="$(awk '
+        seen==0 && /managed by \[(SprintBias|sprint\.md)\]/ {next}
+        seen==0 && /^[[:space:]]*$/ {next}
+        {seen=1; print}
+    ' "$target" 2>/dev/null)"
+    tmp="$(mktemp "${target}.XXXXXX")" || return 1
+    if { printf '%s\n' "$block"; if [ -n "$body" ]; then printf '\n%s\n' "$body"; fi; } > "$tmp" 2>/dev/null \
+       && mv -f "$tmp" "$target"; then
+        return 0
+    fi
+    rm -f "$tmp"; return 1
+}
+
 # install_owned_doc SRC TARGET NAME — a whole document that is entirely ours
 # (GETSTARTED.md, the manual). Create when absent, upgrade when our marker is
 # older, skip a user's own file (never clobber).
@@ -860,7 +847,8 @@ install_owned_doc() {
 
 # scaffold_pointer TARGET NAME — an AI pointer file (CLAUDE.md / AGENTS.md).
 # Handles create/upgrade/no-op silently; defers a user-owned file to CONFLICTS
-# so the batch never prepends-then-unwinds ahead of a possible "Replace".
+# so the batch never prepends-then-unwinds ahead of a possible Overwrite under
+# More options. Default path silent-prepends after the batch.
 scaffold_pointer() {
     local target="$1" name="$2" block cls
     block="$(pointer_block)"
@@ -871,7 +859,42 @@ scaffold_pointer() {
         ours-current:*) msg_step "$name up to date (v${cls#ours-current:})" ;;
         ours-old:*)
             if _replace_md_block "$target" "$block"; then msg_success "$name upgraded (${cls#ours-old:} → $CURRENT_VERSION)"; else msg_error "Failed to upgrade $name"; fi ;;
-        theirs) CONFLICTS+=("pointer|$target|$name") ;;
+        theirs)
+            CONFLICTS+=("pointer|$target|$name")
+            msg_step "$name exists (yours) — will prepend after batch (or choose under More options)"
+            ;;
+    esac
+}
+
+# scaffold_readme — the user's README.md. Same four states as scaffold_pointer,
+# plus one ahead of them: a README carrying our pre-marker text pointer is ours
+# even though classify_target sees no marker and calls it "theirs". That one is
+# upgraded in place, so an old install gains the marker instead of a second
+# pointer. Everything else follows the batch rules — create when absent, upgrade
+# our older block, no-op at the current version, defer a user-owned README to
+# CONFLICTS for the silent prepend (or Prepend/Overwrite under More options).
+scaffold_readme() {
+    local target="README.md" name="README.md" block cls
+    block="$(readme_block)"
+    cls="$(classify_target "$target")"
+    if [ "$cls" = "theirs" ] && already_ours_readme "$(cat "$target" 2>/dev/null)"; then
+        if _replace_readme_pointer "$target" "$block"; then
+            msg_success "$name pointer upgraded (unversioned → $CURRENT_VERSION)"
+        else
+            msg_error "Failed to upgrade $name"
+        fi
+        return
+    fi
+    case "$cls" in
+        absent)
+            if printf '%s\n' "$block" > "$target" 2>/dev/null; then msg_success "$name ensured"; ((FILES_COPIED++)); else msg_error "Failed to write $name"; fi ;;
+        ours-current:*) msg_step "$name up to date (v${cls#ours-current:})" ;;
+        ours-old:*)
+            if _replace_md_block "$target" "$block"; then msg_success "$name upgraded (${cls#ours-old:} → $CURRENT_VERSION)"; else msg_error "Failed to upgrade $name"; fi ;;
+        theirs)
+            CONFLICTS+=("readme|$target|$name")
+            msg_step "$name exists (yours) — will prepend after batch (or choose under More options)"
+            ;;
     esac
 }
 
@@ -914,49 +937,88 @@ scaffold_gitignore() {
         ours-current:*) msg_step ".gitignore up to date (v${cls#ours-current:})" ;;
         ours-old:*)
             if _upgrade_gitignore; then msg_success ".gitignore upgraded (${cls#ours-old:} → $CURRENT_VERSION)"; else msg_error "Failed to upgrade .gitignore"; fi ;;
-        theirs) CONFLICTS+=("gitignore|.gitignore|.gitignore") ;;
+        theirs)
+            CONFLICTS+=("gitignore|.gitignore|.gitignore")
+            msg_step ".gitignore exists (yours) — will prepend after batch (or choose under More options)"
+            ;;
     esac
 }
 
 # apply_conflict KIND TARGET NAME ACTION — write one deferred conflict.
-# ACTION is prepend | replace | leave.
+# ACTION is prepend | replace (overwrite). No "leave": skip More options to
+# leave user files untouched beyond the silent default prepend.
 apply_conflict() {
-    local kind="$1" target="$2" name="$3" action="$4"
+    local kind="$1" target="$2" name="$3" action="$4" block
+    # Each pointer kind writes its own block — the README speaks to readers, the
+    # AI files to agents. Same marker, different wording.
+    case "$kind" in
+        readme) block="$(readme_block)" ;;
+        *)      block="$(pointer_block)" ;;
+    esac
     case "$action" in
-        leave) msg_step "Left $name as it is" ;;
         replace)
             if [ "$kind" = "gitignore" ]; then
-                _write_gitignore_fresh && msg_success "Replaced $name" || msg_error "Failed to replace $name"
+                _write_gitignore_fresh && msg_success "Overwrote $name with SprintBias entries" || msg_error "Failed to overwrite $name"
             else
-                printf '%s\n' "$(pointer_block)" > "$target" 2>/dev/null && msg_success "Replaced $name" || msg_error "Failed to replace $name"
+                printf '%s\n' "$block" > "$target" 2>/dev/null \
+                    && msg_success "Overwrote $name with SprintBias pointer" \
+                    || msg_error "Failed to overwrite $name"
             fi ;;
         prepend|*)
             if [ "$kind" = "gitignore" ]; then
                 _prepend_gitignore && msg_success "Prepended SprintBias entries to $name" || msg_error "Failed to prepend to $name"
             else
-                _prepend_md_block "$target" "$(pointer_block)" && msg_success "Prepended SprintBias pointer to $name" || msg_error "Failed to prepend to $name"
+                _prepend_md_block "$target" "$block" && msg_success "Prepended SprintBias pointer to $name" || msg_error "Failed to prepend to $name"
             fi ;;
     esac
 }
 
-# resolve_conflict_interactive KIND TARGET NAME — the three-way override, only
-# reachable under "More options?". Enter = Prepend (parity with the silent
-# default); Replace is the one deliberate keystroke that overwrites a user file.
+# resolve_conflict_interactive KIND TARGET NAME — binary override under
+# "More options?" only. Enter = Prepend (parity with silent default);
+# o = Overwrite (only deliberate keystroke that replaces a user-owned file).
 resolve_conflict_interactive() {
     local kind="$1" target="$2" name="$3" ans
     echo ""
     echo "$name already exists and isn't ours:"
-    echo "  [Enter]  Prepend  — add our block above your file, keep your content"
-    echo "  r)       Replace  — overwrite your $name with ours"
-    echo "  l)       Leave    — leave $name exactly as it is"
-    printf "Choose [Enter=Prepend / r / l]: "
+    echo "  [Enter]  Prepend   — keep your content, add our block above it"
+    if [ "$kind" = "gitignore" ]; then
+        echo "  o)       Overwrite — replace $name with SprintBias entries only"
+    else
+        echo "  o)       Overwrite — replace $name with our pointer only"
+    fi
+    printf "Choose [Enter=Prepend / o]: "
     read -r ans
     case "$ans" in
-        r|R) apply_conflict "$kind" "$target" "$name" replace ;;
-        l|L) apply_conflict "$kind" "$target" "$name" leave ;;
+        o|O) apply_conflict "$kind" "$target" "$name" replace ;;
         *)   apply_conflict "$kind" "$target" "$name" prepend ;;
     esac
 }
+
+# resolve_manual_file — echo the filename our manual installs as. It is
+# DOCUMENTATION.md unless the user already owns one we didn't write, in which
+# case ours lands as SPRINTDOCUMENTATION.md and every pointer written this run
+# targets that name. Decided once, up front, so all pointers agree.
+resolve_manual_file() {
+    if [ "$(classify_target "DOCUMENTATION.md")" = "theirs" ]; then
+        echo "SPRINTDOCUMENTATION.md"
+    else
+        echo "DOCUMENTATION.md"
+    fi
+}
+
+# apply_deferred_conflicts — the silent default path. Every user-owned file the
+# scaffold_* helpers deferred sits in CONFLICTS as "kind|target|name"; this
+# applies the safe default (prepend) to each. It is the branch almost every
+# install takes (the one that skips More options), so it is a helper the test
+# can drive directly rather than a loop buried in the main flow.
+apply_deferred_conflicts() {
+    local entry _ck _rest _ct _cn
+    for entry in "${CONFLICTS[@]}"; do
+        _ck="${entry%%|*}"; _rest="${entry#*|}"; _ct="${_rest%%|*}"; _cn="${_rest#*|}"
+        apply_conflict "$_ck" "$_ct" "$_cn" prepend
+    done
+}
+# <<< SprintBias scaffold helpers <<<
 
 # install_github_sync — copy the GitHub Issues sync workflows and issue/PR
 # templates from src/.github (the copilot dotfile is handled with the other AI
@@ -1054,11 +1116,7 @@ rm -f "$_find_fifo" && rmdir "$(dirname "$_find_fifo")" 2>/dev/null
 # installs as SPRINTDOCUMENTATION.md and every pointer (CLAUDE.md, AGENTS.md,
 # and the dotfiles below) targets that name. Decided up front so every pointer
 # written this run agrees on the manual's filename.
-if [ "$(classify_target "DOCUMENTATION.md")" = "theirs" ]; then
-    MANUAL_FILE="SPRINTDOCUMENTATION.md"
-else
-    MANUAL_FILE="DOCUMENTATION.md"
-fi
+MANUAL_FILE="$(resolve_manual_file)"
 
 # --- AI dotfiles (deferred from the walk above) ---------------------------
 # Pre-existing dotfiles get a silent version-marked prepend; absent ones are
@@ -1123,13 +1181,14 @@ fi
 # marker + current version → no-op, no marker (user's) → prepend/skip/rename.
 # Nothing here overwrites a user-owned file; that lives behind "More options?".
 # A user-owned file that would take a prepend is deferred into CONFLICTS so the
-# batch never prepends-then-unwinds ahead of a later "Replace".
+# batch never prepends-then-unwinds ahead of a later Overwrite under More options.
 
 msg_header "Scaffolding SprintBias files..."
 
 CONFLICTS=()
 
 # 1) GETSTARTED.md   2) CLAUDE.md   3) the manual   4) .gitignore   5) AGENTS.md
+# 6) README.md
 install_owned_doc "$SRC_DIR/GETSTARTED.md" "GETSTARTED.md" "GETSTARTED.md"
 scaffold_pointer "CLAUDE.md" "CLAUDE.md"
 if [ "$MANUAL_FILE" = "SPRINTDOCUMENTATION.md" ]; then
@@ -1138,6 +1197,7 @@ fi
 install_owned_doc "$SRC_DIR/DOCUMENTATION.md" "$MANUAL_FILE" "$MANUAL_FILE"
 scaffold_gitignore
 scaffold_pointer "AGENTS.md" "AGENTS.md"
+scaffold_readme
 
 # ============================================================================
 # LAYOUT CLEANUP (path-presence only — no version ladder)
@@ -1433,14 +1493,25 @@ fi
 # ============================================================================
 # MORE OPTIONS — everything past the Easy Button hides here (Enter = No)
 # ============================================================================
-# The default path never reaches this: GitHub Issues sync, the residual AI
-# dotfiles, and the per-file override (the only place a user file can be
-# Replaced) all live behind one opt-in.
+# Behind this gate: conflict binary (Prepend/Overwrite), GitHub Issues sync,
+# and residual AI dotfiles. Default path never offers Overwrite — it silent-
+# prepends deferred conflicts after this prompt.
 
 echo ""
-prompt_yes_no MORE_OPTIONS "More options? (GitHub Issues sync, extra AI files, per-file choices)" "no"
+_more_opts_hint="GitHub Issues sync, extra AI files"
+if [ ${#CONFLICTS[@]} -gt 0 ]; then
+    _more_opts_hint="per-file choices, ${_more_opts_hint}"
+fi
+prompt_yes_no MORE_OPTIONS "More options? (${_more_opts_hint})" "no"
+unset _more_opts_hint
 
 if [ "$MORE_OPTIONS" = "yes" ]; then
+    # Conflicts first — the only place a user-owned file can be overwritten.
+    for entry in "${CONFLICTS[@]}"; do
+        _ck="${entry%%|*}"; _rest="${entry#*|}"; _ct="${_rest%%|*}"; _cn="${_rest#*|}"
+        resolve_conflict_interactive "$_ck" "$_ct" "$_cn"
+    done
+
     # --- GitHub Issues sync ---
     echo ""
     prompt_yes_no GH_SYNC "Enable GitHub Issues sync (workflows + issue/PR templates)?" "no"
@@ -1463,18 +1534,9 @@ if [ "$MORE_OPTIONS" = "yes" ]; then
             msg_step "Skipped extra AI instruction files"
         fi
     fi
-
-    # --- Per-file override for conflicted (user-owned) scaffold files ---
-    for entry in "${CONFLICTS[@]}"; do
-        _ck="${entry%%|*}"; _rest="${entry#*|}"; _ct="${_rest%%|*}"; _cn="${_rest#*|}"
-        resolve_conflict_interactive "$_ck" "$_ct" "$_cn"
-    done
 else
     # Default path: apply the silent safe default (prepend) to each conflict.
-    for entry in "${CONFLICTS[@]}"; do
-        _ck="${entry%%|*}"; _rest="${entry#*|}"; _ct="${_rest%%|*}"; _cn="${_rest#*|}"
-        apply_conflict "$_ck" "$_ct" "$_cn" prepend
-    done
+    apply_deferred_conflicts
 fi
 
 echo ""
@@ -1494,8 +1556,8 @@ for dir in docs/tasks/backlog docs/tasks/next docs/tasks/doing docs/tasks/blocke
     fi
 done
 
-# Check required files
-for file in docs/sprintbias/DOC_STATE.md DOCUMENTATION.md; do
+# Check required files (manual may be SPRINTDOCUMENTATION.md when user owns DOCUMENTATION.md)
+for file in docs/sprintbias/DOC_STATE.md "${MANUAL_FILE:-DOCUMENTATION.md}"; do
     if [ ! -f "$file" ]; then
         VALIDATION_PASSED=false
         msg_error "Missing file: $file"
@@ -1606,7 +1668,7 @@ else
     echo ""
     echo "Directory structure created in docs/"
     echo "Scripts available at docs/sprintbias/scripts/"
-    echo "Documentation at DOCUMENTATION.md"
+    echo "Documentation at ${MANUAL_FILE:-DOCUMENTATION.md}"
     echo "AI CLI/model config at docs/sprintbias/config (edit to change CLI or models)"
     echo ""
     echo "Get started:"

@@ -44,14 +44,14 @@ Notes (**Install shape (decided)**) — read it first.
       that filename in that case.
 - [ ] The old pre-CLI multi-select menu and the second "Create CLAUDE.md? [Y/n]"
       prompt are gone; the default path asks **no** AI-file questions.
-- [ ] After the batch, `More options? [y/N]` (Enter = No). Yes surfaces GitHub
-      Issues sync and `Add all AI instructions? [y/N]` (the residual
-      `.cursorrules` / `.windsurfrules` / Copilot dotfiles).
-- [ ] Under More options, each scaffold file whose content does **not** match
-      ours gets a three-way per-file choice — **Replace** / **Leave alone** /
-      **Prepend** — with `Enter` = **Prepend** (parity with the silent default).
-      **Replace** (overwrite a user-owned file) is reachable only here, only by
-      a deliberate keystroke; the default path never offers it.
+- [ ] After the batch, `More options? [y/N]` (Enter = No). Yes surfaces conflict
+      review (when any), GitHub Issues sync, and `Add all AI instructions? [y/N]`
+      (the residual `.cursorrules` / `.windsurfrules` / Copilot dotfiles).
+- [ ] Under More options, each deferred `theirs` scaffold file gets a **binary**
+      choice — **Prepend** / **Overwrite** — with `Enter` = **Prepend** (parity
+      with the silent default). **Overwrite** is reachable only here, only by a
+      deliberate `o` keystroke; the default path never offers it. Leave alone is
+      not a key (decline More options / accept silent prepend).
 - [ ] Shipped non-Claude templates stay in `src/` to serve the opt-in path and
       silent prepend of pre-existing files; they are never push-created on the
       default path.

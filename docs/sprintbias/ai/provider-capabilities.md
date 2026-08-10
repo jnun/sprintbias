@@ -27,6 +27,7 @@ config, pass a leading flag on the launcher: `./sprint.sh -g …` (Grok Build) o
 | Capability            | claude-code | grok-build | cursor    | openai    | generic |
 |-----------------------|-------------|------------|-----------|-----------|---------|
 | Exec JSON output      | yes         | yes        | no¹       | no¹       | no      |
+| Stream progress NDJSON| yes (`stream-json`) | yes (`stream-json`→`streaming-messages-json`) | no¹ | no¹ | no |
 | Subagent / parallel   | yes         | yes        | no        | no        | no      |
 | Tool restriction      | yes         | yes²       | no¹       | no¹       | no      |
 | Budget caps           | yes         | no³        | no        | no        | no      |
@@ -47,8 +48,11 @@ install — see the history note below.
 (allowlist omitted). Never maps to `--allowedTools` (that is a permission-rule
 alias for `--allow` on Grok).
 
-³ No verified USD/token budget flag on Grok; the profile drops `--budget`
-with a one-line warning.
+³ No verified USD/token budget flag on Grok. Budget is omitted at source: the
+call sites (`work`, `polish`, `deps`) build `--budget` only when
+`sprintbias_budget_capable` says the active tier can enforce a cap, so on Grok
+nothing is sent and nothing is warned about. The profile still drops `--budget`
+with a one-line warning as defense-in-depth for any caller that passes it.
 
 ⁴ Emit-mode auto-detection keys on agent-session env vars in
 `lib.sh:sprintbias_ai_mode` (`CLAUDECODE`, `GROK_AGENT`, `CURSOR_TRACE_ID`, …).
@@ -77,8 +81,12 @@ fi
 
 `claude-code` and `grok-build` support the full product surface (interactive
 chat, emit detection, parallel emit orchestration, model defaults, headless
-flags via their profiles). Budget caps remain Claude-only until Grok exposes
-one. Every other tier routes through `cli/default.sh`, which runs the bare
-prompt and drops richer flags with a one-line warning. Provider-agnostic is a
-virtue only when it costs nothing; when an orchestration path outperforms the
-generic one, gating it on `sprintbias_orchestration_capable` is the rule.
+flags via their profiles). Budget caps are gated the same way orchestration is:
+`sprintbias_budget_capable` names the tiers whose CLI can enforce a USD cap —
+today `claude-code` alone — and every other tier runs uncapped with no
+`--budget` constructed. A provider that ships a real cap flag joins by adding
+its tier to that one `case`. Every other tier routes through `cli/default.sh`,
+which runs the bare prompt and drops richer flags with a one-line warning.
+Provider-agnostic is a virtue only when it costs nothing; when an orchestration
+path outperforms the generic one, gating it on
+`sprintbias_orchestration_capable` is the rule.

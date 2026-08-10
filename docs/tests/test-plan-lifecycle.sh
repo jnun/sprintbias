@@ -177,6 +177,32 @@ if [ -n "$out" ]; then
       "$([ -f "$TMPDIR/docs/tasks/backlog/508-member.md" ] && echo true || echo false)"
 fi
 
+# --- Test 8: large plan promotes every member (no hard cap); warn over 10 ---
+echo "Test 8: plan start promotes all members (12) and soft-warns over 10"
+setup
+_bullets=()
+for i in $(seq 600 611); do
+  make_task "$i" backlog
+  _bullets+=("- [ ] #$i — member $i")
+done
+make_plan 107 READY "${_bullets[@]}" >/dev/null
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/plan.sh start 107 --commit-only 2>&1) || {
+  echo "  FAIL: plan start on 12-member plan should exit 0"
+  echo "$out"
+  FAIL=$((FAIL + 1))
+  out=""
+}
+if [ -n "$out" ]; then
+  assert_contains "Soft-warns when member count exceeds 10" "$out" "has 12 members"
+  assert_contains "Names no hard cap" "$out" "no hard member cap"
+  _moved=0
+  for i in $(seq 600 611); do
+    [ -f "$TMPDIR/docs/tasks/next/${i}-member.md" ] && _moved=$((_moved + 1))
+  done
+  assert_eq "All 12 members promoted into next/" "12" "$_moved"
+  assert_contains "Summary names total member count" "$out" "12 members"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1

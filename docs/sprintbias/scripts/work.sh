@@ -126,6 +126,10 @@ BLOCKED_DIR="docs/tasks/blocked"
 LOG_DIR="docs/tmp"
 # Basenames that land in review/ this run (human sign-off or promote).
 TO_REVIEW=()
+# Tasks that did NOT complete this run (hard fail, incomplete, or drift-blocked).
+# Each element packs "name<US>result<US>dir<US>reason" for the closing recap.
+FAIL_DELIM=$'\x1f'
+TO_FAIL=()
 
 # ── Config ───────────────────────────────────────────────────────────
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
@@ -139,6 +143,12 @@ _note_review() {
   TO_REVIEW+=("$1")
 }
 
+# Record a task that did not complete this run, for the closing recap.
+#   _note_fail NAME RESULT DIR REASON   RESULT ∈ failed|incomplete|blocked
+_note_fail() {
+  TO_FAIL+=("$1${FAIL_DELIM}$2${FAIL_DELIM}$3${FAIL_DELIM}$4")
+}
+
 # To run one invocation against a different CLI or mode, prefix the command:
 #   SPRINTBIAS_CLI=codex ./sprint.sh work       (exec that CLI in a plain terminal)
 #   SPRINTBIAS_MODE=emit ./sprint.sh work       (force prompt emit for any agent)
@@ -148,10 +158,12 @@ MODEL="$(sprintbias_tier_model WORK)"
 TOOLS="Read,Edit,Write,Bash,Grep,Glob,Agent"
 PERMISSIONS="auto"
 
-# No turn cap: readiness (gate) gates entry and the budget cap below is the
-# backstop. A turn cap decapitates normal runs mid-work and mislabels them
-# "too complex" — a healthy task run is ~25-30 turns.
-# --max removes the budget cap (the only per-run guardrail)
+# No turn cap: readiness (gate) gates entry, and on a tier that supports
+# spending caps (today Claude Code) the budget below is the backstop. A turn cap
+# decapitates normal runs mid-work and mislabels them "too complex" — a healthy
+# task run is ~25-30 turns.
+# --max removes the budget cap where one is armed; on a capless tier there was
+# never a cap to remove, so it is silently a no-op.
 if [ "$_NO_LIMITS" -eq 1 ]; then
   SPRINTBIAS_BUDGET_WORK=""
 fi
@@ -216,7 +228,9 @@ _stamp_outcome() {
 
 # Read a task's '## Outcome' stamp as a short "result: reason" phrase for hold
 # lines (empty when unstamped). Lets a dependent's needs-clause say
-# `9032 (blocked/ — incomplete: budget)` instead of a bare stage.
+# `9032 (blocked/ — incomplete: run ended without a '## Completed' …)` instead
+# of a bare stage. It renders whatever Reason the file carries, so honest stamp
+# wording flows through unchanged.
 _outcome_brief() {
   local file="$1" result reason
   [ -f "$file" ] || return 0
@@ -283,12 +297,25 @@ if [ -n "$TASK_ID" ]; then
   case "$_stage" in
     next)
       # Already in the sprint: work it exactly as the queue would, unless it
-      # is not stamped READY (unvetted) and --force was not passed.
-      if [ "$FORCE" -ne 1 ] && [ "$(sprintbias_review_verdict "$_path")" != "READY" ]; then
-        echo "⊘ $TASK_ID is in next/ but not stamped READY — held (unvetted)."
-        echo "  Vet it:         ./sprint.sh gate"
-        echo "  Or run anyway:  ./sprint.sh work $TASK_ID --force"
-        exit 0
+      # is not stamped READY (unvetted) or still has open decisions, and
+      # --force was not passed.
+      if [ "$FORCE" -ne 1 ]; then
+        if [ "$(sprintbias_review_verdict "$_path")" != "READY" ]; then
+          echo "⊘ $TASK_ID is in next/ but not stamped READY — held (unvetted)."
+          echo "  Vet it:         ./sprint.sh gate"
+          echo "  Or run anyway:  ./sprint.sh work $TASK_ID --force"
+          exit 0
+        fi
+        if sprintbias_has_open_questions "$_path"; then
+          # Invariant: READY + open Q cannot stay in next/. Demote loudly.
+          sprintbias_demote_open_questions "$_path" "$BLOCKED_DIR" || true
+          echo ""
+          echo "  Not worked — settle or answer, then promote back to next/:"
+          echo "    ./sprint.sh settle $TASK_ID"
+          echo "    ./sprint.sh chat $TASK_ID"
+          echo "  Or run anyway (skips the check):  ./sprint.sh work $TASK_ID --force"
+          exit 0
+        fi
       fi
       TASK_FILES=("$_path")
       ;;
@@ -359,17 +386,28 @@ fi
 # without that verdict hasn't been checked for clarity — and a headless
 # run can't ask clarifying questions, so ambiguity turns into wandering
 # and failure. Undefined tasks are skipped, not executed. --force overrides.
-# A dependency wait is separate from readiness (and from blocked/): gate stamps
-# a task READY once it is fully defined, and records unfinished prerequisites in
-# '**Depends on**'. That task is DEPENDENT (on hold) — not blocked. This gate
-# holds it in next/ until every prerequisite reaches review/ or done/, then
-# releases it automatically — so nothing executes out of order and no human has
-# to babysit the sequence. (Dependency state is re-checked as each task routes
-# to review/, so A→B→C queued together drains in one pass. --force bypasses the
-# READY stamp only, not dependency order.)
-# Skipped for work N: the single-task path above already resolved readiness
-# (next/ must be READY unless --force; a promoted task graded READY at the gate).
+# Invariant: READY + open questions cannot stay in next/ — demote to blocked/
+# with a loud report (same path as work N). A dependency wait is separate:
+# unfinished **Depends on** keeps a fully-defined READY task in next/ until
+# prereqs reach review/ or done/. --force bypasses the READY stamp only, not
+# dependency order. Skipped for work N: the single-task path already resolved
+# readiness (and demoted open-Q files).
 if [ "$FORCE" -ne 1 ] && [ "$_SINGLE" -eq 0 ]; then
+  # Hygiene first: demote any next/ file that still has open questions so the
+  # queue cannot silently re-accumulate READY+openQ integrity bugs.
+  sprintbias_sweep_ready_open_questions "$NEXT_DIR" "$BLOCKED_DIR"
+
+  # Rebuild the candidate list after demotions (paths under next/ may have moved).
+  TASK_FILES=()
+  while IFS= read -r f; do
+    TASK_FILES+=("$f")
+  done < <(
+    ls -1 "$NEXT_DIR"/*.md 2>/dev/null \
+      | sed 's|.*/||' \
+      | sort -t- -k1,1n \
+      | sed "s|^|$NEXT_DIR/|"
+  )
+
   _defined=()
   _skipped=()
   for _f in "${TASK_FILES[@]}"; do
@@ -380,9 +418,9 @@ if [ "$FORCE" -ne 1 ] && [ "$_SINGLE" -eq 0 ]; then
     fi
   done
   if [ ${#_skipped[@]} -gt 0 ]; then
-    echo "⊘ Skipping ${#_skipped[@]} task(s) not yet defined (no 'Status: READY' verdict):"
+    echo "⊘ Skipping ${#_skipped[@]} task(s) not stamped READY (unvetted):"
     for _f in "${_skipped[@]}"; do echo "    ${_f##*/}"; done
-    echo "  Vet them first:  ./sprint.sh gate"
+    echo "  Vet them:        ./sprint.sh gate"
     echo "  Or run anyway:   ./sprint.sh work --force"
     echo ""
   fi
@@ -529,6 +567,9 @@ _collect_prereqs_from() {
         name="${path##*/}"
         if grep -q '^## Completed' "$path" 2>/dev/null; then
           # Prior run finished the work but never routed — complete the move.
+          # Drop any stale ## Outcome (e.g. re-promoted from blocked/) so
+          # review/ never wears a failure stamp next to ## Completed.
+          _strip_outcome "$path"
           move_file "$path" "$REVIEW_DIR/$name"
           _PREREQ_ROUTED=$((_PREREQ_ROUTED + 1))
           _note_review "$name"
@@ -733,12 +774,47 @@ _report_human_review() {
   echo ""
 }
 
+# After the queue: recap every task that did NOT complete (fail/incomplete/
+# drift-blocked). The reason and location are already stamped and printed
+# inline mid-run, but a long parallel run scrolls them off-screen — this
+# repeats them at the end with the AI-assisted rework command, so a bare
+# "N failed" count is never the only thing the human is left holding.
+_report_failures() {
+  local rec name result dir reason id
+  [ ${#TO_FAIL[@]} -eq 0 ] && return 0
+  echo ""
+  echo "▸ Needs your attention (${#TO_FAIL[@]} did not complete this run):"
+  for rec in "${TO_FAIL[@]}"; do
+    IFS="$FAIL_DELIM" read -r name result dir reason <<< "$rec"
+    id=$(printf '%s' "$name" | grep -oE '^[0-9]+' || true)
+    echo "    $name  [$result]"
+    [ -n "$reason" ] && echo "      Why:   $reason"
+    echo "      Where: $dir/$name"
+    [ "$result" = "failed" ] && echo "      Log:   $LOG_DIR/log-work-${name%.md}-*.json"
+    echo "      → ./sprint.sh chat ${id:-$name}   # rework or redefine with AI assistance"
+  done
+  echo "  Not review/ — these need a redefine or fix before they can re-run."
+  echo ""
+}
+
 _model_args=();  [ -n "$MODEL" ] && _model_args=(--model "$MODEL")
-_budget_args=(); [ -n "${SPRINTBIAS_BUDGET_WORK:-}" ] && _budget_args=(--budget "$SPRINTBIAS_BUDGET_WORK")
+# Budget rides only on a tier that can enforce a USD cap (today Claude Code).
+# Elsewhere the cap is omitted at source, so no provider is handed a spending
+# limit it cannot honor. See sprintbias_budget_capable in lib.sh.
+_budget_args=()
+if sprintbias_budget_capable && [ -n "${SPRINTBIAS_BUDGET_WORK:-}" ]; then
+  _budget_args=(--budget "$SPRINTBIAS_BUDGET_WORK")
+fi
 
 # Shared execution rules — used by both the exec prompt and the emit
 # subagent instruction so they can't drift.
-_TASK_RULES="- Change ONLY files relevant to this task.
+_TASK_RULES="- If the task file has a '## Outcome' block from a PRIOR attempt (Result:
+  failed, incomplete, or blocked), read its Reason FIRST and treat it as a
+  constraint: diagnose what caused that stop and fix the root cause before you
+  redo the work — a retry down the same path earns the same failure. If the
+  Reason shows the task is mis-defined or too big to finish in one run, write
+  that in the task file and stop, rather than burning another identical attempt.
+- Change ONLY files relevant to this task.
 - Grep/Glob first, read minimal code.
 - Use Edit/Write for changes.
 - Run only relevant tests/linters on files you touched.
@@ -815,6 +891,38 @@ If a listed path is already under doing/, it is a RESUME — work it in place
 NOT auto-lifted; leave their dependents in next/ and tell the user to run
 ./sprint.sh chat <id>."
 
+  # Shared closing-report spec. Both emit prompts (orchestrated + sequential)
+  # end with this so their summary matches, in shape, what work prints in exec
+  # mode (_report_human_review + _report_failures). One source so a user gets
+  # the same '▸ Needs your attention' recap whichever mode ran — emit no longer
+  # drops the failure recap that exec produces.
+  _EMIT_REPORT="When every task has been routed, print a final summary in exactly this
+shape (it must match what work prints in exec mode, so the user sees the same
+report whichever mode ran). Omit any section that has no tasks.
+
+▸ Done: <N> completed, <N> failed, <N> incomplete, <N> skipped
+
+For each task now in review/ (implementation done — needs a human to close):
+▸ Requires human review (<N> landed in docs/tasks/review/ this run):
+    <name>
+      Tests: none — human sign-off before done/
+      → git mv docs/tasks/review/<name> docs/tasks/done/<name> || mv docs/tasks/review/<name> docs/tasks/done/<name>
+  (when that task's Tests field names suite scripts instead, replace the two
+   lines under it with:)
+      Tests: <path>
+      → ./sprint.sh promote <id>   # suite green → done/ (still your call to run)
+  Review is not blocked/ — implementation is done; close is human (or promote).
+
+For each task that did NOT complete (landed in blocked/, or a hard fail left in doing/):
+▸ Needs your attention (<N> did not complete this run):
+    <name>  [failed|incomplete|blocked]
+      Why:   <the one-line Reason from that task's ## Outcome stamp>
+      Where: <docs/tasks/blocked/<name>, or docs/tasks/doing/<name> for a hard fail>
+      → ./sprint.sh chat <id>   # rework or redefine with AI assistance
+  Not review/ — these need a redefine or fix before they can re-run.
+
+Use each task's numeric id for <id>."
+
   if sprintbias_orchestration_capable; then
     sprintbias_run -p "You are running the SprintBias task queue: $COUNT task(s) to execute.
 CLAUDE.md / AGENTS.md is auto-loaded when present.${_profile_line}
@@ -834,7 +942,10 @@ For EACH task file listed below (honor dependency order):
 $(sprintbias_subagent_no_nest)
 $_TASK_RULES\"
 3. When the subagent returns, read docs/tasks/doing/<name> and route it:
-   a. contains a '## Completed' section → git mv it to docs/tasks/review/ || mv it to docs/tasks/review/
+   a. contains a '## Completed' section → first DELETE any stale '## Outcome'
+      block left by a prior failed attempt (a completed task must not carry a
+      contradictory failure stamp into review/), then git mv it to
+      docs/tasks/review/ || mv it to docs/tasks/review/
       Then tell the user: Requires human review (or ./sprint.sh promote when **Tests** is set).
    b. otherwise → before moving, append a durable failure stamp to the file so
       every dependent's hold line can name the reason:
@@ -846,10 +957,7 @@ $_TASK_RULES\"
 
 Tasks (in order):$_task_list
 
-When every task has been routed, report:
-- how many landed in review/ vs blocked/
-- list each review/ task as Requires human review (Tests: none → sign-off;
-  Tests: path → ./sprint.sh promote <id> may auto-close)."
+$_EMIT_REPORT"
   else
     # Honest sequential fallback — no subagent tool assumed.
     sprintbias_run -p "You are running the SprintBias task queue: $COUNT task(s) to execute.
@@ -868,7 +976,10 @@ For EACH task file listed below:
 2. Read docs/tasks/doing/<name> and do the work:
 $_TASK_RULES
 3. Route it:
-   a. you wrote a '## Completed' section → git mv it to docs/tasks/review/ || mv it to docs/tasks/review/
+   a. you wrote a '## Completed' section → first DELETE any stale '## Outcome'
+      block left by a prior failed attempt (a completed task must not carry a
+      contradictory failure stamp into review/), then git mv it to
+      docs/tasks/review/ || mv it to docs/tasks/review/
       Then tell the user: Requires human review (or ./sprint.sh promote when **Tests** is set).
    b. otherwise → before moving, append a durable failure stamp to the file so
       every dependent's hold line can name the reason:
@@ -880,10 +991,7 @@ $_TASK_RULES
 
 Tasks (in order):$_task_list
 
-When every task has been routed, report:
-- how many landed in review/ vs blocked/
-- list each review/ task as Requires human review (Tests: none → sign-off;
-  Tests: path → ./sprint.sh promote <id> may auto-close)."
+$_EMIT_REPORT"
   fi
   exit 0
 fi
@@ -929,9 +1037,12 @@ for line in sys.stdin:
   fi
 }
 
-# Run the AI on a task already in doing/. The raw stream-json event log
-# always lands in docs/tmp/; pass display=1 (sequential mode) to also
-# render live progress on the terminal. Returns the CLI's exit code.
+# Run the AI on a task already in doing/. Requests the provider-neutral
+# stream-json contract (NDJSON progress + Claude-shaped assistant/result
+# events). Profiles translate: Claude keeps stream-json (+ --verbose);
+# Grok maps to streaming-messages-json and drops Claude-only flags.
+# Raw event log always lands in docs/tmp/; pass display=1 (sequential) to
+# also render live progress on the terminal. Returns the CLI's exit code.
 _run_task() {
   local name="$1" display="${2:-0}" log
   log="$(sprintbias_log_path work "$name")"
@@ -941,7 +1052,7 @@ _run_task() {
       ${_budget_args[@]+"${_budget_args[@]}"} \
       --tools "$TOOLS" \
       --permissions "$PERMISSIONS" \
-      --output-format stream-json --verbose 2>&1 \
+      --output-format stream-json 2>&1 \
       | tee "$log" | _stream_filter
   else
     sprintbias_run -p "$(_task_prompt "$WORKING_DIR/$name")" \
@@ -949,7 +1060,7 @@ _run_task() {
       ${_budget_args[@]+"${_budget_args[@]}"} \
       --tools "$TOOLS" \
       --permissions "$PERMISSIONS" \
-      --output-format stream-json --verbose > "$log" 2>&1
+      --output-format stream-json > "$log" 2>&1
   fi
 }
 
@@ -993,13 +1104,15 @@ _route_result() {
     echo "  ✓ Complete → $REVIEW_DIR/$name"
     echo "    Requires human review (or ./sprint.sh promote when **Tests** is set)"
   elif [ "$rc" -eq 0 ]; then
-    # Ran to completion but never wrote ## Completed — the run stopped short
-    # (or hit the budget cap). Stamp a durable Outcome so dependents' hold lines
-    # can name the reason, then route to blocked/.
+    # Ran to completion but never wrote ## Completed. Stamp only what we
+    # observed — the section is missing — and name no cause, because nothing
+    # here measured one. The wording is identical on every tier.
     _stamp_outcome "$WORKING_DIR/$name" incomplete \
-      "run stopped short — no '## Completed' section (budget cap or early exit)"
+      "run ended without a '## Completed' section"
     move_file "$WORKING_DIR/$name" "$BLOCKED_DIR/$name"
     INCOMPLETE=$((INCOMPLETE + 1))
+    _note_fail "$name" incomplete "$BLOCKED_DIR" \
+      "run ended without a '## Completed' section"
     echo "  ⚠ Incomplete — no '## Completed' section."
     echo "    → Moved to $BLOCKED_DIR/$name (## Outcome stamped: incomplete)"
   else
@@ -1009,6 +1122,7 @@ _route_result() {
     _stamp_outcome "$WORKING_DIR/$name" failed \
       "task run exited non-zero (rc=$rc) — see docs/tmp/log-work-${name%.md}-*.json"
     FAILED=$((FAILED + 1))
+    _note_fail "$name" failed "$WORKING_DIR" "CLI exited non-zero (rc=$rc)"
     HARD_FAIL=1
     echo "  ✗ Failed (exit $rc) — left in $WORKING_DIR/$name (## Outcome stamped: failed)"
     echo "    Log: docs/tmp/log-work-${name%.md}-*.json"
@@ -1283,6 +1397,9 @@ Rules:
         _drift_reason=$(echo "$DRIFT_VERDICT" | grep -iE 'complete|done' | head -1)
         echo "  ✓ Drift check: COMPLETE (work already in codebase) — $_drift_reason"
         echo "    → Moving to review/"
+        # Same invariant as the success route in _route_result: a task that
+        # lands in review/ must not carry a stale failure ## Outcome.
+        _strip_outcome "$WORKING_DIR/$TASK_NAME"
         move_file "$WORKING_DIR/$TASK_NAME" "$REVIEW_DIR/$TASK_NAME"
         COMPLETED=$((COMPLETED + 1))
         _note_review "$TASK_NAME"
@@ -1319,6 +1436,8 @@ Rules:
             _stamp_outcome "$WORKING_DIR/$TASK_NAME" blocked \
               "drift check flagged codebase drift; sent to manual review"
             move_file "$WORKING_DIR/$TASK_NAME" "$BLOCKED_DIR/$TASK_NAME"
+            _note_fail "$TASK_NAME" blocked "$BLOCKED_DIR" \
+              "drift check flagged codebase drift; sent to manual review"
             echo ""
             continue
             ;;
@@ -1376,6 +1495,7 @@ _done_extra=""
 echo "▸ Done: $COMPLETED completed, $FAILED failed, $INCOMPLETE incomplete, $(( ${#TASK_FILES[@]} - COMPLETED - FAILED - INCOMPLETE )) skipped — total $((TOTAL_ELAPSED / 60))m $((TOTAL_ELAPSED % 60))s${_done_extra}"
 unset _done_extra
 _report_human_review
+_report_failures
 # `if`, not `&&`: this is the script's last statement, and a false `[ ]` on a
 # blocker-free run would become the script's non-zero exit status.
 if [ "$BLOCKERS" -gt 0 ]; then

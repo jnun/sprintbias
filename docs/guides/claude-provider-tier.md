@@ -51,7 +51,7 @@ positional prompt		positional						Interactive only — starts the REPL on that 
 --permissions			--permission-mode				e.g. auto
 --skip-permissions		--dangerously-skip-permissions	Unattended loops / batch
 --output-format			--output-format					json; may upgrade to stream-json for live progress
---budget				--max-budget-usd				Spend cap when set
+--budget				--max-budget-usd				Spend cap when set. Claude is the only budget-capable tier (sprintbias_budget_capable), so it is the only one call sites send this to
 --name					--name							Session label
 --append-system-prompt	--append-system-prompt			Extra system rules for the run
 

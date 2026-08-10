@@ -26,12 +26,14 @@ prerequisite first, or work the whole sprint so the chain drains in order.
 (In emit mode the backlog/blocked gate is handed to the surrounding agent to
 run; land the task READY in next/, then re-run `work N` to execute it.)
 
-Readiness gate: only tasks stamped 'Status: READY' are executed. The
-stamp comes from the workability gate — every path into next/ (plan start,
-chat folder commit, chat close-loop, polish REOPEN, loop --retry) runs that
-gate; standalone `gate` re-applies it on demand. A headless run can't ask
-clarifying questions, so unvetted tasks are skipped (left in next/) rather
-than run half-understood. Override with --force.
+Readiness gate: only tasks stamped 'Status: READY' with a clear question list
+are executed. The stamp comes from the workability gate — every path into
+next/ (plan start, chat folder commit, chat close-loop, polish REOPEN, loop
+--retry) runs that gate; standalone `gate` re-applies it on demand. Open
+questions under ### Questions for the developer keep the task on hold — answer
+them (`chat <id>`), write each answer as instruction in the body, delete the
+question, then re-gate. A headless run skips unvetted or still-open tasks so
+they are refined first. Override with --force.
 
 Dependency-aware: a task's '**Depends on**:' prerequisites are honored
 within a single run. For each open prerequisite, `work` acts by stage:
@@ -63,9 +65,17 @@ block so the failure is diagnosable instead of a mystery hold:
   **At**: YYYY-MM-DD
 
 A dependent's hold line then names that outcome — e.g.
-`294 (blocked/ — incomplete: budget) — chat 294` — so you can see WHY a
+`294 (blocked/ — incomplete: run ended without a '## Completed') — chat 294`
+— so you can see WHY a
 prerequisite is holding the chain. A task that later completes drops the stale
 stamp on its way to review/.
+
+The stamp also feeds the next attempt: when work re-runs a task that carries a
+prior **## Outcome** (failed/incomplete/blocked), it reads that Reason FIRST and
+must fix the root cause before redoing the work — a retry down the same path
+earns the same failure. If the Reason shows the task is mis-defined or too big
+for one run, the attempt says so and stops instead of burning another identical
+try. So each failure sharpens the next attempt rather than repeating it.
 
 For each ready task it:
   - Moves the task file to doing/ (`git mv SRC DEST || mv SRC DEST`)
@@ -81,9 +91,18 @@ review** — that is not `blocked/`. Implementation is done; close is a human
 sign-off to `done/`, or `./sprint.sh promote` when the task’s **Tests** field
 names suite scripts. `Tests: none` always means eyes before done/.
 
+Anything that did NOT complete — a hard fail, an incomplete stop, or a
+drift-blocked task — is recapped at the very end under **Needs your
+attention**, one entry per task with its stamped reason, where it landed, and
+a `./sprint.sh chat <id>` line to rework or redefine it with AI assistance. So
+a bare `N failed` count in the `▸ Done:` line is never the only thing you are
+left holding.
+
 Lifecycle moves always try `git mv` first, then plain `mv` when the file is
-not yet tracked. There is no turn limit — the per-run budget cap
-(BUDGET_WORK in docs/sprintbias/config, default $5) is the only guardrail.
+not yet tracked. There is no turn limit. A per-run budget cap (BUDGET_WORK in
+docs/sprintbias/config, default $5) applies when the provider supports spending
+caps — today Claude Code only. On any other tier the cap is omitted and the run
+is uncapped.
 
 Does NOT commit. You review the changes and commit yourself.
 
@@ -99,10 +118,14 @@ Usage:
   ./sprint.sh work --parallel       # run all tasks concurrently (2 jobs)
   ./sprint.sh work --fast           # shorthand for --parallel with 4 jobs
   ./sprint.sh work --jobs N         # run parallel with N concurrent jobs
-  ./sprint.sh work --max            # no budget cap
-  ./sprint.sh work --fast --max     # parallel (4 jobs), no budget cap
+  ./sprint.sh work --max            # clear the budget cap (where one applies)
+  ./sprint.sh work --fast --max     # parallel (4 jobs), cap cleared
   ./sprint.sh work --assist         # interactive mode picker
   ./sprint.sh work --verbose        # stream full per-task event detail
+
+Integrity: a next/ task stamped READY that still has open questions under
+### Questions for the developer is demoted to blocked/ (loud report). Clear
+suggestions with `./sprint.sh settle`, or answer via `./sprint.sh chat <id>`.
   ./sprint.sh work --model <id>     # pin the model for this run only
 
 Quality chain: --audit runs polish --code (correctness) on each task that

@@ -108,35 +108,9 @@ file_of()  { printf '%s\n' "$INDEX" | awk -F'\t' -v id="$1" '$1==id{print $3; ex
 is_open() { case " $OPEN_STAGES " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 # ── Open-question extraction ─────────────────────────────────────────
-# The single most common reason a task looks ready but isn't. Two precise
-# sources, never free prose:
-#   (a) the '### Questions for the developer' subsection (define/chat convention);
-#   (b) a strict inline "Open questions:" LABEL in ## Notes — a line that is ONLY
-#       that label, then the list directly under it (the pre-migration 222 shape).
-# From either, keep only TOP-LEVEL list items (marker at column 0) — continuation
-# sub-bullets of a resolved item are indented and so are skipped — and drop any
-# item already marked resolved/answered/decided or a none-sentinel. Conservative
-# by design; the conversational layer re-reads the file and skips anything
-# already settled, so a stray false positive costs one glance, never a bad edit.
-open_questions() {
-  local file="$1"
-  {
-    awk '
-      /^### Questions for the developer[[:space:]]*$/ { cap=1; next }
-      cap && /^(## |### )/ { cap=0 }
-      cap { print }
-    ' "$file"
-    awk '
-      /^[#>*[:space:]]*[Oo]pen [Qq]uestions?[[:space:]:*]*$/ { cap=1; next }
-      cap && (/^[[:space:]]*$/ || /^(## |### )/) { cap=0 }
-      cap { print }
-    ' "$file"
-  } 2>/dev/null \
-    | grep -E '^([-*]|[0-9]+\.)[[:space:]]' \
-    | grep -viE '^([-*]|[0-9]+\.)[[:space:]]+\**(resolved|answered|decided|settled|none)\b' \
-    | sed -E 's/^([-*]|[0-9]+\.)[[:space:]]*//; s/\*\*//g; s/[[:space:]]+/ /g' \
-    || true
-}
+# Shared helper in lib.sh (sprintbias_open_questions). List holds questions still
+# waiting on an answer; answered ones become body instruction and leave the list.
+open_questions() { sprintbias_open_questions "$1"; }
 
 # short TEXT [MAX] -> collapse to a single scannable line, ellipsizing past MAX.
 # Findings feed a terminal list and the prompt; the AI re-reads the file for the
@@ -224,12 +198,12 @@ for id in $(board_ids); do
     qshort="$(short "$q")"
     if [ "$stage" = "next" ] && [ "$verdict" = "READY" ]; then
       add_finding 2 INTEGRITY "$id" "$file" \
-        "is marked READY but carries an open question: \"$qshort\"" \
-        "answer/decide it and write the resolution back into the file, or 'chat $id' to define it"
+        "is marked READY but still has an open question: \"$qshort\"" \
+        "answer it, write the answer as instruction in the body, delete the question, or 'chat $id'"
     else
       add_finding 3 ORDERING "$id" "$file" \
-        "has an outstanding question: \"$qshort\"" \
-        "answer/decide it and write the resolution back into the file, or 'chat $id' to define it"
+        "has an open question: \"$qshort\"" \
+        "answer it, write the answer as instruction in the body, delete the question, or 'chat $id'"
     fi
   done <<EOF
 $(open_questions "$file")
@@ -442,11 +416,16 @@ For EACH finding:
    - real decision/clarification work: CHAIN OUT to './sprint.sh chat <id>' in a fresh window — do not settle it inline.
 4. MOVE ON — note what is settled, then the next finding.
 
-OUTSTANDING QUESTIONS — write back, do not merely discuss
-Surface as: Task <id> has an outstanding question: \"<question text>\". Let the user ANSWER, DECIDE, or give FEEDBACK; write it into the task file:
-   - replace the open question with a resolved decision under '### Resolved decisions (<date>, by the developer)', and
-   - when none remain, flip '**Status:**' to READY.
-If it needs real definition work, chain './sprint.sh chat <id>' instead.
+OUTSTANDING QUESTIONS — answers become instructions
+Surface as: Task <id> has an open question: \"<question text>\". Let the user
+ANSWER or DECIDE; then in one edit:
+   1. CONVERT the answer into clear instruction or guidance.
+   2. UPDATE the task body (Success criteria when it defines done; otherwise Notes).
+   3. DELETE that question from '### Questions for the developer'.
+When the list is empty, set the subsection to 'None — task is fully defined.'
+and set '**Status:**' to READY when the brief is workable. While a question
+remains open, keep the task BLOCKED (or out of READY).
+If it needs deeper definition work, chain './sprint.sh chat <id>' instead.
 
 $NEXT_BLOCKED_RESOLUTION
 

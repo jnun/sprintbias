@@ -317,8 +317,11 @@ fi
 
 _model_args=()
 [ -n "$MODEL" ] && _model_args=(--model "$MODEL")
+# Budget only on a cap-capable tier (today Claude Code) — see lib.sh.
 _budget_args=()
-[ -n "${SPRINTBIAS_BUDGET_DEPS:-}" ] && _budget_args=(--budget "$SPRINTBIAS_BUDGET_DEPS")
+if sprintbias_budget_capable && [ -n "${SPRINTBIAS_BUDGET_DEPS:-}" ]; then
+  _budget_args=(--budget "$SPRINTBIAS_BUDGET_DEPS")
+fi
 
 LOG_FILE="$(sprintbias_log_path deps "$(basename "$TASK_FILE")")"
 

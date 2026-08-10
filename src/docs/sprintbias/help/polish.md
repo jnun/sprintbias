@@ -77,7 +77,7 @@ Usage:
   ./sprint.sh polish 3               # sweep at most 3 tasks (if no task 3)
   ./sprint.sh polish --rounds 2      # allow up to 2 reopens per task
   ./sprint.sh polish --force         # ignore the round cap this run
-  ./sprint.sh polish --max           # no budget cap
+  ./sprint.sh polish --max           # clear the budget cap (where one applies)
   ./sprint.sh polish <task.md>       # deep-judge one finished piece
   ./sprint.sh polish file1.py file2  # deep-judge explicit files
   ./sprint.sh polish --code 874      # code-audit task 874
