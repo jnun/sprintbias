@@ -20,38 +20,38 @@
 # display order. A command may have a second row for a notable sub-form
 # (e.g. validate --docs); existence checks dedupe on the command field.
 
-newidea       | create   | [name]              | Create a new idea (no name = AI Q&A)
-newfeature    | create   | [name]              | Create a new feature (no name = AI Q&A)
-newtask       | create   | <description>       | Create a new task
-newplan       | create   | <name> [task-id...|parent:N] | Create a plan — named task-ID list; parent:N binds open parent+children (fast lane)
+newidea       | create   | [name]              | Create a new idea (no name = AI Q&A) | newidea
+newfeature    | create   | [name]              | Create a new feature (no name = AI Q&A) | newfeature
+newtask       | create   | <description>       | Create a new task | newtask
+newplan       | create   | <name> [task-id...|parent:N] | Create a plan — named task-ID list; parent:N binds open parent+children (fast lane) | newplan
 newbug        | create   | <description>       | Report a new bug | bug
-newtest       | create   | <name>              | Create a test loop to validate a deployed thing
+newtest       | create   | <name>              | Create a test loop to validate a deployed thing | newtest
 
-chat          | chat     | [target]            | id: define/refine/split one task · folder (blocked/next/backlog): sweep · plan [id]: author a plan · bugs: sweep inbox · nothing: walk sprint health (spine: chat → plan start → work)
+chat          | chat     | [target]            | id: define/refine/split one task · folder (blocked/next/backlog): sweep · plan [id]: author a plan · bugs: sweep inbox · nothing: walk sprint health (spine: chat → plan start → work) | chat
 
 plan          | plan     | think/start/done [id] | think: dual-persona plan critique · start: gate + commit members to next/ (the sprint), latches STARTED · done: delete the plan once every member is in done/ — heads the spine → work | feature-plan
 
 work          | work     | [N] [count N] [--fast] | Execute — happy path: run READY tasks in next/ → review/ (after plan start). `work N` works one task by id; `count N` caps how many run | work
-loop          | work     | [--refill] [--retry]| Autopilot spine — plan start refill (gates as it commits) then work drain
+loop          | work     | [--refill] [--retry]| Autopilot spine — plan start refill (gates as it commits) then work drain | loop
 gate          | work     | [folder] [limit]    | Off-spine quality gate — re-gate next/ (--force) or report on backlog/doing/blocked (not the happy path) | gate
 settle        | work     | [id] [--dry-run] [--blocked] | Accept (Suggestion: …) open questions — fold into Notes, clear list; demote next/ files that still need a human
-split         | work     | <path>              | Off-spine — one-shot split of a large task into subtasks (no conversation)
-polish        | work     | [limit/id/file] [--code] [--rounds N] | After work — quality sweep review/, deep-judge a task (by id or file), or --code audit
-promote       | work     | [id] [--dry-run]    | Test-gated close — run each review/ task's **Tests**, all green → done/
+split         | work     | <path>              | Off-spine — one-shot split of a large task into subtasks (no conversation) | split
+polish        | work     | [limit/id/file] [--code] [--rounds N] | After work — quality sweep review/, deep-judge a task (by id or file), or --code audit | polish
+promote       | work     | [id] [--dry-run]    | Test-gated close — run each review/ task's **Tests**, all green → done/ | promote
 
 status        | look     |                     | Show project status | status
-search        | look     | <keyword>           | Search tasks by keyword
-learn         | look     | [demo]              | Watch the flow run — play a sandboxed demo (no name = list demos)
-align         | look     |                     | Analyze feature alignment
-context       | look     |                     | Generate AI context summary
+search        | look     | <keyword>           | Search tasks by keyword | search
+learn         | look     | [demo]              | Watch the flow run — play a sandboxed demo (no name = list demos) | learn
+align         | look     |                     | Analyze feature alignment | align
+context       | look     |                     | Generate AI context summary | context
 
-profile       | keep     |                     | Create or update project profile (interactive)
+profile       | keep     |                     | Create or update project profile (interactive) | profile
 profile       | keep     | show                | Print current project profile (no AI)
-sync          | keep     | [--all]             | Push task changes to GitHub
-validate      | keep     | [--fix] [--dry-run] | Integrity-check task IDs and Depends on / Dependents
+sync          | keep     | [--all]             | Push task changes to GitHub | sync
+validate      | keep     | [--fix] [--dry-run] | Integrity-check task IDs and Depends on / Dependents | validate
 validate      | keep     | --docs              | Check help/*.md for flag drift vs scripts
 validate      | keep     | --commands          | Check every command is fully surfaced (this registry ↔ dispatch ↔ help ↔ manual)
-cleanup       | keep     | [--delete/--force/--all] | Clean stale scratch files
-deps          | keep     |                     | File a backlog task auditing outdated/vulnerable deps
+cleanup       | keep     | [--delete/--force/--all] | Clean stale scratch files | cleanup
+deps          | keep     |                     | File a backlog task auditing outdated/vulnerable deps | deps
 model         | keep     | show/list/set [k v] | See the effective AI model per role, list provider models, or set a default (no AI)
 config        | keep     |                     | Interactively set the AI provider and default model in docs/sprintbias/config (no AI)

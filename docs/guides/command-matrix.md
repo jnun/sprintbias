@@ -122,6 +122,7 @@ gate [folder]	READY-gate next/ (default), or quality report on another folder
 settle [id]	Accept (Suggestion: …) open questions; demote READY+openQ out of next/
 split \<path\>	One-shot: one large task → atomic children (no conversation)
 polish …		Post-work quality: sweep review/, deep-judge a task (id/file), or --code
+			(sweep takes work's --parallel/--fast/--jobs N to fan judges out)
 promote [id]	Test-gated close: run each review/ task's **Tests**, all green → done/
 
 Happy path: `plan start` → `work`. `plan start` already gates on commit, so

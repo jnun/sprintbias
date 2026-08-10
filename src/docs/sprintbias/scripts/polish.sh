@@ -30,14 +30,21 @@ MAX_TASKS=999
 MAX_ROUNDS=1
 _NO_LIMITS=0
 FORCE=0
+# Parallel fan-out — sweep only. Same surface as work: --parallel (2 jobs),
+# --fast (4), --jobs N. --jobs N caps the headless judge semaphore; in emit
+# mode --parallel/--fast only flip the wording to concurrent fan-out (the cap
+# is a headless-only knob and is never threaded into the emit prompt).
+PARALLEL=0
+MAX_JOBS=2
 MAX_PASSES="${SPRINTBIAS_AUDIT_MAX_PASSES:-3}"
 POSITIONAL=()
 
 _usage() {
   cat >&2 <<'EOF'
 Usage:
-  ./sprint.sh polish [limit] [--rounds N] [--max] [--force]
+  ./sprint.sh polish [limit] [--rounds N] [--parallel|--fast|--jobs N] [--max] [--force]
       Sweep review/: reopen tasks worth another execution pass.
+      --parallel/--fast/--jobs N fan the independent judges out concurrently.
 
   ./sprint.sh polish <id|task.md|file> [file...]
       Deep-judge one finished piece (an id targets that task); file
@@ -58,6 +65,12 @@ while [ $# -gt 0 ]; do
       ;;
     --max)   _NO_LIMITS=1; shift ;;
     --force) FORCE=1; shift ;;
+    --parallel) PARALLEL=1; shift ;;
+    --fast)     PARALLEL=1; MAX_JOBS=4; shift ;;
+    --jobs)
+      [ $# -lt 2 ] && { echo "✗ --jobs needs a number" >&2; exit 1; }
+      PARALLEL=1; MAX_JOBS="$2"; shift 2
+      ;;
     --model)
       # Pin the model for THIS run only via the resolver's per-run lever
       # (SPRINTBIAS_MODEL_DEFAULT) — no config edit. See ./sprint.sh model.
@@ -86,6 +99,10 @@ if ! [[ "$MAX_ROUNDS" =~ ^[0-9]+$ ]]; then
 fi
 if ! [[ "$MAX_PASSES" =~ ^[0-9]+$ ]]; then
   echo "✗ max-passes needs a number (got: $MAX_PASSES)" >&2
+  exit 1
+fi
+if ! [[ "$MAX_JOBS" =~ ^[0-9]+$ ]] || [ "$MAX_JOBS" -lt 1 ]; then
+  echo "✗ --jobs needs a positive number (got: $MAX_JOBS)" >&2
   exit 1
 fi
 
@@ -148,6 +165,15 @@ elif [ "$_has_path" -eq 1 ]; then
 else
   MODE="sweep"
   [ -n "$_numeric_limit" ] && MAX_TASKS="$_numeric_limit"
+fi
+
+# Parallel fan-out is a sweep-only affordance: only the review/ sweep writes
+# nothing but task files, so only it is safe to overlap. Deep-judge and --code
+# operate within one task file (and --code may edit product code), so they stay
+# single-target — the flags are ignored there with a note rather than silently.
+if [ "$PARALLEL" -eq 1 ] && [ "$MODE" != "sweep" ]; then
+  echo "▸ --parallel/--fast/--jobs apply to the review/ sweep only — ignored for $MODE mode" >&2
+  PARALLEL=0
 fi
 
 # Honest bail when no changed-file manifest can be built for a finished task.
@@ -959,18 +985,33 @@ Success criteria, ## Completed, and '**Status: READY**' stamp untouched. End
 with: VERDICT: PASS | REOPEN — <n> | BLOCKER — <reason>."
 
   if sprintbias_orchestration_capable; then
+    # --parallel/--fast only flips the dispatch wording from sequential
+    # ("one subagent, when it returns") to concurrent fan-out. The numeric
+    # --jobs cap is a headless-only knob and is deliberately NOT threaded here.
+    if [ "$PARALLEL" -eq 1 ]; then
+      _dispatch="Fan the judge subagents out CONCURRENTLY: launch one subagent per task
+file below at the same time — do not wait for one to return before starting the
+next. The judges run in parallel; you serialize only the routing. Each
+subagent's entire instruction is:
+     \"Refine ONE finished task. Read the task file at <path> and judge it.
+$(sprintbias_subagent_no_nest)
+$_RULES\"
+As each subagent returns, read its task file and route by its verdict:"
+    else
+      _dispatch="For EACH task file below:
+1. Launch a subagent whose entire instruction is:
+     \"Refine ONE finished task. Read the task file at <path> and judge it.
+$(sprintbias_subagent_no_nest)
+$_RULES\"
+2. When it returns, read the task file and route by the subagent's verdict:"
+    fi
     sprintbias_run -p "You are running the SprintBias polish queue: $COUNT finished
 task(s) in review/ to judge. CLAUDE.md / AGENTS.md is auto-loaded when present.${_profile_line}
 
 Judge each task in $(sprintbias_subagent_own_fresh polish) so contexts never mix.
 You are the orchestrator — the subagents judge and rewrite; you move the files.
 
-For EACH task file below:
-1. Launch a subagent whose entire instruction is:
-     \"Refine ONE finished task. Read the task file at <path> and judge it.
-$(sprintbias_subagent_no_nest)
-$_RULES\"
-2. When it returns, read the task file and route by the subagent's verdict:
+$_dispatch
    - REOPEN (it appended a '## Rework (round N)' section) → increment the
      '**Reworked**:' header integer by 1 (seed the field as 1 if the task
      lacks it), then COMMIT TO SPRINT via the shared gate ONLY:
@@ -1026,29 +1067,43 @@ if sprintbias_budget_capable && [ -n "${SPRINTBIAS_BUDGET_AUDIT:-}" ]; then
   _budget_args=(--budget "$SPRINTBIAS_BUDGET_AUDIT")
 fi
 
+# ── Per-task state captured BEFORE any judge runs ──────────────────────
+# Log path, next-round number, and the pre-judge '## Rework' section count are
+# read up front so a backgrounded judge changes nothing the parent relies on to
+# route. Each judge writes ONLY its own task file and its own log; the parent
+# parses the verdict and owns every shared mutation (the four counters, the
+# **Reworked** bump, and the gate) AFTER a judge returns — exactly the division
+# of labour work.sh's _run_task/_route_result give.
+LOGS=(); ROUNDS=(); BEFORE=()
 for ((i=0; i<COUNT; i++)); do
-  TASK_FILE="${TASK_FILES[$i]}"
-  TASK_NAME="${TASK_FILE##*/}"
-  N=$((i + 1))
-  TASK_START=$SECONDS
-  BEFORE_SECTIONS="$(_rework_sections "$TASK_FILE")"
-  NEXT_ROUND=$(( $(_rework_count "$TASK_FILE") + 1 ))
+  LOGS+=("$(sprintbias_log_path polish "${TASK_FILES[$i]##*/}")")
+  ROUNDS+=("$(( $(_rework_count "${TASK_FILES[$i]}") + 1 ))")
+  BEFORE+=("$(_rework_sections "${TASK_FILES[$i]}")")
+done
 
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "▸ Polish $N/$COUNT: $TASK_NAME (round $NEXT_ROUND)"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-  LOG_FILE="$(sprintbias_log_path polish "$TASK_NAME")"
-
-  OUTPUT=$(sprintbias_run -p "$(_refine_prompt "$TASK_FILE" "$NEXT_ROUND")" \
+# Run the refine judge for task i into its OWN log. Backgroundable: it must not
+# touch a shared counter or call the gate — those are the parent's job.
+_run_refine() {
+  local i="$1"
+  sprintbias_run -p "$(_refine_prompt "${TASK_FILES[$i]}" "${ROUNDS[$i]}")" \
     ${_model_args[@]+"${_model_args[@]}"} \
     ${_budget_args[@]+"${_budget_args[@]}"} \
     --tools "$TOOLS" \
     --permissions "$PERMISSIONS" \
     --max-turns "$MAX_TURNS" \
-    --output-format json 2>/dev/null | tee "$LOG_FILE") || true
+    --output-format json > "${LOGS[$i]}" 2>/dev/null || true
+}
 
-  VERDICT=$(printf '%s' "$OUTPUT" | sprintbias_parse_verdict 'PASS|REOPEN|BLOCKER')
+# Route task i by the verdict in its log. Runs ONLY in the parent (never
+# backgrounded), so REOPENED/PASSED/BLOCKED/UNCLEAR, the **Reworked** bump, and
+# gate promotion all stay serialized even under --jobs N — no count is lost to a
+# background job and no concurrent git mv reaches the gate.
+_route_refine() {
+  local i="$1"
+  local TASK_FILE="${TASK_FILES[$i]}" TASK_NAME="${TASK_FILES[$i]##*/}"
+  local LOG_FILE="${LOGS[$i]}" NEXT_ROUND="${ROUNDS[$i]}" BEFORE_SECTIONS="${BEFORE[$i]}"
+  local VERDICT AFTER_SECTIONS
+  VERDICT=$(sprintbias_parse_verdict 'PASS|REOPEN|BLOCKER' < "$LOG_FILE")
   [ -z "$VERDICT" ] && VERDICT="UNCLEAR"
   AFTER_SECTIONS="$(_rework_sections "$TASK_FILE")"
 
@@ -1092,11 +1147,77 @@ for ((i=0; i<COUNT; i++)); do
       [ -s "$LOG_FILE" ] || echo "    Log is empty — the AI CLI likely failed to start (check '$SPRINTBIAS_CLI')"
       ;;
   esac
+}
 
-  TASK_ELAPSED=$((SECONDS - TASK_START))
-  echo "⏱ Elapsed: $((TASK_ELAPSED / 60))m $((TASK_ELAPSED % 60))s"
+if [ "$PARALLEL" -eq 1 ] && [ "$COUNT" -gt 1 ]; then
+  # ── Parallel sweep — fan the judges out, route each as it returns ─────
+  # A semaphore keeps at most MAX_JOBS refine calls in flight. Each judge runs
+  # backgrounded into its own log; the parent polls, and the instant one exits
+  # it routes and counts it — serialized — before topping the pool back up.
+  echo "▸ Judging up to $COUNT task(s) concurrently, --jobs $MAX_JOBS..."
   echo ""
-done
+  STATE=(); PIDS=()
+  for ((i=0; i<COUNT; i++)); do STATE+=(0); PIDS+=(0); done
+
+  # shellcheck disable=SC2154
+  trap '
+    echo ""; echo "▸ Interrupted — killing background judges..."
+    for p in "${PIDS[@]}"; do [ "$p" -ne 0 ] && kill "$p" 2>/dev/null; done
+    wait 2>/dev/null
+    echo "▸ Tasks left in '"$REVIEW_DIR"'/ for inspection"
+    exit 130' INT TERM
+
+  LAUNCHED=0; RUNNING=0; NEXT=0
+  _launch_more() {
+    while [ "$RUNNING" -lt "$MAX_JOBS" ] && [ "$NEXT" -lt "$COUNT" ]; do
+      _run_refine "$NEXT" &
+      PIDS[$NEXT]=$!
+      STATE[$NEXT]=1
+      RUNNING=$((RUNNING + 1)); LAUNCHED=$((LAUNCHED + 1))
+      echo "  ▸ Judging $((NEXT + 1))/$COUNT: ${TASK_FILES[$NEXT]##*/} (round ${ROUNDS[$NEXT]})"
+      NEXT=$((NEXT + 1))
+    done
+  }
+  _launch_more
+  echo ""
+
+  while [ "$RUNNING" -gt 0 ]; do
+    _progressed=0
+    for ((i=0; i<COUNT; i++)); do
+      if [ "${STATE[$i]}" -eq 1 ] && ! kill -0 "${PIDS[$i]}" 2>/dev/null; then
+        wait "${PIDS[$i]}" 2>/dev/null || true
+        STATE[$i]=2
+        RUNNING=$((RUNNING - 1))
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "▸ Judged ${TASK_FILES[$i]##*/} ($((SECONDS - TOTAL_START))s elapsed)"
+        _route_refine "$i"
+        echo ""
+        _progressed=1
+      fi
+    done
+    [ "$_progressed" -eq 1 ] && _launch_more
+    [ "$RUNNING" -gt 0 ] && sleep 3
+  done
+
+else
+  # ── Sequential sweep (default) ───────────────────────────────────────
+  for ((i=0; i<COUNT; i++)); do
+    TASK_NAME="${TASK_FILES[$i]##*/}"
+    N=$((i + 1))
+    TASK_START=$SECONDS
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "▸ Polish $N/$COUNT: $TASK_NAME (round ${ROUNDS[$i]})"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    _run_refine "$i"
+    _route_refine "$i"
+
+    TASK_ELAPSED=$((SECONDS - TASK_START))
+    echo "⏱ Elapsed: $((TASK_ELAPSED / 60))m $((TASK_ELAPSED % 60))s"
+    echo ""
+  done
+fi
 
 TOTAL_ELAPSED=$((SECONDS - TOTAL_START))
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

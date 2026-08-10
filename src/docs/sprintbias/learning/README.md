@@ -10,8 +10,16 @@ grows without rot — one voice, one look, one trust contract.
 
 ## Curriculum map
 
-Each demo is a **person in a situation**, not a feature tour. Stories grow into
-each other: capture → convert → plan → automate.
+Each demo is a **person in a situation**, not a feature tour. The catalog has two
+layers that stack:
+
+1. **Spine stories** — multi-command journeys (capture → convert → plan →
+   automate) that teach the flow end to end.
+2. **Per-command scenarios** — one short vignette per user-facing command so a
+   cold user can watch *that* command's real-world moment without reading docs
+   (plan 18). Both layers honor the same trust contract and vocabulary.
+
+### Spine stories
 
 | Story | Lesson (one line)                                   | File              |
 |-------|-----------------------------------------------------|-------------------|
@@ -24,12 +32,33 @@ each other: capture → convert → plan → automate.
 | S7    | The whole board at a glance — every stage, plan, and hold, alive | `status.py` |
 | S8    | One command drains the READY queue: next/ → review/, your pace | `work.py` |
 
-S0–S1 ship now (tasks #313, #315); S2/S3/S5/S6 land as tasks #317/#324/#316/#325.
-S7 is the panorama capstone — it zooms out from one task's journey to the whole
-project mid-stride, and maps to the `status` command (`./sprint.sh status --demo`).
-S8 is the execute payoff — it centers on `work` itself (the drain, `work <id>`,
-`count N`, dependency holds) and maps to the `work` command (`./sprint.sh work --demo`).
-Full curriculum rationale: `docs/plans/13-autolearning.md`.
+### Per-command scenarios (play via `learn <name>` or `<cmd> --demo`)
+
+| Command | Lesson (one line) | File |
+|---------|-------------------|------|
+| `newidea` | Capture a half-formed idea through eight phases | `newidea.py` |
+| `newfeature` | Turn a product wish into a feature spec | `newfeature.py` |
+| `newtask` | Capture an interrupting task in one line without breaking flow | `newtask.py` |
+| `newplan` | Group known task IDs into a plan in one line | `newplan.py` |
+| `newtest` | After deploy, capture a claim you can prove (gates promote) | `newtest.py` |
+| `chat` | Talk an existing plan into shape: goal, order, READY | `chat.py` |
+| `loop` | Unattended autopilot — refill, drain, gate still holds | `loop.py` |
+| `split` | Break an oversized task; the graph stays whole | `split.py` |
+| `polish` | A second look at review/ catches work that isn't done | `polish.py` |
+| `promote` | Close only what's proven: Tests green + deps closed → done/ | `promote.py` |
+| `search` | Find any task by keyword across the whole board | `search.py` |
+| `learn` | Browse the catalog and play a sandboxed demo | `learn.py` |
+| `align` | Spot feature gaps and orphan tasks before the next sprint | `align.py` |
+| `context` | One dump of project state for an agent (or you) | `context.py` |
+| `profile` | Capture project conventions so AI commands inherit them | `profile.py` |
+| `sync` | Push task changes so GitHub issues stay in sync (theater) | `sync.py` |
+| `validate` | Catch a broken task graph before work or promote | `validate.py` |
+| `cleanup` | Dry-run first, then clear stale scratch files | `cleanup.py` |
+| `deps` | Scan outdated/vulnerable deps; file one backlog task | `deps.py` |
+
+Also mapped: `newbug` → `bug`, `plan` → `feature-plan`, `gate` → `gate`,
+`status` → `status`, `work` → `work`. Spine rationale: `docs/plans/13-autolearning.md`.
+Per-command coverage: `docs/plans/18-per-command-learn-demos.md`.
 
 ## Flat layout rule
 

@@ -333,6 +333,9 @@ expect_noai "settle"             settle
 # ── polish — post-work quality, all three argument shapes ──
 echo "Polish modes:"
 expect_ai "polish (sweep review/)"     polish
+expect_ai "polish --parallel (sweep)"  polish --parallel
+expect_ai "polish --fast (sweep)"      polish --fast
+expect_ai "polish --jobs N (sweep)"    polish --jobs 3
 expect_ai "polish --code <file>"       polish --code app.js
 expect_ai "polish <file> (deep-judge)" polish docs/tasks/review/61-review-beta.md
 

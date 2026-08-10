@@ -3,10 +3,12 @@ Post-work quality pass — three modes, one command.
 `polish` is THE post-work quality surface. Three levers stay distinct inside
 it; argument shape selects the mode:
 
-  Sweep (bare)     polish [limit] [--rounds N]
+  Sweep (bare)     polish [limit] [--rounds N] [--parallel|--fast|--jobs N]
                    Judge every finished task in review/. When a second
                    execution pass would close a real gap, rewrite that same
                    task with concrete improvements and reopen it to next/.
+                   Each task is judged independently, so a long queue can fan
+                   out concurrently (same flags as work).
                    Protocol: docs/sprintbias/ai/refine.md
 
   Deep-judge       polish <id|file|task.md>
@@ -46,6 +48,24 @@ counter reads as 0. --force overrides the cap for a one-off deeper pass. The
 refine pass NEVER edits product code — it appends the '## Rework' section and
 the runner bumps the counter.
 
+The round cap (--rounds, default 1) is a per-task rework budget, NOT a
+concurrency setting: "round cap: 1" means each task gets one reopen, not that
+the sweep runs serially.
+
+Parallel fan-out (sweep only — same surface as work): each task judges in a
+fresh context and writes only its own task file, so independent judges overlap
+safely.
+  --parallel   up to 2 concurrent judges
+  --fast       up to 4 concurrent judges
+  --jobs N     up to N concurrent judges
+Only the judging overlaps: verdict parsing, the '**Reworked**' bump, gate
+promotion, and the run counters all stay serialized after each judge returns —
+no reopen races the gate and no count is lost. Sequential is the default.
+In an orchestration-capable AI session the flags tell the orchestrator to fan
+the judge subagents out concurrently (the numeric --jobs cap is a headless-only
+knob and is not passed to the orchestrator). Deep-judge and --code stay
+single-target: they work within one task file, so the flags are ignored there.
+
 ── Deep-judge ─────────────────────────────────────────────────────────
 
 Judges engineering quality (effectiveness, efficiency, design fit,
@@ -76,6 +96,9 @@ Usage:
   ./sprint.sh polish 874             # deep-judge task 874 (any folder)
   ./sprint.sh polish 3               # sweep at most 3 tasks (if no task 3)
   ./sprint.sh polish --rounds 2      # allow up to 2 reopens per task
+  ./sprint.sh polish --parallel      # sweep review/ with 2 concurrent judges
+  ./sprint.sh polish --fast          # shorthand for --parallel with 4 judges
+  ./sprint.sh polish --jobs N        # sweep with N concurrent judges
   ./sprint.sh polish --force         # ignore the round cap this run
   ./sprint.sh polish --max           # clear the budget cap (where one applies)
   ./sprint.sh polish <task.md>       # deep-judge one finished piece
