@@ -264,13 +264,11 @@ docs/features/task-automation.md — spec this serves
 
 ### Completed / Files changed (after work only)
 
-When the task is finished, record what it touched — reviews and the change
-manifest read this. Under `### Files changed`, list the product files you edited
-to complete the task, one repo-relative path per line. **Leave this task file
-out:** the audit keeps only paths that still exist on disk, so the task's own
-path self-erases as it moves `doing/ → review/ → done/` — its folder already
-carries status, git history the rest. Copy both headings to column 0
-(unindented); do **not** fill this before work.
+When the task is finished, list under `### Files changed` the product files you
+edited to complete it — one repo-relative path per line. Reviews and the change
+manifest read this list. **Leave this task file out** — its folder location and
+git history already track it. Write both headings at column 0 (unindented); do
+**not** fill this before work.
 
 ```markdown
 ## Completed
@@ -280,9 +278,8 @@ docs/sprintbias/scripts/example.sh
 docs/sprintbias/help/example.md
 ```
 
-Keep the headings exact — the runner routes a task to `review/` on the presence
-of `## Completed`, and the audit reads `### Files changed` as the authoritative
-list (scanning the whole section only when it is absent).
+Keep the headings exact — they are machine-read: `## Completed` routes a finished
+task to `review/`, and `### Files changed` is the list the audit trusts.
 
 ## Verify Before Saving
 

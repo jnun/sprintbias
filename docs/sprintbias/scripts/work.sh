@@ -874,7 +874,8 @@ _TASK_RULES="- If the task file has a '## Outcome' block from a PRIOR attempt (R
 - If you cannot finish, document what remains in the task file.
 - When done, check off items and add a ## Completed section. End it with a
   '### Files changed' subsection listing one repo-relative path per line —
-  every file this task created or modified, and only those.
+  every product file this task created or modified, and only those. Leave this
+  task file out: its folder location and git history already track it.
 - Do NOT commit."
 
 # Build the execution prompt for a task file at a given path (exec mode).
