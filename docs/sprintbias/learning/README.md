@@ -1,12 +1,38 @@
 # Authoring `learn` demos
 
 This folder is SprintBias's **learning catalog** — short, cinematic, sandboxed
-demos a brand-new user can *watch* to understand the flow. `./sprint.sh learn`
-lists them; `./sprint.sh learn <name>` plays one. A command with a mapped demo
-also plays it via `./sprint.sh <cmd> --demo`.
+demos a brand-new user can *watch* to understand the flow.
 
-This README is the house guide. Read it before adding a demo so the catalog
-grows without rot — one voice, one look, one trust contract.
+## Using it
+
+Watch a demo run in your own terminal — it's a real-world mockup of a command,
+as if you were looking over someone's shoulder. Everything is theater: **a demo
+touches nothing in your project** (no files, no network), so play freely.
+
+```bash
+./sprint.sh learn              # list every demo with a one-line summary
+./sprint.sh learn example      # twenty seconds: newtask → chat → work → git status
+./sprint.sh learn session      # play one by name
+./sprint.sh <cmd> --demo       # play the demo mapped to a command, e.g. work --demo
+```
+
+Two ways in for a command: **`--help`** explains the flags and verdicts;
+**`--demo`** plays the scenario so you can see it in motion. Pick either.
+
+Flags pass straight through to the demo:
+
+- **`--fast`** — skip the pauses, play at full speed.
+- **`--no-color`** — plain text, no ANSI (also automatic when piped to a file).
+- **`-h` / `--help`** — describe what that demo shows, then exit.
+- **Ctrl-C** — stops cleanly at any point.
+
+Start with `example` for twenty seconds (the change is a git change), `session`
+for the whole flow with the why, or `learn` to browse the catalog.
+
+## Authoring demos
+
+The rest of this README is the house guide. Read it before adding a demo so the
+catalog grows without rot — one voice, one look, one trust contract.
 
 ## Curriculum map
 
@@ -24,6 +50,7 @@ layers that stack:
 | Story | Lesson (one line)                                   | File              |
 |-------|-----------------------------------------------------|-------------------|
 | S0    | One problem, one session — start to finish          | `session.py`      |
+| 20s   | newtask → chat → work → review/, then git status shows the change | `example.py` |
 | S1    | The gate holds a vague task on purpose, then a chat sharpens it | `gate.py` |
 | S2    | A bug report becomes a real, workable task          | `bug.py`          |
 | S3    | A feature fans out to tasks → `plan think` → `plan start` | `feature-plan.py` |

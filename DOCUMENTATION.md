@@ -155,6 +155,14 @@ docs/
 
 Each command creates a file with inline guidance. Fill in the sections, then commit.
 
+**IDs are assigned for you.** `newtask` (and `newbug`, `newidea`, `newfeature`,
+`newplan`) takes the next sequential number from `DOC_STATE.md`, names the file,
+and advances the counter — you never pick or edit a task number by hand. That is
+also why the ID is not something to track inside a task's body: the filename
+carries it, its lifecycle folder carries status, and git history carries the
+rest. Always mint work with these commands rather than creating files manually,
+so the numbering stays consistent.
+
 ## Commands
 
 Happy path (spine): **`chat → plan start → work → polish`**. `loop` runs that spine on autopilot. `gate` and `split` are off-spine; `polish` is after work. The task *noun* (`docs/tasks/`, `newtask`) stays; the execute *verb* is `work`.
@@ -210,7 +218,7 @@ Help groups: **create · chat · plan · work · look · keep**.
 ./sprint.sh align                     # Analyze feature alignment
 ./sprint.sh context                   # Generate AI context summary
 ./sprint.sh search <keyword>          # Search tasks by keyword
-./sprint.sh learn [demo]              # Watch the flow run — play a sandboxed demo (no name lists them)
+./sprint.sh learn [demo]              # Watch the flow run (no name lists them; example = 20 seconds)
 
 # Keep — sync
 ./sprint.sh sync [--all]              # Push task changes to GitHub

@@ -47,7 +47,7 @@ _usage() {
     _list_demos
     echo ""
     echo -e "${BLUE}Everything is theater — a demo touches nothing in your project.${NC}"
-    echo "Flags pass through, e.g.  ./sprint.sh learn session --fast"
+    echo "Flags pass through, e.g.  ./sprint.sh learn example --fast"
 }
 
 NAME="${1:-}"

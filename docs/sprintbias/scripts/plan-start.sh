@@ -82,14 +82,35 @@ stamp_ready() {
   fi
 }
 
-# Extract ## Goal body (until next ## heading), first non-empty lines collapsed.
+# Extract ## Goal body (until next ## heading), HTML comments stripped, first
+# non-empty lines collapsed. Guidance comments in the section are ignored so
+# only the author's prose is returned.
 plan_goal_text() {
   local f="$1"
   awk '
-    BEGIN{g=0}
+    BEGIN{g=0; c=0}
     /^## Goal/{g=1; next}
     g && /^## /{exit}
-    g && NF{print}
+    !g{next}
+    {
+      line=$0
+      while (1) {
+        if (c) {
+          idx=index(line, "-->")
+          if (idx==0) { line=""; break }
+          line=substr(line, idx+3); c=0
+        } else {
+          idx=index(line, "<!--")
+          if (idx==0) break
+          rest=substr(line, idx+4)
+          cidx=index(rest, "-->")
+          if (cidx==0) { line=substr(line,1,idx-1); c=1; break }
+          line=substr(line,1,idx-1) substr(rest, cidx+3)
+        }
+      }
+      gsub(/^[ \t]+|[ \t]+$/, "", line)
+      if (length(line)) print line
+    }
   ' "$f" | head -5 | tr '\n' ' ' | sed 's/[[:space:]]\{1,\}/ /g; s/^ //; s/ $//'
 }
 

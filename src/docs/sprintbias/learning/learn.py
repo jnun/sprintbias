@@ -107,11 +107,11 @@ def nextstep(t): line(f"  {DIM}next:{RESET} {CYAN}{t}{RESET}")
 
 # Fake catalog rows — short stand-ins, not a live scan of this folder.
 CATALOG = [
+    ("example",  "SprintBias — twenty seconds: newtask → chat → work, then git status shows the change."),
     ("session",  "SprintBias — one problem, one session, start to finish."),
     ("gate",     "SprintBias — the gate holds a half-baked task, then a chat sharpens it."),
     ("work",     "SprintBias — one command drains the READY queue: next/ → review/."),
     ("status",   "SprintBias — the whole board at a glance: every stage, plan, and hold."),
-    ("search",   "SprintBias — find any task by keyword across the whole board."),
 ]
 
 # ── the show ──────────────────────────────────────────────────────────────────
@@ -199,8 +199,8 @@ def outro():
          f"{GREY}no files, no moves, no network{RESET}")
     print()
     line(f"  {DIM}try a full story next:{RESET} "
-         f"{CYAN}./sprint.sh learn session{RESET}   "
-         f"{DIM}·  or{RESET} {CYAN}./sprint.sh gate --demo{RESET}")
+         f"{CYAN}./sprint.sh learn example{RESET}   "
+         f"{DIM}·  or{RESET} {CYAN}./sprint.sh learn session{RESET}")
     print()
     rule("═")
     print()

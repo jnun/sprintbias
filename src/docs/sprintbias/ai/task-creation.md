@@ -25,7 +25,7 @@ optional fuel or post-work audit.
 | **## Success criteria** | Yes | What done looks like. When these are met, the task is done. |
 | **## Notes** | No | Helpful hints that assist the developer in figuring out how to work the task. |
 | **## References** | No | Direct paths to docs or files known to be related. |
-| **### Files changed** (under **## Completed**) | After work only | What was touched — for committers, later audits, and "what broke?" |
+| **### Files changed** (under **## Completed**) | After work only | The product files you edited to close the task — one path per line, not this task file. |
 
 **How to implement is the developer's decision.** Do not turn the task into a
 detailed outline of exact steps unless the work itself is a library or detailed
@@ -169,17 +169,10 @@ Ask:
 - "Is there a guide or feature spec this follows?" (→ **Docs** / **Feature**)
 - "What suite script proves the success criteria?" (→ **Tests** — or leave `none`)
 
-**Depends on** and **Dependents** are the two ends of the same edge: if A lists
-B under **Depends on**, then B lists A under **Dependents**. Always write
-**Dependents** (legacy files may still say **Blocks**; readers accept that alias).
-Neither field means the `blocked/` folder — that is a decision on *this* task.
-
-**Docs** vs **Tests**: **Docs** is what you read while building; **Tests** is
-what `./sprint.sh promote` runs to close `review/ → done/`. Set **Tests** only
-to real `docs/tests/*.sh` paths that prove the success criteria (comma-separate
-several — all must pass). Leave `none` when a human must sign off. Do not put
-product test loops (`newtest` markdown) in **Tests**. Do not invent a path that
-does not exist yet.
+The field definitions — edge reciprocity, the legacy **Blocks** alias, **Docs**
+vs **Tests** — live under **Header Fields** below, the single source of truth.
+Write reciprocal edges through the lib helpers (see **Keep the dependency graph
+reciprocal**), never by hand on one side only.
 
 ### 4. Define Success Behaviorally
 
@@ -215,13 +208,16 @@ The header carries the task's place in the larger body of work. Set what applies
 - **Parent** — a task that groups this one with related work. Task-to-task only; not **Plan**.
 - **Tests** — suite scripts that prove the success criteria so `./sprint.sh promote` may move `review/ → done/` without a human. Paths under `docs/tests/` (typically `test-*.sh`); comma-separate several — **all** must pass. `none` = human sign-off in `review/`. Set only when a real script already proves the criteria; a hopeful path that is missing keeps the task in `review/`. Write **Tests**; readers still accept legacy **Proven by**.
 
+These definitions are the single source of truth for the header fields. The task
+template carries a bare field list and no legend — keep it that way. When a field
+needs explaining, explain it here, not in the template.
+
 ### Problem Section
 
-Clear, simple language. Concisely define the problem at a high level — who is
-affected, what they can't do today, and why it matters. Loose Gherkin
-(Given/When/Then) is welcome but not required. Prefer 2–5 short sentences, as
-you'd explain it to a colleague unfamiliar with this area. Do not put the
-implementation plan here.
+Clear, simple language — who is affected, what they can't do today, why it
+matters. Prefer 2–5 short sentences, as you'd explain it to a colleague new to
+the area. Loose Gherkin (Given/When/Then) is welcome, not required. The *how*
+belongs in the implementation the developer chooses, not here.
 
 ### Success Criteria Section
 
@@ -246,11 +242,10 @@ Example:
 
 ### Notes Section
 
-Optional helpful hints that assist the developer in figuring out how to work the
-task: decisions already made, constraints, edge cases, gotchas, pointers to
-patterns. Leave empty if there is nothing useful to add. Notes are fuel for the
-developer's choice — not a required step list, not a substitute for Problem or
-Success criteria.
+Optional hints that help the developer work the task: decisions already made,
+constraints, edge cases, gotchas, pointers to patterns. Fuel for the developer's
+choice — not a step list, not a substitute for Problem or Success criteria.
+Leave empty when there is nothing useful to add.
 
 ### References Section
 
@@ -269,22 +264,25 @@ docs/features/task-automation.md — spec this serves
 
 ### Completed / Files changed (after work only)
 
-When the task is finished, leave an audit trail of what it touched. Reviews and
-the change manifest read this. Copy the headings to column 0 (unindented), then
-list one repo-relative path per line under `### Files changed`. Do **not** fill
-this before work — it is an after-work record for committers, later audits, and
-quick recovery when something breaks.
+When the task is finished, record what it touched — reviews and the change
+manifest read this. Under `### Files changed`, list the product files you edited
+to complete the task, one repo-relative path per line. **Leave this task file
+out:** the audit keeps only paths that still exist on disk, so the task's own
+path self-erases as it moves `doing/ → review/ → done/` — its folder already
+carries status, git history the rest. Copy both headings to column 0
+(unindented); do **not** fill this before work.
 
 ```markdown
 ## Completed
 
 ### Files changed
 docs/sprintbias/scripts/example.sh
-docs/tasks/.TEMPLATE-task.md
+docs/sprintbias/help/example.md
 ```
 
-Keep the wording exact — `## Completed` and `### Files changed` — the tasks
-runner and lib.sh key off them verbatim.
+Keep the headings exact — the runner routes a task to `review/` on the presence
+of `## Completed`, and the audit reads `### Files changed` as the authoritative
+list (scanning the whole section only when it is absent).
 
 ## Verify Before Saving
 

@@ -9,13 +9,16 @@ the same in a brand-new empty install as it does here.
 Usage:
   ./sprint.sh learn                 # list the demos (name + one-line summary)
   ./sprint.sh learn <name>          # play that demo
-  ./sprint.sh learn session         # the starter: one problem, one session
+  ./sprint.sh learn example         # twenty seconds: newtask → chat → work → git status
+  ./sprint.sh learn session         # the teaching run: one problem, one session
 
 Flags after the name pass straight through to the demo, for example:
-  learn session --fast       # skip the pauses
-  learn session --no-color   # plain text, no ANSI colors
+  learn example --fast       # skip the pauses
+  learn example --no-color   # plain text, no ANSI colors
 
 Demos:
+  example   Twenty seconds. Capture a bug, sharpen it, work it to review/,
+            then git status shows the change — code diff plus a task file that moved.
   session   A new user hits a real bug and closes it in one sitting — capture,
             sharpen at the gate, work it to review. The spine: newtask → chat → work.
 
@@ -28,7 +31,7 @@ When a command has a demo mapped, its --help ends with a one-line pointer
 this same engine. --help explains the command; --demo shows it. Commands with
 no demo mapped say so and point you back here. The mapping is data-driven — an
 optional 5th field on docs/sprintbias/help/_registry (command → demo name); demos
-with no natural host command (e.g. session) live only in this catalog.
+with no natural host command (e.g. example, session) live only in this catalog.
 
 Notes:
   - Output degrades gracefully when stdout is not a TTY (color is dropped).

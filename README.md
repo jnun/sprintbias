@@ -38,11 +38,22 @@ Then, from your project:
 
 ## Try it
 
+Twenty seconds. Capture, sharpen, work it to `review/` — then `git status` shows the change.
+
+```bash
+./sprint.sh learn example                   # theater — touches nothing
+```
+
+<img src="https://github.com/jnun/sprintbias/releases/download/demo-assets/example.gif" alt="Twenty seconds: newtask, chat, work, git status shows the change" width="720">
+
+Then, in your project:
+
 ```bash
 ./sprint.sh profile                         # once — teach the AI your stack
 ./sprint.sh newtask "Reject empty password on login"
-./sprint.sh status                          # see the board
+./sprint.sh chat 42                         # sharpen until it's READY
 ./sprint.sh work                            # do the next ready task
+git status                                  # the change is a git change
 ```
 
 That’s the whole loop: capture work, see it, ship it.
