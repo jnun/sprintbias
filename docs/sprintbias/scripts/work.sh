@@ -382,15 +382,18 @@ fi
 fi
 
 # ── Readiness gate ──────────────────────────────────────────────────
-# gate (and plan start) stamps '**Status: READY**' into tasks it has vetted. A task
-# without that verdict hasn't been checked for clarity — and a headless
-# run can't ask clarifying questions, so ambiguity turns into wandering
-# and failure. Undefined tasks are skipped, not executed. --force overrides.
+# gate (and plan start) stamps '**Status: READY**' into tasks it has vetted. A
+# task without that verdict hasn't been checked for clarity — and a headless run
+# can't ask clarifying questions, so ambiguity turns into wandering and failure.
+# So rather than skip an unvetted next/ task, work GATES it first — the same
+# gate `gate` runs on next/. The verdict then routes it: READY stays in next/ and
+# is worked below; BLOCKED (not defined well enough) goes to blocked/ with a
+# chat/define pointer; COMPLETE (already in the codebase) goes to review/.
 # Invariant: READY + open questions cannot stay in next/ — demote to blocked/
 # with a loud report (same path as work N). A dependency wait is separate:
 # unfinished **Depends on** keeps a fully-defined READY task in next/ until
-# prereqs reach review/ or done/. --force bypasses the READY stamp only, not
-# dependency order. Skipped for work N: the single-task path already resolved
+# prereqs reach review/ or done/. --force bypasses the gate entirely (work
+# whatever is queued). Skipped for work N: the single-task path already resolved
 # readiness (and demoted open-Q files).
 if [ "$FORCE" -ne 1 ] && [ "$_SINGLE" -eq 0 ]; then
   # Hygiene first: demote any next/ file that still has open questions so the
@@ -408,28 +411,78 @@ if [ "$FORCE" -ne 1 ] && [ "$_SINGLE" -eq 0 ]; then
       | sed "s|^|$NEXT_DIR/|"
   )
 
-  _defined=()
-  _skipped=()
+  # Partition: already-READY (work them) vs. not-yet-gated (gate them first).
+  _unvetted=()
   for _f in "${TASK_FILES[@]}"; do
-    if [ "$(sprintbias_review_verdict "$_f")" != "READY" ]; then
-      _skipped+=("$_f")
-    else
-      _defined+=("$_f")
-    fi
+    [ "$(sprintbias_review_verdict "$_f")" = "READY" ] && continue
+    _unvetted+=("$_f")
   done
-  if [ ${#_skipped[@]} -gt 0 ]; then
-    echo "⊘ Skipping ${#_skipped[@]} task(s) not stamped READY (unvetted):"
-    for _f in "${_skipped[@]}"; do echo "    ${_f##*/}"; done
-    echo "  Vet them:        ./sprint.sh gate"
-    echo "  Or run anyway:   ./sprint.sh work --force"
+
+  if [ ${#_unvetted[@]} -gt 0 ]; then
+    if [ "$AI_MODE" = "emit" ]; then
+      # Emit mode can't gate a file and then work it in the same process — the
+      # surrounding agent runs the emitted gate. Hand off the gate now and stop;
+      # re-running work after the verdicts land executes whatever graded READY.
+      echo "▸ ${#_unvetted[@]} task(s) in $NEXT_DIR not yet gated — gating them first."
+      echo "  (Emit mode gates and works in separate passes.)"
+      echo ""
+      sprintbias_gate_init gate "$NEXT_DIR"
+      if sprintbias_orchestration_capable && [ ${#_unvetted[@]} -gt 1 ]; then
+        sprintbias_gate_parallel "${_unvetted[@]}"
+      else
+        for _f in "${_unvetted[@]}"; do sprintbias_gate_review "$_f"; done
+      fi
+      echo ""
+      echo "▸ Run the gate above, then re-run ./sprint.sh work:"
+      echo "    READY    → worked on the next run"
+      echo "    BLOCKED  → not defined well enough; ./sprint.sh chat <id> or define it first"
+      echo "    COMPLETE → routed to review/ (already in the codebase)"
+      exit 0
+    fi
+
+    # Exec mode: gate each unvetted task synchronously and route it now.
+    echo "▸ ${#_unvetted[@]} task(s) in $NEXT_DIR not yet gated — gating before work…"
     echo ""
+    sprintbias_gate_init gate "$NEXT_DIR"
+    _blocked=()
+    for _f in "${_unvetted[@]}"; do
+      _name="${_f##*/}"
+      echo "  ▸ Gating $_name…"
+      sprintbias_gate_review "$_f"
+      case "$SPRINTBIAS_GATE_VERDICT" in
+        READY)    echo "    ✓ READY — queued for work" ;;
+        BLOCKED)  _blocked+=("$_name"); echo "    ⊘ BLOCKED → $BLOCKED_DIR/ — needs a decision" ;;
+        COMPLETE) echo "    ✓ COMPLETE → $REVIEW_DIR/ (already in the codebase)" ;;
+        *)        echo "    ✗ ${SPRINTBIAS_GATE_VERDICT} — left in $NEXT_DIR/${SPRINTBIAS_GATE_LOG:+ (log: $SPRINTBIAS_GATE_LOG)}" ;;
+      esac
+    done
+    if [ ${#_blocked[@]} -gt 0 ]; then
+      echo ""
+      echo "⊘ ${#_blocked[@]} task(s) not defined well enough to work → $BLOCKED_DIR/:"
+      for _n in "${_blocked[@]}"; do echo "    $_n"; done
+      echo "  Settle the open decisions, then re-enter via the gate:"
+      echo "    ./sprint.sh chat <id>     # answer the questions, turn each into instruction"
+    fi
+    echo ""
+    unset _blocked _n
   fi
-  TASK_FILES=(${_defined[@]+"${_defined[@]}"})
+
+  # Rebuild the ready set from next/ (ID order) — originally-READY tasks plus any
+  # just gated READY; BLOCKED/COMPLETE have moved out.
+  TASK_FILES=()
+  while IFS= read -r f; do
+    [ "$(sprintbias_review_verdict "$f")" = "READY" ] && TASK_FILES+=("$f")
+  done < <(
+    ls -1 "$NEXT_DIR"/*.md 2>/dev/null \
+      | sed 's|.*/||' \
+      | sort -t- -k1,1n \
+      | sed "s|^|$NEXT_DIR/|"
+  )
   if [ ${#TASK_FILES[@]} -eq 0 ]; then
     echo "No ready tasks in $NEXT_DIR"
     exit 0
   fi
-  unset _defined _skipped _f
+  unset _unvetted _f _name
 fi
 
 # ── Prerequisite resolution (stage-aware) ─────────────────────────────

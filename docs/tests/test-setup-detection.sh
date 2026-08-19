@@ -519,6 +519,20 @@ assert_false "our current marked manual is not flagged (content sniff only)" \
 
 Read this before making changes."
 
+echo "Test 26b: legacy_getstarted_content recognizes our onboarding doc across its lineage"
+assert_true "sprint.md-era GETSTARTED is ours" \
+    legacy_getstarted_content '# Getting Started with sprint.md
+
+Welcome.'
+assert_true "5DayDocs-era GETSTARTED is ours" \
+    legacy_getstarted_content '# Getting Started with 5DayDocs'
+assert_true "SprintBias (unmarked) GETSTARTED is ours" \
+    legacy_getstarted_content '# Getting Started with SprintBias'
+assert_false "a user's own onboarding doc is not ours" \
+    legacy_getstarted_content '# Getting Started with Acme Corp
+
+Our internal onboarding.'
+
 echo "Test 27: seed helpers take max(state file, disk prefix), leave empty kinds at 0"
 STATE_FIVEDAY='# state
 **5DAY_TASK_ID**: 0
@@ -647,6 +661,27 @@ assert_true "undotted bug template kept when no dotted counterpart" \
     test -f docs/bugs/TEMPLATE-bug.md
 assert_true "existing task file kept" test -f docs/tasks/backlog/179-existing.md
 assert_false "old docs/STATE.md removed after seed" test -e docs/STATE.md
+
+echo "Test 32: install_owned_doc replaces an unmarked lineage file, skips a user's own"
+CURRENT_VERSION="9.9.9"
+printf '<!-- SprintBias v9.9.9 -->\n# Getting Started with SprintBias\n\nCurrent onboarding.\n' > src-getstarted.md
+# An unmarked sprint.md-era GETSTARTED is ours by lineage -> replaced in place.
+printf '# Getting Started with sprint.md\n\nOld onboarding.\n' > GETSTARTED.md
+install_owned_doc src-getstarted.md GETSTARTED.md GETSTARTED.md "" legacy_getstarted_content
+assert_eq "unmarked lineage GETSTARTED is now ours (current)" "ours-current:9.9.9" \
+    "$(classify_target GETSTARTED.md)"
+assert_contains "replaced file carries the current onboarding body" "$(cat GETSTARTED.md)" \
+    "Current onboarding."
+# A genuine user file (no lineage match) is left untouched.
+printf '# Getting Started with Acme Corp\n\nDo not touch.\n' > GETSTARTED.md
+install_owned_doc src-getstarted.md GETSTARTED.md GETSTARTED.md "" legacy_getstarted_content
+assert_eq "user onboarding doc stays theirs" "theirs" "$(classify_target GETSTARTED.md)"
+assert_contains "user onboarding body is preserved" "$(cat GETSTARTED.md)" "Do not touch."
+# With no lineage recognizer, an unmarked file is always left in place (never clobbered).
+printf '# Getting Started with sprint.md\n\nOld.\n' > GETSTARTED.md
+install_owned_doc src-getstarted.md GETSTARTED.md GETSTARTED.md
+assert_eq "no recognizer -> unmarked file left as theirs" "theirs" "$(classify_target GETSTARTED.md)"
+rm -f src-getstarted.md GETSTARTED.md
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

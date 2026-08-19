@@ -27,13 +27,19 @@ prerequisite first, or work the whole sprint so the chain drains in order.
 run; land the task READY in next/, then re-run `work N` to execute it.)
 
 Readiness gate: only tasks stamped 'Status: READY' with a clear question list
-are executed. The stamp comes from the workability gate — every path into
-next/ (plan start, chat folder commit, chat close-loop, polish REOPEN, loop
---retry) runs that gate; standalone `gate` re-applies it on demand. Open
-questions under ### Questions for the developer keep the task on hold — answer
-them (`chat <id>`), write each answer as instruction in the body, delete the
-question, then re-gate. A headless run skips unvetted or still-open tasks so
-they are refined first. Override with --force.
+are executed. A next/ task that hasn't been gated yet is not skipped — work
+runs the gate on it first (the same gate `gate` runs on next/), then routes by
+verdict: READY stays and is worked; BLOCKED (not defined well enough) moves to
+blocked/ with a chat/define pointer; COMPLETE (already in the codebase) moves
+to review/. The stamp comes from the workability gate — every path into next/
+(plan start, chat folder commit, chat close-loop, polish REOPEN, loop --retry)
+runs that gate; standalone `gate` re-applies it on demand. Open questions under
+### Questions for the developer keep the task on hold — answer them (`chat
+<id>`), write each answer as instruction in the body, delete the question, then
+re-gate. In emit mode work gates and works in separate passes: it hands the
+gate to the surrounding agent, then re-run `work` to execute whatever landed
+READY. Override the whole gate with --force (work whatever is queued, unvetted
+or not).
 
 Dependency-aware: a task's '**Depends on**:' prerequisites are honored
 within a single run. For each open prerequisite, `work` acts by stage:

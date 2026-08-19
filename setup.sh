@@ -350,6 +350,20 @@ legacy_docs_manual_content() {
     return 1
 }
 
+# True when CONTENT is a version of OUR GETSTARTED.md, across its brand lineage
+# (5DayDocs → sprint.md → SprintBias), rather than a host project's own file. Our
+# onboarding doc has always led with "# Getting Started with <brand>", a strong,
+# low-false-positive signal. Only ever consulted for an UNMARKED file (a marked
+# copy is recognized by classify_target and upgraded in place).
+legacy_getstarted_content() {
+    local first
+    first=$(printf '%s\n' "$1" | head -n1)
+    case "$first" in
+        '# Getting Started with 5DayDocs'|'# Getting Started with sprint.md'|'# Getting Started with SprintBias') return 0 ;;
+    esac
+    return 1
+}
+
 # Rewrite leftover brand/paths in a README body. Reads stdin, writes stdout.
 rewrite_legacy_docs_readme() {
     if [ $# -gt 0 ]; then
@@ -438,10 +452,9 @@ drop_legacy_docs_manual() {
     [ -f DOCUMENTATION.md ] || return 1
     [ -n "$(sprint_marker_version "$(cat DOCUMENTATION.md)")" ] && return 1
     if legacy_docs_manual_content "$(cat DOCUMENTATION.md)"; then
-        if _legacy_rm DOCUMENTATION.md; then
-            _overlay_note "Replaced an old SprintBias-lineage manual (DOCUMENTATION.md) with the current version"
-            return 0
-        fi
+        # Remove it silently; install_owned_doc reports the replacement when it
+        # writes the current manual into the now-empty slot.
+        _legacy_rm DOCUMENTATION.md && return 0
     fi
     return 1
 }
@@ -1027,19 +1040,33 @@ _replace_readme_pointer() {
     rm -f "$tmp"; return 1
 }
 
-# install_owned_doc SRC TARGET NAME — a whole document that is entirely ours
-# (GETSTARTED.md, the manual). Create when absent, upgrade when our marker is
-# older, skip a user's own file (never clobber).
+# install_owned_doc SRC TARGET NAME [REPLACED_REASON] — a whole document that is
+# entirely ours (GETSTARTED.md, the manual). Create when absent, upgrade when our
+# marker is older, skip a user's own file (never clobber). REPLACED_REASON, when
+# set, means the target was just removed by a caller (auto-replace of an old
+# lineage manual, or the user's Replace choice) so the "absent" write is really a
+# replacement — report it as such instead of a misleading "created".
 install_owned_doc() {
-    local src="$1" target="$2" name="$3" cls
+    local src="$1" target="$2" name="$3" replaced="${4:-}" lineage_fn="${5:-}" cls
     cls="$(classify_target "$target")"
     case "$cls" in
         absent)
-            if _copy_stamped "$src" "$target"; then msg_success "$name ensured"; ((FILES_COPIED++)); else msg_error "Failed to write $name"; fi ;;
+            if _copy_stamped "$src" "$target"; then
+                if [ -n "$replaced" ]; then msg_success "$name replaced ($replaced)"; else msg_success "$name created"; fi
+                ((FILES_COPIED++))
+            else msg_error "Failed to write $name"; fi ;;
         ours-current:*) msg_step "$name up to date (v${cls#ours-current:})" ;;
         ours-old:*)
             if _copy_stamped "$src" "$target"; then msg_success "$name upgraded (${cls#ours-old:} → $CURRENT_VERSION)"; else msg_error "Failed to upgrade $name"; fi ;;
-        theirs) msg_step "Skipped $name (yours left in place)" ;;
+        theirs)
+            # An UNMARKED file may still be an old version of ours (pre-marker era).
+            # If a lineage recognizer confirms it, replace it with the current
+            # version; otherwise it is the user's own file — never clobber it.
+            if [ -n "$lineage_fn" ] && "$lineage_fn" "$(cat "$target" 2>/dev/null)"; then
+                if _copy_stamped "$src" "$target"; then msg_success "$name replaced (was an old SprintBias-lineage file)"; ((FILES_COPIED++)); else msg_error "Failed to replace $name"; fi
+            else
+                msg_step "Skipped $name (yours left in place)"
+            fi ;;
     esac
 }
 
@@ -1053,7 +1080,7 @@ scaffold_pointer() {
     cls="$(classify_target "$target")"
     case "$cls" in
         absent)
-            if printf '%s\n' "$block" > "$target" 2>/dev/null; then msg_success "$name ensured"; ((FILES_COPIED++)); else msg_error "Failed to write $name"; fi ;;
+            if printf '%s\n' "$block" > "$target" 2>/dev/null; then msg_success "$name created"; ((FILES_COPIED++)); else msg_error "Failed to write $name"; fi ;;
         ours-current:*) msg_step "$name up to date (v${cls#ours-current:})" ;;
         ours-old:*)
             if _replace_md_block "$target" "$block"; then msg_success "$name upgraded (${cls#ours-old:} → $CURRENT_VERSION)"; else msg_error "Failed to upgrade $name"; fi ;;
@@ -1085,7 +1112,7 @@ scaffold_readme() {
     fi
     case "$cls" in
         absent)
-            if printf '%s\n' "$block" > "$target" 2>/dev/null; then msg_success "$name ensured"; ((FILES_COPIED++)); else msg_error "Failed to write $name"; fi ;;
+            if printf '%s\n' "$block" > "$target" 2>/dev/null; then msg_success "$name created"; ((FILES_COPIED++)); else msg_error "Failed to write $name"; fi ;;
         ours-current:*) msg_step "$name up to date (v${cls#ours-current:})" ;;
         ours-old:*)
             if _replace_md_block "$target" "$block"; then msg_success "$name upgraded (${cls#ours-old:} → $CURRENT_VERSION)"; else msg_error "Failed to upgrade $name"; fi ;;
@@ -1131,7 +1158,7 @@ scaffold_gitignore() {
     cls="$(classify_target ".gitignore")"
     case "$cls" in
         absent)
-            if _write_gitignore_fresh; then msg_success ".gitignore ensured"; else msg_error "Failed to write .gitignore"; fi ;;
+            if _write_gitignore_fresh; then msg_success ".gitignore created"; else msg_error "Failed to write .gitignore"; fi ;;
         ours-current:*) msg_step ".gitignore up to date (v${cls#ours-current:})" ;;
         ours-old:*)
             if _upgrade_gitignore; then msg_success ".gitignore upgraded (${cls#ours-old:} → $CURRENT_VERSION)"; else msg_error "Failed to upgrade .gitignore"; fi ;;
@@ -1222,8 +1249,9 @@ prompt_manual_conflict() {
     if ! read -r __ans; then __ans=""; echo ""; fi
     case "$__ans" in
         r|R)
+            # Remove theirs; install_owned_doc reports the replacement when it
+            # writes ours into the now-empty slot.
             if _legacy_rm DOCUMENTATION.md; then
-                msg_step "Replacing your DOCUMENTATION.md with the SprintBias manual"
                 printf -v "$__var" "%s" "DOCUMENTATION.md"
             else
                 msg_warning "Could not remove your DOCUMENTATION.md; installing ours as SPRINTDOCUMENTATION.md instead"
@@ -1358,7 +1386,12 @@ rm -f "$_find_fifo" && rmdir "$(dirname "$_find_fifo")" 2>/dev/null
 # is not the host project's own docs — drop it so the current manual reinstalls
 # as DOCUMENTATION.md. If a previous overlay already wrote SPRINTDOCUMENTATION.md,
 # drop that duplicate too.
+# MANUAL_REPLACED carries the reason an existing DOCUMENTATION.md was removed, so
+# install_owned_doc reports "replaced (…)" instead of "created" when it writes the
+# current manual into the cleared slot. Empty on a genuine first-time create.
+MANUAL_REPLACED=""
 if drop_legacy_docs_manual; then
+    MANUAL_REPLACED="was an old SprintBias-lineage manual"
     if [ -f SPRINTDOCUMENTATION.md ]; then
         if [ -n "$(sprint_marker_version "$(cat SPRINTDOCUMENTATION.md)")" ]; then
             _legacy_rm SPRINTDOCUMENTATION.md \
@@ -1376,6 +1409,7 @@ fi
 MANUAL_FILE="$(resolve_manual_file)"
 if [ "$MANUAL_FILE" = "SPRINTDOCUMENTATION.md" ]; then
     prompt_manual_conflict MANUAL_FILE
+    [ "$MANUAL_FILE" = "DOCUMENTATION.md" ] && MANUAL_REPLACED="you chose Replace"
 fi
 
 # --- AI dotfiles (deferred from the walk above) ---------------------------
@@ -1449,12 +1483,12 @@ CONFLICTS=()
 
 # 1) GETSTARTED.md   2) CLAUDE.md   3) the manual   4) .gitignore   5) AGENTS.md
 # 6) README.md
-install_owned_doc "$SRC_DIR/GETSTARTED.md" "GETSTARTED.md" "GETSTARTED.md"
+install_owned_doc "$SRC_DIR/GETSTARTED.md" "GETSTARTED.md" "GETSTARTED.md" "" legacy_getstarted_content
 scaffold_pointer "CLAUDE.md" "CLAUDE.md"
 if [ "$MANUAL_FILE" = "SPRINTDOCUMENTATION.md" ]; then
     msg_step "Your DOCUMENTATION.md left in place; installing manual as SPRINTDOCUMENTATION.md"
 fi
-install_owned_doc "$SRC_DIR/DOCUMENTATION.md" "$MANUAL_FILE" "$MANUAL_FILE"
+install_owned_doc "$SRC_DIR/DOCUMENTATION.md" "$MANUAL_FILE" "$MANUAL_FILE" "$MANUAL_REPLACED"
 scaffold_gitignore
 scaffold_pointer "AGENTS.md" "AGENTS.md"
 scaffold_readme
