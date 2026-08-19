@@ -53,11 +53,13 @@ check() {
         FAIL=$((FAIL + 1))
         return
     fi
-    # Exclude the two rename-tooling files that legitimately CONTAIN the legacy
-    # names as tripwire patterns / documentation rather than as real references:
-    # this test itself, and ship.sh (whose LEGACY_RE gate scans for them).
+    # Exclude the rename-tooling files that legitimately CONTAIN the legacy
+    # names as tripwire patterns / documentation rather than as live references:
+    # this test itself, ship.sh (whose LEGACY_RE gate scans for them), setup.sh
+    # (detects and removes leftover prior-docs paths on overlay), and the unit
+    # test that drives those helpers.
     hits=$(grep $ci -InE "$re" "${FILES[@]}" 2>/dev/null \
-        | grep -vE '(^|/)(ship|test-no-stale-refs)\.sh:' \
+        | grep -vE '(^|/)(ship|test-no-stale-refs|setup|test-setup-detection)\.sh:' \
         | grep -vE 'docs/guides/command-matrix\.md:' \
         | grep -vE 'docs/plans/')
     if [ -n "$hits" ]; then

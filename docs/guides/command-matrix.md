@@ -117,6 +117,7 @@ Command		Does
 work			Execute all READY tasks in next/ → review/
 work \<id\>		Work ONE task by number; auto-gate into next/ if out of frame, else re-run
 work count N	Execute at most N READY tasks (replaces the old bare-number cap)
+work --model \<id\>	Pin the model for this run only (also chat / gate / polish)
 loop			Autopilot: plan start refill + work drain
 gate [folder]	READY-gate next/ (default), or quality report on another folder
 settle [id]	Accept (Suggestion: …) open questions; demote READY+openQ out of next/

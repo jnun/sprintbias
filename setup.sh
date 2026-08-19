@@ -273,6 +273,180 @@ ensure_task_folders() {
     safe_mkdir "docs/tasks/done"
 }
 
+# ----------------------------------------------------------------------------
+# Prior-docs overlay helpers (5DayDocs leftover cleanup)
+# ----------------------------------------------------------------------------
+# Installing SprintBias into a project that already has 5DayDocs leaves the old
+# launcher, framework tree, undotted templates, and an un-seeded DOC_STATE
+# (TASK_ID 0 next to existing tasks). The block between the SENTINEL lines is
+# extracted by docs/tests/test-setup-detection.sh. Pure helpers take strings;
+# prune_* / drop_* touch paths and are driven in a temp dir by the same test.
+# >>> SprintBias legacy-docs overlay helpers (unit-tested) >>>
+
+int_max() {
+    local m=0 n
+    for n in "$@"; do
+        [[ "$n" =~ ^[0-9]+$ ]] || n=0
+        (( 10#$n > m )) && m=$((10#$n))
+    done
+    printf '%s' "$m"
+}
+
+# parse_state_counter CONTENT KEY -> integer (0 if missing/invalid)
+parse_state_counter() {
+    local content="$1" key="$2" n
+    n=$(printf '%s\n' "$content" \
+        | grep "^\*\*${key}\*\*:" \
+        | head -n1 \
+        | sed 's/.*:[[:space:]]*//' \
+        | grep -o '^[0-9]*')
+    [[ "$n" =~ ^[0-9]+$ ]] && printf '%s' "$n" || printf '0'
+}
+
+# seed_kind_id CONTENT KIND -> max of sprint_KIND_ID and 5DAY_KIND_ID
+seed_kind_id() {
+    local content="$1" kind="$2"
+    int_max "$(parse_state_counter "$content" "sprint_${kind}_ID")" \
+            "$(parse_state_counter "$content" "5DAY_${kind}_ID")"
+}
+
+# highest_numeric_prefix PATH... -> max leading N from names like N-slug.md
+highest_numeric_prefix() {
+    local disk=0 f base n
+    for f in "$@"; do
+        [ -n "$f" ] || continue
+        base="${f##*/}"
+        n="${base%%-*}"
+        [[ "$n" =~ ^[0-9]+$ ]] && (( 10#$n > disk )) && disk=$((10#$n))
+    done
+    printf '%s' "$disk"
+}
+
+# True when CONTENT is a version of OUR manual, across its whole brand lineage
+# (5DayDocs → sprint.md → SprintBias), rather than a host project's own docs.
+# Recognized three ways: the H1 title of any brand era; the old 5day.sh body
+# signatures; or the guiding-principles fingerprint that only our manual carries.
+# The caller (drop_legacy_docs_manual) acts on this ONLY for an UNMARKED file — a
+# marked copy is a tracked version of ours and is upgraded in place, never dropped
+# (so our own current manual, which carries the fingerprint, is safe on re-runs).
+legacy_docs_manual_content() {
+    local c="$1" first
+    first=$(printf '%s\n' "$c" | head -n1)
+    case "$first" in
+        '# 5DayDocs'|'# sprint.md'|'# SprintBias') return 0 ;;
+    esac
+    case "$c" in
+        *5day.sh*)
+            case "$c" in
+                *docs/5day*|*5DAY_TASK_ID*|*"Using the 5day.sh"*) return 0 ;;
+            esac
+            ;;
+    esac
+    # Guiding-principles fingerprint — unmistakably our manual, any brand era.
+    case "$c" in
+        *"Lean into agent bias"*"Minimize context cost"*) return 0 ;;
+        *"Minimize context cost"*"Lean into agent bias"*) return 0 ;;
+    esac
+    return 1
+}
+
+# Rewrite leftover brand/paths in a README body. Reads stdin, writes stdout.
+rewrite_legacy_docs_readme() {
+    if [ $# -gt 0 ]; then
+        printf '%s' "$1" | rewrite_legacy_docs_readme
+        return
+    fi
+    sed -E \
+        -e 's|https://github.com/jnun/5daydocs|https://sprintbias.com|g' \
+        -e 's|\[5DayDocs\]|[SprintBias]|g' \
+        -e 's|5DayDocs|SprintBias|g' \
+        -e 's|docs/5day/|docs/sprintbias/|g' \
+        -e 's|docs/5day|docs/sprintbias|g' \
+        -e 's|\./5day\.sh|./sprint.sh|g' \
+        -e 's|5day\.sh|sprint.sh|g'
+}
+
+_overlay_note() {
+    if declare -F msg_step >/dev/null 2>&1; then
+        msg_step "$1"
+    fi
+}
+
+_legacy_rm() {
+    local p="$1"
+    if [ ! -e "$p" ] && [ ! -L "$p" ]; then
+        return 1
+    fi
+    # git rm first so the index drops tracked leftovers; always finish with
+    # rm -rf so empty untracked subdirs (docs/5day/scripts, …) do not remain.
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        git rm -rf -- "$p" >/dev/null 2>&1 || true
+    fi
+    rm -rf "$p" 2>/dev/null || true
+    if [ -e "$p" ] || [ -L "$p" ]; then
+        return 1
+    fi
+    return 0
+}
+
+# Remove leftover launcher / framework tree / undotted templates / old STATE.md.
+# Sets _legacy_pruned to the number of paths removed.
+prune_legacy_docs_leftovers() {
+    local p dotted
+    _legacy_pruned=0
+    if _legacy_rm 5day.sh; then
+        _overlay_note "Removed leftover 5day.sh"
+        _legacy_pruned=$((_legacy_pruned + 1))
+    fi
+    if [ -d docs/5day ]; then
+        if _legacy_rm docs/5day; then
+            _overlay_note "Removed leftover docs/5day/"
+            _legacy_pruned=$((_legacy_pruned + 1))
+        fi
+    fi
+    if [ -f docs/STATE.md ] \
+       && grep -qE '\*\*(sprint|5DAY)_(TASK_ID|BUG_ID|PLAN_ID|EPIC_ID|VERSION)\*\*:' docs/STATE.md 2>/dev/null; then
+        if _legacy_rm docs/STATE.md; then
+            _overlay_note "Removed leftover docs/STATE.md (IDs already seeded)"
+            _legacy_pruned=$((_legacy_pruned + 1))
+        fi
+    fi
+    for p in \
+        docs/tasks/TEMPLATE-task.md \
+        docs/features/TEMPLATE-feature.md \
+        docs/bugs/TEMPLATE-bug.md \
+        docs/ideas/TEMPLATE-idea.md \
+        docs/tests/TEMPLATE-test.md
+    do
+        dotted="$(dirname "$p")/.$(basename "$p")"
+        if [ -f "$p" ] && [ -f "$dotted" ]; then
+            if _legacy_rm "$p"; then
+                _overlay_note "Removed leftover $p (dotted template kept)"
+                _legacy_pruned=$((_legacy_pruned + 1))
+            fi
+        fi
+    done
+}
+
+# If DOCUMENTATION.md is an UNMARKED version of our own manual (any brand era),
+# remove it so the current manual reinstalls as DOCUMENTATION.md instead of
+# retargeting to SPRINTDOCUMENTATION.md. A marked copy is never dropped here — it
+# carries our version stamp, so install_owned_doc upgrades it in place. The marker
+# guard also protects our own current manual (it matches the fingerprint) on
+# re-runs. What survives both is a DOCUMENTATION.md the user genuinely wrote.
+drop_legacy_docs_manual() {
+    [ -f DOCUMENTATION.md ] || return 1
+    [ -n "$(sprint_marker_version "$(cat DOCUMENTATION.md)")" ] && return 1
+    if legacy_docs_manual_content "$(cat DOCUMENTATION.md)"; then
+        if _legacy_rm DOCUMENTATION.md; then
+            _overlay_note "Replaced an old SprintBias-lineage manual (DOCUMENTATION.md) with the current version"
+            return 0
+        fi
+    fi
+    return 1
+}
+# <<< SprintBias legacy-docs overlay helpers <<<
+
 # merge_config "$src_config" "$user_config"
 # Appends missing KEY=VALUE lines from source to user config.
 # Returns 0 if changes were made, 1 if already up to date.
@@ -376,6 +550,32 @@ msg_header "Managing state tracking..."
 
 safe_mkdir "docs/sprintbias"
 
+# Seed counters from every state file we know plus IDs already on disk.
+# A prior-docs overlay often writes TASK_ID 0 next to existing tasks — lifting
+# the counter here is what stops `newtask` colliding with them.
+SEED_TASK_ID=0
+SEED_BUG_ID=0
+SEED_PLAN_ID=0
+_seed_from_state_file() {
+    local content="$1"
+    SEED_TASK_ID=$(int_max "$SEED_TASK_ID" "$(seed_kind_id "$content" TASK)")
+    SEED_BUG_ID=$(int_max "$SEED_BUG_ID" "$(seed_kind_id "$content" BUG)")
+    SEED_PLAN_ID=$(int_max "$SEED_PLAN_ID" "$(seed_kind_id "$content" PLAN)" \
+        "$(parse_state_counter "$content" sprint_EPIC_ID)")
+}
+for _seed_file in docs/sprintbias/DOC_STATE.md docs/5day/DOC_STATE.md docs/STATE.md; do
+    [ -f "$_seed_file" ] || continue
+    _seed_from_state_file "$(cat "$_seed_file")"
+done
+unset _seed_file
+_nullglob_state=$(shopt -p nullglob)
+shopt -s nullglob
+SEED_TASK_ID=$(int_max "$SEED_TASK_ID" "$(highest_numeric_prefix docs/tasks/*/[0-9]*-*.md)")
+SEED_BUG_ID=$(int_max "$SEED_BUG_ID" "$(highest_numeric_prefix docs/bugs/[0-9]*-*.md)")
+SEED_PLAN_ID=$(int_max "$SEED_PLAN_ID" "$(highest_numeric_prefix docs/plans/[0-9]*-*.md)")
+eval "$_nullglob_state"
+unset _nullglob_state
+
 if [ ! -f "docs/sprintbias/DOC_STATE.md" ]; then
     # Create new DOC_STATE.md
     if cat > docs/sprintbias/DOC_STATE.md << STATE_EOF
@@ -396,29 +596,25 @@ Fields:
 
 **Last Updated**: $(date +%Y-%m-%d)
 **sprint_VERSION**: $CURRENT_VERSION
-**sprint_TASK_ID**: 0
-**sprint_BUG_ID**: 0
-**sprint_PLAN_ID**: 0
+**sprint_TASK_ID**: $SEED_TASK_ID
+**sprint_BUG_ID**: $SEED_BUG_ID
+**sprint_PLAN_ID**: $SEED_PLAN_ID
 STATE_EOF
     then
-        msg_step "Created docs/sprintbias/DOC_STATE.md"
+        if [ "$SEED_TASK_ID" != 0 ] || [ "$SEED_BUG_ID" != 0 ] || [ "$SEED_PLAN_ID" != 0 ]; then
+            msg_step "Created docs/sprintbias/DOC_STATE.md (seeded IDs: task=$SEED_TASK_ID, bug=$SEED_BUG_ID, plan=$SEED_PLAN_ID)"
+        else
+            msg_step "Created docs/sprintbias/DOC_STATE.md"
+        fi
     else
         msg_error "Failed to create docs/sprintbias/DOC_STATE.md"
     fi
 else
-    # Reconcile DOC_STATE.md - preserve user data, update product version
-    EXISTING_TASK_ID=$(grep '^\*\*sprint_TASK_ID\*\*:' docs/sprintbias/DOC_STATE.md 2>/dev/null | sed 's/.*:[[:space:]]*//' | grep -o '^[0-9]*' | head -1)
-    EXISTING_BUG_ID=$(grep '^\*\*sprint_BUG_ID\*\*:' docs/sprintbias/DOC_STATE.md 2>/dev/null | sed 's/.*:[[:space:]]*//' | grep -o '^[0-9]*' | head -1)
-    EXISTING_PLAN_ID=$(grep '^\*\*sprint_PLAN_ID\*\*:' docs/sprintbias/DOC_STATE.md 2>/dev/null | sed 's/.*:[[:space:]]*//' | grep -o '^[0-9]*' | head -1)
-    # One-shot read of pre-rebrand counter if PLAN_ID never written.
-    if [ -z "$EXISTING_PLAN_ID" ]; then
-        EXISTING_PLAN_ID=$(grep '^\*\*sprint_EPIC_ID\*\*:' docs/sprintbias/DOC_STATE.md 2>/dev/null | sed 's/.*:[[:space:]]*//' | grep -o '^[0-9]*' | head -1)
-    fi
-
-    # Validate and set defaults
-    [[ "$EXISTING_TASK_ID" =~ ^[0-9]+$ ]] || EXISTING_TASK_ID=0
-    [[ "$EXISTING_BUG_ID" =~ ^[0-9]+$ ]] || EXISTING_BUG_ID=0
-    [[ "$EXISTING_PLAN_ID" =~ ^[0-9]+$ ]] || EXISTING_PLAN_ID=0
+    # Reconcile DOC_STATE.md - preserve user data, lift counters to match disk,
+    # update product version. SEED_* is already max(file, prior-docs state, disk).
+    EXISTING_TASK_ID=$SEED_TASK_ID
+    EXISTING_BUG_ID=$SEED_BUG_ID
+    EXISTING_PLAN_ID=$SEED_PLAN_ID
 
     if cat > docs/sprintbias/DOC_STATE.md << STATE_EOF
 # SprintBias Documentation State
@@ -443,7 +639,7 @@ Fields:
 **sprint_PLAN_ID**: $EXISTING_PLAN_ID
 STATE_EOF
     then
-        msg_step "Updated docs/sprintbias/DOC_STATE.md (preserved IDs: task=$EXISTING_TASK_ID, bug=$EXISTING_BUG_ID, plan=$EXISTING_PLAN_ID)"
+        msg_step "Updated docs/sprintbias/DOC_STATE.md (reconciled IDs: task=$EXISTING_TASK_ID, bug=$EXISTING_BUG_ID, plan=$EXISTING_PLAN_ID)"
     else
         msg_error "Failed to update docs/sprintbias/DOC_STATE.md"
     fi
@@ -508,10 +704,12 @@ already_ours() {
 }
 
 # already_ours_readme CONTENT — true when CONTENT has our current or legacy
-# README pointer marker (pre-SprintBias installs used "managed by [sprint.md]").
+# README pointer marker (pre-SprintBias installs used "managed by [sprint.md]";
+# a 5DayDocs overlay used "managed by [5DayDocs]").
 already_ours_readme() {
     already_ours "$SPRINT_README_MARKER" "$1" \
-        || already_ours "$SPRINT_README_MARKER_LEGACY" "$1"
+        || already_ours "$SPRINT_README_MARKER_LEGACY" "$1" \
+        || already_ours 'managed by [5DayDocs]' "$1"
 }
 
 # gitignore_merge RECOMMENDED EXISTING
@@ -817,7 +1015,7 @@ _replace_md_block() {
 _replace_readme_pointer() {
     local target="$1" block="$2" tmp body
     body="$(awk '
-        seen==0 && /managed by \[(SprintBias|sprint\.md)\]/ {next}
+        seen==0 && /managed by \[(SprintBias|sprint\.md|5DayDocs)\]/ {next}
         seen==0 && /^[[:space:]]*$/ {next}
         {seen=1; print}
     ' "$target" 2>/dev/null)"
@@ -1006,6 +1204,36 @@ resolve_manual_file() {
     fi
 }
 
+# prompt_manual_conflict VARNAME — a DOCUMENTATION.md exists that isn't ours and
+# isn't a recognizable version of our own manual. Ask the user, up front, whether
+# to install our manual under a new name (keep theirs) or replace theirs. Sets
+# VARNAME to the filename our manual installs as. Enter, EOF, and non-interactive
+# installs default to the safe New name — a user file is never destroyed without
+# an explicit "r". Replace removes their file (git rm keeps history when tracked).
+prompt_manual_conflict() {
+    local __var="$1" __ans __first
+    __first="$(head -n1 DOCUMENTATION.md 2>/dev/null)"
+    echo ""
+    echo "DOCUMENTATION.md already exists and isn't ours:"
+    [ -n "$__first" ] && echo "  (its first line: $__first)"
+    echo "  [Enter]  New name — install ours as SPRINTDOCUMENTATION.md, keep yours"
+    echo "  r)       Replace  — install ours as DOCUMENTATION.md (yours → git history)"
+    printf "Choose [Enter=New name / r]: "
+    if ! read -r __ans; then __ans=""; echo ""; fi
+    case "$__ans" in
+        r|R)
+            if _legacy_rm DOCUMENTATION.md; then
+                msg_step "Replacing your DOCUMENTATION.md with the SprintBias manual"
+                printf -v "$__var" "%s" "DOCUMENTATION.md"
+            else
+                msg_warning "Could not remove your DOCUMENTATION.md; installing ours as SPRINTDOCUMENTATION.md instead"
+                printf -v "$__var" "%s" "SPRINTDOCUMENTATION.md"
+            fi ;;
+        *)
+            printf -v "$__var" "%s" "SPRINTDOCUMENTATION.md" ;;
+    esac
+}
+
 # apply_deferred_conflicts — the silent default path. Every user-owned file the
 # scaffold_* helpers deferred sits in CONFLICTS as "kind|target|name"; this
 # applies the safe default (prepend) to each. It is the branch almost every
@@ -1125,7 +1353,30 @@ rm -f "$_find_fifo" && rmdir "$(dirname "$_find_fifo")" 2>/dev/null
 # installs as SPRINTDOCUMENTATION.md and every pointer (CLAUDE.md, AGENTS.md,
 # and the dotfiles below) targets that name. Decided up front so every pointer
 # written this run agrees on the manual's filename.
+#
+# An UNMARKED copy of our own manual (5DayDocs / sprint.md / SprintBias, any era)
+# is not the host project's own docs — drop it so the current manual reinstalls
+# as DOCUMENTATION.md. If a previous overlay already wrote SPRINTDOCUMENTATION.md,
+# drop that duplicate too.
+if drop_legacy_docs_manual; then
+    if [ -f SPRINTDOCUMENTATION.md ]; then
+        if [ -n "$(sprint_marker_version "$(cat SPRINTDOCUMENTATION.md)")" ]; then
+            _legacy_rm SPRINTDOCUMENTATION.md \
+                && _overlay_note "Removed leftover SPRINTDOCUMENTATION.md (manual is DOCUMENTATION.md again)" \
+                || true
+        fi
+    fi
+fi
+
+# resolve_manual_file gives the safe default: DOCUMENTATION.md unless a manual we
+# didn't write is in the way, in which case ours retargets to SPRINTDOCUMENTATION.md.
+# When that conflict is real (a DOCUMENTATION.md the user genuinely wrote — not a
+# stale copy of ours, which drop_legacy_docs_manual already replaced), ask up front
+# whether to keep theirs under a new name or replace it.
 MANUAL_FILE="$(resolve_manual_file)"
+if [ "$MANUAL_FILE" = "SPRINTDOCUMENTATION.md" ]; then
+    prompt_manual_conflict MANUAL_FILE
+fi
 
 # --- AI dotfiles (deferred from the walk above) ---------------------------
 # Pre-existing dotfiles get a silent version-marked prepend; absent ones are
@@ -1396,6 +1647,50 @@ if [ "$_retired_removed" -gt 0 ]; then
 fi
 rmdir "docs/sprintbias/theory" 2>/dev/null || true
 
+# ── Prior-docs leftovers (5DayDocs overlay) ──────────────────────────
+# Framework-owned only: launcher, old framework tree, undotted templates,
+# old STATE.md (IDs already seeded above). User tasks/features/bugs stay.
+prune_legacy_docs_leftovers
+if [ "${_legacy_pruned:-0}" -gt 0 ]; then
+    msg_success "Pruned $_legacy_pruned leftover file(s) from a prior docs system"
+fi
+
+# Deregister a leftover 5daydocs submodule (root or submodules/5daydocs).
+_legacy_sub_removed=0
+for _sub_path in submodules/5daydocs 5daydocs; do
+    _sub_registered=0
+    if [ -f .gitmodules ] && grep -qE "^[[:space:]]*path = ${_sub_path}[[:space:]]*$" .gitmodules 2>/dev/null; then
+        _sub_registered=1
+    fi
+    if [ "$_sub_registered" -eq 1 ]; then
+        git submodule deinit -f -- "$_sub_path" >/dev/null 2>&1 || true
+        if git rm -f -- "$_sub_path" >/dev/null 2>&1; then
+            _overlay_note "Removed leftover $_sub_path submodule"
+            _legacy_sub_removed=$((_legacy_sub_removed + 1))
+        else
+            rm -rf "$_sub_path"
+            _overlay_note "Removed leftover $_sub_path (git rm failed; directory deleted)"
+            _legacy_sub_removed=$((_legacy_sub_removed + 1))
+            if [ -f .gitmodules ] && [ "$(grep -c '^\[submodule' .gitmodules 2>/dev/null || echo 0)" -le 1 ]; then
+                git rm -f -- .gitmodules >/dev/null 2>&1 || rm -f .gitmodules
+            elif [ -f .gitmodules ]; then
+                msg_warning "Review .gitmodules — leftover $_sub_path entry may remain"
+            fi
+        fi
+        rm -rf ".git/modules/$_sub_path"
+    fi
+done
+if [ -f .gitmodules ] && ! grep -q '^\[submodule' .gitmodules 2>/dev/null; then
+    git rm -f -- .gitmodules >/dev/null 2>&1 || rm -f .gitmodules
+    _overlay_note "Removed empty .gitmodules"
+fi
+rmdir submodules 2>/dev/null || true
+unset _sub_path _sub_registered
+if [ "$_legacy_sub_removed" -gt 0 ]; then
+    msg_success "Removed leftover 5daydocs submodule"
+fi
+unset _legacy_sub_removed
+
 # ── Strip dead config keys (hard cut — no value carry to new names) ──
 # Runtime only reads the current key set. Old pins (MODEL_TALK, BUDGET_TASKS,
 # MODEL_REVIEW_SPRINT, …) are removed so they cannot confuse editors; re-set
@@ -1546,6 +1841,18 @@ if [ "$MORE_OPTIONS" = "yes" ]; then
 else
     # Default path: apply the silent safe default (prepend) to each conflict.
     apply_deferred_conflicts
+fi
+
+# README body still naming the prior docs system (after the banner is in place).
+if [ -f README.md ] && grep -qE '5DayDocs|5day\.sh|docs/5day' README.md 2>/dev/null; then
+    _rw_tmp="$(mktemp README.md.XXXXXX)" || _rw_tmp=""
+    if [ -n "$_rw_tmp" ] && rewrite_legacy_docs_readme < README.md > "$_rw_tmp" \
+       && mv -f "$_rw_tmp" README.md; then
+        msg_step "Rewrote leftover 5DayDocs pointers in README.md"
+    else
+        rm -f "$_rw_tmp" 2>/dev/null
+    fi
+    unset _rw_tmp
 fi
 
 echo ""

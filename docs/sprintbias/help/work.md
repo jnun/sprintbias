@@ -122,11 +122,11 @@ Usage:
   ./sprint.sh work --fast --max     # parallel (4 jobs), cap cleared
   ./sprint.sh work --assist         # interactive mode picker
   ./sprint.sh work --verbose        # stream full per-task event detail
+  ./sprint.sh work --model <id>     # pin the model for this run only
 
 Integrity: a next/ task stamped READY that still has open questions under
 ### Questions for the developer is demoted to blocked/ (loud report). Clear
 suggestions with `./sprint.sh settle`, or answer via `./sprint.sh chat <id>`.
-  ./sprint.sh work --model <id>     # pin the model for this run only
 
 Quality chain: --audit runs polish --code (correctness) on each task that
 lands in review/; --excellence then runs polish <file> (deep-judge) after it

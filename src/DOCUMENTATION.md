@@ -193,13 +193,13 @@ Help groups: **create · chat · plan · work · look · keep**.
 ./sprint.sh -g work                   # This run: Grok Build  (-c / --claude for Claude Code)
 ./sprint.sh --claude chat 12          # This run: Claude Code (same as -c)
 ./sprint.sh profile [show]            # Create/update project profile (show: print only, no AI)
-./sprint.sh chat [target]             # id: task · folder: sweep · plan [id]: author a plan · bugs: inbox · nothing: sprint health
-./sprint.sh work [N] [count N] [--fast] # Execute READY tasks from next/ — `work N` works one task by id; `count N` caps how many run (--force skips the gate; --audit --excellence chain quality audits)
+./sprint.sh chat [target] [--model]   # id: task · folder: sweep · plan [id]: author a plan · bugs: inbox · nothing: sprint health
+./sprint.sh work [N] [count N] [--fast] [--model] # Execute READY tasks from next/ — `work N` works one task by id; `count N` caps how many run (--force skips the gate; --audit --excellence chain quality audits)
 ./sprint.sh loop [--refill] [--retry] # Autopilot — plan start (gates as it commits) then work, drain the queue
-./sprint.sh gate [folder] [limit]     # Off-spine quality gate: re-gate next/ (--force) or report on backlog/doing/blocked
+./sprint.sh gate [folder] [limit] [--model] # Off-spine quality gate: re-gate next/ (--force) or report on backlog/doing/blocked
 ./sprint.sh settle [id] [--dry-run]   # Accept (Suggestion: …) open questions — fold into Notes, clear list; demote next/ that still need a human
 ./sprint.sh split <path>              # Split a large task into subtasks
-./sprint.sh polish [limit] [--rounds N]  # Sweep review/: reopen tasks worth another pass
+./sprint.sh polish [limit] [--rounds N] [--model] # Sweep review/: reopen tasks worth another pass
 ./sprint.sh polish <id|file>          # Deep-judge one finished task (by id or path); file enhancements to backlog/
 ./sprint.sh polish --code <id|file>   # Code-diff audit (fixer/verifier); may fix issues inline
 ./sprint.sh promote [id] [--dry-run]  # Test-gated close: run each review/ task's **Tests**, all green → done/
@@ -425,7 +425,10 @@ Or from your project:
 curl -fsSL https://raw.githubusercontent.com/jnun/sprintbias/main/install.sh | bash
 ```
 
-Your `DOC_STATE.md` counters (task IDs, bug IDs, plan IDs) are preserved.
+Your `DOC_STATE.md` counters (task IDs, bug IDs, plan IDs) are preserved, and
+lifted if files on disk already use a higher ID. Retired framework files from
+an earlier docs system (old launcher, old framework folder, undotted templates)
+are removed; your tasks, features, bugs, and ideas stay.
 
 ---
 

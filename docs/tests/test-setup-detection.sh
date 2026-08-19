@@ -11,6 +11,8 @@
 #   `# >>> SprintBias scaffold helpers`   — the version-marker machinery that
 #     acts on real paths (classify_target, pointer_block/readme_block, prepend /
 #     replace, apply_conflict, resolve_conflict_interactive, resolve_manual_file).
+#   `# >>> SprintBias legacy-docs overlay helpers` — 5DayDocs leftover cleanup
+#     (counter seed, manual detect, README rewrite, prune).
 #
 # The scaffold block touches files and prints through msg_*, so its tests run in
 # a temp working directory with CURRENT_VERSION / MANUAL_FILE set and the msg_*
@@ -25,12 +27,15 @@ SETUP_SH="$(cd "$(dirname "$0")/../.." && pwd)/setup.sh"
 # --- Extract the fenced helper blocks from setup.sh and source them ---
 HELPERS="$(mktemp)"
 SCAFFOLD="$(mktemp)"
+OVERLAY="$(mktemp)"
 WORK="$(mktemp -d)"
-trap 'rm -f "$HELPERS" "$SCAFFOLD"; rm -rf "$WORK"' EXIT
+trap 'rm -f "$HELPERS" "$SCAFFOLD" "$OVERLAY"; rm -rf "$WORK"' EXIT
 awk '/# >>> SprintBias detection helpers/{f=1;next} /# <<< SprintBias detection helpers/{f=0} f' \
     "$SETUP_SH" > "$HELPERS"
 awk '/# >>> SprintBias scaffold helpers/{f=1;next} /# <<< SprintBias scaffold helpers/{f=0} f' \
     "$SETUP_SH" > "$SCAFFOLD"
+awk '/# >>> SprintBias legacy-docs overlay helpers/{f=1;next} /# <<< SprintBias legacy-docs overlay helpers/{f=0} f' \
+    "$SETUP_SH" > "$OVERLAY"
 
 if [ ! -s "$HELPERS" ]; then
     echo "FAIL: could not extract detection helpers from $SETUP_SH (sentinels missing?)"
@@ -40,10 +45,16 @@ if [ ! -s "$SCAFFOLD" ]; then
     echo "FAIL: could not extract scaffold helpers from $SETUP_SH (sentinels missing?)"
     exit 1
 fi
+if [ ! -s "$OVERLAY" ]; then
+    echo "FAIL: could not extract legacy-docs overlay helpers from $SETUP_SH (sentinels missing?)"
+    exit 1
+fi
 # shellcheck disable=SC1090
 source "$HELPERS"
 # shellcheck disable=SC1090
 source "$SCAFFOLD"
+# shellcheck disable=SC1090
+source "$OVERLAY"
 
 assert_true() {
     local desc="$1"; shift
@@ -119,6 +130,9 @@ assert_true "current README pointer via already_ours_readme" \
 LEGACY_OURS='> **Project documentation** → see DOCUMENTATION.md (managed by [sprint.md](https://github.com/jnun/sprint.md))'
 assert_true "legacy sprint.md README pointer still recognized" \
     already_ours_readme "$LEGACY_OURS"
+FIVEDAY_OURS='> **Project documentation** → see [`DOCUMENTATION.md`](DOCUMENTATION.md) (managed by [5DayDocs](https://github.com/jnun/5daydocs))'
+assert_true "prior-docs 5DayDocs README pointer still recognized" \
+    already_ours_readme "$FIVEDAY_OURS"
 
 echo "Test 2: already_ours does NOT fire on an incidental 'SprintBias' mention"
 # A host project that merely references the tool by name must not be mistaken
@@ -459,6 +473,180 @@ assert_eq "install_owned_doc left the user's file byte-identical" "$before" "$af
 assert_not_contains "the user's file did not take our content" "$(cat OWNED.md)" \
     "My own GETSTARTED"
 rm -f SRC-owned.md OWNED.md
+
+# ===========================================================================
+# Prior-docs overlay — leftover cleanup when SprintBias lands on 5DayDocs
+# ===========================================================================
+
+echo "Test 26: legacy_docs_manual_content recognizes our manual across its lineage"
+assert_true "H1 5DayDocs is our manual" \
+    legacy_docs_manual_content '# 5DayDocs
+
+Project management in markdown files.
+- `5day.sh`
+- `docs/5day/`'
+assert_true "H1 sprint.md is our manual (pre-marker era)" \
+    legacy_docs_manual_content '# sprint.md
+
+Project management in markdown files. Folders and plain text.
+
+## Guiding principles'
+assert_true "H1 SprintBias (unmarked) is our manual" \
+    legacy_docs_manual_content '# SprintBias
+
+Project management in markdown files.'
+assert_true "guiding-principles fingerprint is our manual, whatever the title" \
+    legacy_docs_manual_content '# Docs
+
+1. Lean into agent bias.
+2. Minimize context cost.'
+assert_true "old Workflow Guide + 5day.sh is our manual" \
+    legacy_docs_manual_content '# Documentation and Workflow Guide
+
+Using the 5day.sh Script
+The `5day.sh` script is a convenient command interface.'
+assert_false "a host project's own DOCUMENTATION.md is not our manual" \
+    legacy_docs_manual_content '# My API docs
+
+See DOCUMENTATION.md for endpoints. We use SprintBias for tasks.'
+assert_false "only one guiding-principle name present is not enough" \
+    legacy_docs_manual_content '# Team handbook
+
+We lean into agent bias when reviewing PRs.'
+assert_false "our current marked manual is not flagged (content sniff only)" \
+    legacy_docs_manual_content "$(pointer_block)
+# SprintBias
+
+Read this before making changes."
+
+echo "Test 27: seed helpers take max(state file, disk prefix), leave empty kinds at 0"
+STATE_FIVEDAY='# state
+**5DAY_TASK_ID**: 0
+**5DAY_BUG_ID**: 0
+'
+assert_eq "zeroed prior-docs counters stay 0" "0" \
+    "$(seed_kind_id "$STATE_FIVEDAY" TASK)"
+assert_eq "missing bug counter is 0" "0" \
+    "$(seed_kind_id "$STATE_FIVEDAY" BUG)"
+assert_eq "missing plan counter is 0" "0" \
+    "$(seed_kind_id "$STATE_FIVEDAY" PLAN)"
+
+STATE_MIXED='# state
+**sprint_TASK_ID**: 0
+**5DAY_TASK_ID**: 14
+**sprint_BUG_ID**: 0
+**5DAY_BUG_ID**: 0
+**sprint_EPIC_ID**: 3
+'
+assert_eq "max of sprint_ 0 and 5DAY_ 14 is 14" "14" \
+    "$(seed_kind_id "$STATE_MIXED" TASK)"
+assert_eq "highest_numeric_prefix picks 179 over 12" "179" \
+    "$(highest_numeric_prefix 'docs/tasks/done/12-old.md' 'docs/tasks/backlog/179-latest.md')"
+assert_eq "leading zeros parse as decimal" "7" \
+    "$(highest_numeric_prefix 'docs/tasks/done/007-padded.md')"
+assert_eq "no names -> 0" "0" "$(highest_numeric_prefix)"
+assert_eq "int_max of counter 0 and disk 179 is 179" "179" \
+    "$(int_max 0 179)"
+assert_eq "int_max keeps a higher counter than disk" "200" \
+    "$(int_max 200 179)"
+
+echo "Test 28: rewrite_legacy_docs_readme rewrites brand/paths, keeps the body"
+README_OLD='# Project Name
+
+This project uses [5DayDocs](https://github.com/jnun/5daydocs) for task management. See `DOCUMENTATION.md` for workflow details.
+Run `./5day.sh status`. Scripts live in docs/5day/scripts.
+'
+rewritten="$(rewrite_legacy_docs_readme "$README_OLD")"
+assert_contains "brand becomes SprintBias" "$rewritten" "SprintBias"
+assert_not_contains "old brand is gone" "$rewritten" "5DayDocs"
+assert_contains "github link becomes sprintbias.com" "$rewritten" "https://sprintbias.com"
+assert_not_contains "old github link is gone" "$rewritten" "github.com/jnun/5daydocs"
+assert_contains "launcher becomes sprint.sh" "$rewritten" "./sprint.sh status"
+assert_contains "framework path becomes docs/sprintbias/" "$rewritten" "docs/sprintbias/scripts"
+assert_contains "user heading kept" "$rewritten" "# Project Name"
+assert_contains "DOCUMENTATION.md left as DOCUMENTATION.md" "$rewritten" '`DOCUMENTATION.md`'
+
+echo "Test 29: scaffold_readme upgrades a 5DayDocs banner onto the marker path"
+printf '%s\n\n%s\n' \
+    '> **Project documentation** → see [`DOCUMENTATION.md`](DOCUMENTATION.md) (managed by [5DayDocs](https://github.com/jnun/5daydocs))' \
+    "$USER_BODY" > README.md
+assert_eq "5DayDocs banner alone is not a version marker" "theirs" \
+    "$(classify_target README.md)"
+scaffold_readme
+assert_eq "scaffold_readme migrates the 5DayDocs banner onto the marker path" \
+    "ours-current:9.9.9" "$(classify_target README.md)"
+upgraded="$(cat README.md)"
+assert_contains "upgrade keeps the user's body" "$upgraded" "Our own instructions live here."
+assert_eq "upgrade leaves exactly one SprintBias pointer" "1" \
+    "$(grep -c 'managed by \[SprintBias\]' README.md)"
+assert_not_contains "old 5DayDocs banner line is gone" "$upgraded" "managed by [5DayDocs]"
+
+echo "Test 30: drop_legacy_docs_manual removes an unmarked copy of our manual, not a user file"
+printf '%s\n' '# 5DayDocs
+
+- `5day.sh`
+- `docs/5day/`' > DOCUMENTATION.md
+drop_legacy_docs_manual
+assert_false "old 5DayDocs manual is gone" test -f DOCUMENTATION.md
+assert_eq "resolve_manual_file now returns DOCUMENTATION.md" "DOCUMENTATION.md" \
+    "$(resolve_manual_file)"
+
+# The reported case: a pre-marker sprint.md-era manual, unmarked, is replaced too.
+printf '%s\n' '# sprint.md
+
+Project management in markdown files. Folders and plain text.
+
+## Guiding principles
+
+1. Lean into agent bias.
+2. Minimize context cost.' > DOCUMENTATION.md
+drop_legacy_docs_manual
+assert_false "old sprint.md-era manual is gone" test -f DOCUMENTATION.md
+
+# Marker guard: our own current manual carries the fingerprint but IS marked, so
+# it is upgraded in place by install_owned_doc, never dropped here.
+printf '%s\n' '<!-- SprintBias v9.9.9 -->
+# SprintBias
+
+1. Lean into agent bias.
+2. Minimize context cost.' > DOCUMENTATION.md
+drop_legacy_docs_manual || true
+assert_true "marked manual with the fingerprint is kept" test -f DOCUMENTATION.md
+rm -f DOCUMENTATION.md
+
+printf '%s\n' '# Our internal API docs' > DOCUMENTATION.md
+drop_legacy_docs_manual || true
+assert_true "user-owned DOCUMENTATION.md is kept" test -f DOCUMENTATION.md
+assert_eq "user-owned manual still retargets" "SPRINTDOCUMENTATION.md" \
+    "$(resolve_manual_file)"
+rm -f DOCUMENTATION.md
+
+echo "Test 31: prune_legacy_docs_leftovers removes framework leftovers, keeps user work"
+mkdir -p docs/5day/scripts docs/5day/ai docs/tasks docs/features docs/bugs docs/ideas \
+         docs/tasks/backlog
+printf '%s\n' '#!/bin/sh' > 5day.sh
+printf '%s\n' '# old framework' > docs/5day/lib.sh
+printf '%s\n' '# old state' > docs/5day/DOC_STATE.md
+printf '%s\n' 'undotted' > docs/tasks/TEMPLATE-task.md
+printf '%s\n' 'dotted' > docs/tasks/.TEMPLATE-task.md
+printf '%s\n' 'undotted' > docs/features/TEMPLATE-feature.md
+printf '%s\n' 'dotted' > docs/features/.TEMPLATE-feature.md
+printf '%s\n' 'undotted-only' > docs/bugs/TEMPLATE-bug.md
+printf '%s\n' '# Task 179' > docs/tasks/backlog/179-existing.md
+printf '%s\n' '**5DAY_TASK_ID**: 0
+**5DAY_VERSION**: 4.1.0' > docs/STATE.md
+
+prune_legacy_docs_leftovers
+assert_false "5day.sh removed" test -e 5day.sh
+assert_false "docs/5day/ removed" test -e docs/5day
+assert_false "undotted task template removed" test -e docs/tasks/TEMPLATE-task.md
+assert_true "dotted task template kept" test -f docs/tasks/.TEMPLATE-task.md
+assert_false "undotted feature template removed" test -e docs/features/TEMPLATE-feature.md
+assert_true "dotted feature template kept" test -f docs/features/.TEMPLATE-feature.md
+assert_true "undotted bug template kept when no dotted counterpart" \
+    test -f docs/bugs/TEMPLATE-bug.md
+assert_true "existing task file kept" test -f docs/tasks/backlog/179-existing.md
+assert_false "old docs/STATE.md removed after seed" test -e docs/STATE.md
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

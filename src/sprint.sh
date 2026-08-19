@@ -86,7 +86,7 @@ print_command_group() {
         usage="${usage#"${usage%%[![:space:]]*}"}"; usage="${usage%"${usage##*[![:space:]]}"}"
         summary="${summary#"${summary%%[![:space:]]*}"}"; summary="${summary%"${summary##*[![:space:]]}"}"
         left="$cmd${usage:+ $usage}"
-        printf "  %-32s %s\n" "$left" "$summary"
+        printf "  %-42s %s\n" "$left" "$summary"
     done < "$REGISTRY"
 }
 
@@ -117,6 +117,10 @@ show_help() {
     echo "  -g, --grok                       Grok Build   (CLI=grok, PROVIDER=grok-build)"
     echo "  Default comes from docs/sprintbias/config (or setup.sh). Env SPRINTBIAS_CLI /"
     echo "  SPRINTBIAS_PROVIDER also override. Examples: ./sprint.sh -g work"
+    echo ""
+    echo -e "${BLUE}Model (this run only — does not rewrite config):${NC}"
+    echo "  work|chat|gate|polish --model <id>   pin this run (e.g. claude-opus-4-8)"
+    echo "  Persist: ./sprint.sh model set default <id>   (see help model)"
     echo ""
     echo -e "${BLUE}Create:${NC}"
     print_command_group create
