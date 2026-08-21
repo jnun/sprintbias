@@ -75,7 +75,10 @@ operability, robustness) after correctness is presumed. Verdicts:
   BLOCKER    — work fails its own task's goal          (exit 1)
 
 A '## Excellence' section (date, verdict, summary) is appended to the task
-file for the record.
+file for the record. That section is also the idempotency signal: a piece that
+already carries one is judged, so a re-run skips it (it would otherwise stack a
+second section and re-file the same enhancements). `--force` re-judges it. The
+same guard covers `plan polish`, which routes through this one judge per member.
 
 ── Code audit ─────────────────────────────────────────────────────────
 
@@ -91,6 +94,13 @@ Context modes (how the audit knows what changed):
 Exits 0 (clean) or 1 (warnings). A '## Audit' section is appended when a
 task file is provided.
 
+If a step aborts (hits its turn limit or the CLI errors), the edits the fixer
+already landed are kept, not thrown away: the delta is banked as a patch, one
+bounded verifier pass runs on what landed, and a '## Audit (aborted — fixes
+landed)' note records the outcome. Re-run `polish --code` to push that banked
+work forward; raising SPRINTBIAS_AUDIT_MAX_TURNS is the last resort if it keeps
+stalling on the same step.
+
 Usage:
   ./sprint.sh polish                 # sweep all of review/
   ./sprint.sh polish 874             # deep-judge task 874 (any folder)
@@ -99,7 +109,8 @@ Usage:
   ./sprint.sh polish --parallel      # sweep review/ with 2 concurrent judges
   ./sprint.sh polish --fast          # shorthand for --parallel with 4 judges
   ./sprint.sh polish --jobs N        # sweep with N concurrent judges
-  ./sprint.sh polish --force         # ignore the round cap this run
+  ./sprint.sh polish --force         # sweep: ignore the round cap this run
+  ./sprint.sh polish --force 874     # deep-judge: re-judge an already-judged task
   ./sprint.sh polish --max           # clear the budget cap (where one applies)
   ./sprint.sh polish <task.md>       # deep-judge one finished piece
   ./sprint.sh polish file1.py file2  # deep-judge explicit files

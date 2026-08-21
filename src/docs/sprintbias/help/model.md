@@ -10,7 +10,7 @@ Usage:
 What it does:
   show  — Prints the active CLI, provider tier, and mode, then the effective
           model for every role (work, chat, gate, feature, idea, split, sprint,
-          profile, code_audit, excellence, polish, audit, deps, triage,
+          profile, code_audit, excellence, polish, accept, audit, deps, triage,
           plan_think, drift) with WHERE that model comes from:
             env <VAR>          a this-shell SPRINTBIAS_MODEL_<ROLE> override
             config MODEL_<ROLE> a per-role pin in docs/sprintbias/config

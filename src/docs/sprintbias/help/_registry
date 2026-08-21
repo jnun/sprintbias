@@ -29,7 +29,7 @@ newtest       | create   | <name>              | Create a test loop to validate 
 
 chat          | chat     | [target] [--model]  | id: define/refine/split one task · folder (blocked/next/backlog): sweep · plan [id]: author a plan · bugs: sweep inbox · nothing: walk sprint health (spine: chat → plan start → work) | chat
 
-plan          | plan     | think/start/done [id] | think: dual-persona plan critique · start: gate + commit members to next/ (the sprint), latches STARTED · done: delete the plan once every member is in done/ — heads the spine → work | feature-plan
+plan          | plan     | think/start/polish/done [id] | think: dual-persona plan critique · start: gate + commit members to next/ (the sprint), latches STARTED · polish: excellence-judge the plan's finished work (review/ + done/) · done: delete the plan once every member is in done/ — heads the spine → work | feature-plan
 
 work          | work     | [N] [count N] [--fast] [--model] | Execute — happy path: run READY tasks in next/ → review/ (after plan start). `work N` works one task by id; `count N` caps how many run | work
 loop          | work     | [--refill] [--retry]| Autopilot spine — plan start refill (gates as it commits) then work drain | loop
@@ -37,7 +37,7 @@ gate          | work     | [folder] [limit] [--model] | Off-spine quality gate �
 settle        | work     | [id] [--dry-run] [--blocked] | Accept (Suggestion: …) open questions — fold into Notes, clear list; demote next/ files that still need a human
 split         | work     | <path>              | Off-spine — one-shot split of a large task into subtasks (no conversation) | split
 polish        | work     | [limit/id/file] [--code] [--model] | After work — quality sweep review/, deep-judge a task (by id or file), or --code audit | polish
-promote       | work     | [id] [--dry-run]    | Test-gated close — run each review/ task's **Tests**, all green → done/ | promote
+promote       | work     | [id] [--dry-run] [--audit [--move]] | Close review/ → done/: default runs each task's **Tests** (green → done/); --audit is an AI acceptance judge (add --move to close) | promote
 
 status        | look     |                     | Show project status | status
 search        | look     | <keyword>           | Search tasks by keyword | search

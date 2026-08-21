@@ -55,15 +55,28 @@ The run ends with a summary — ready → next/, blocked, done counts — and th
 step is `./sprint.sh work`. Lifecycle moves use `git mv SRC DEST || mv SRC DEST`
 (git mv first; plain mv finishes when untracked). The developer owns commits.
 
+**plan polish [id] [--force]** — excellence-judge the plan's finished work. Runs
+the same deep-judge as `polish <id>` (one shared unit) over every member that has
+reached `review/` or `done/` — the plan-scoped equivalent of polishing one task.
+Each finished member is judged against a higher bar than "it runs": it never
+edits product code and never reopens the task, appends a `## Excellence` section,
+and files any enhancements as new `backlog/` tasks. Members still in
+`backlog/next/doing/blocked` are skipped with a notice (not finished yet), and a
+member already carrying a `## Excellence` section is skipped as already-judged —
+`--force` re-judges it. Bare `plan polish` picks a plan. This is the quality pass
+for a plan's completed body of work; `plan think` critiques the plan as a unit,
+and the reopen sweep / `--code` audit stay on `polish` itself.
+
 **plan done [id]** — retire a finished plan. When every member task is in
 `docs/tasks/done/`, deletes the plan file (retirement is deletion, never a
 stored DONE status). If any member is still outstanding, it reports what remains
 and does nothing. Bare `plan done` picks a plan.
 
 Usage:
-  ./sprint.sh plan think [id]
-  ./sprint.sh plan start [id] [--commit-only]
-  ./sprint.sh plan done  [id]
+  ./sprint.sh plan think  [id]
+  ./sprint.sh plan start  [id] [--commit-only]
+  ./sprint.sh plan polish [id] [--force]
+  ./sprint.sh plan done   [id]
   ./sprint.sh plan              # prints this usage (no auto-planner)
 
 Provider for this run only (AI subcommands; leading flags; no config rewrite):
@@ -77,7 +90,8 @@ Family order:
   4. ./sprint.sh plan start [id]    # gate members, commit READY → next/ (latches STARTED)
      ./sprint.sh plan start [id] --commit-only   # pure backlog→next, no AI gate
   5. ./sprint.sh work · loop
-  6. ./sprint.sh plan done [id]      # all members in done/ → delete the plan file
+  6. ./sprint.sh plan polish [id]    # optional: excellence-judge finished members (review/ + done/)
+  7. ./sprint.sh plan done [id]      # all members in done/ → delete the plan file
 
 Use default `plan start` when members need the workability gate. Use
 `--commit-only` when members are already READY-stamped, for tests, or when AI

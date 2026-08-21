@@ -28,7 +28,7 @@ source "$(cd "$SCRIPTS_DIR/.." && pwd)/lib.sh"
 # The known role suffixes — one per MODEL_<ROLE> key in docs/sprintbias/config.
 # `set` refuses any key outside this set (plus DEFAULT) so a typo can never
 # invent a dead config key that no script reads.
-KNOWN_ROLES="WORK CHAT GATE FEATURE IDEA SPLIT SPRINT PROFILE CODE_AUDIT EXCELLENCE POLISH AUDIT DEPS TRIAGE PLAN_THINK DRIFT"
+KNOWN_ROLES="WORK CHAT GATE FEATURE IDEA SPLIT SPRINT PROFILE CODE_AUDIT EXCELLENCE POLISH ACCEPT AUDIT DEPS TRIAGE PLAN_THINK DRIFT"
 
 usage() {
   cat <<'EOF'
@@ -41,7 +41,7 @@ Usage:
                                # writes MODEL_DEFAULT / MODEL_<ROLE> to config
 
 Roles: work chat gate feature idea split sprint profile code_audit
-       excellence polish audit deps triage plan_think drift
+       excellence polish accept audit deps triage plan_think drift
 
 Examples:
   ./sprint.sh model set default grok-4.5   # global default for every role

@@ -153,6 +153,10 @@ Also append a short ## Plan Think summary block to $PLAN_FILE (before any HTML c
 PLAN THINK COMPLETE — <N> members annotated
 (replace <N> with the number of member task files you annotated)."
 
+# Live progress rendering is sprintbias_stream_filter (lib.sh) — one readable
+# line per stream-json step, shared with work.sh so both show the same live
+# progress while the full raw stream lands in the log file.
+
 # ── Run ─────────────────────────────────────────────────────────────
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -162,23 +166,38 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 _model_args=()
 [ -n "$MODEL" ] && _model_args=(--model "$MODEL")
 
+# Emit mode: hand the prompt to the surrounding agent. No log file — the run
+# happens in this session, and the early exit below mirrors the old behavior.
+if [ "$AI_MODE" = "emit" ]; then
+  sprintbias_run -p "$PROMPT" \
+    ${_model_args[@]+"${_model_args[@]}"} \
+    --tools "$TOOLS" \
+    --permissions "$PERMISSIONS" \
+    --max-turns "$MAX_TURNS"
+  echo ""
+  echo "▸ Prompt emitted — the critique runs in this agent session."
+  echo "  When it finishes: ## Plan Think on member tasks; analysis in $REVIEW_FILE."
+  exit 0
+fi
+
+# Exec mode: stream the raw event log to docs/tmp/ in real time (like work) —
+# tee the full provider-neutral stream to the file while sprintbias_stream_filter renders
+# readable progress on the terminal. --output-format stream-json is translated
+# per profile by sprintbias_run (Claude keeps it; others map/drop as needed).
+LOG_FILE="$(sprintbias_log_path plan-think "$PLAN_ID")"
+
 if sprintbias_run -p "$PROMPT" \
   ${_model_args[@]+"${_model_args[@]}"} \
   --tools "$TOOLS" \
   --permissions "$PERMISSIONS" \
-  --max-turns "$MAX_TURNS"; then
-
-  if sprintbias_emitted; then
-    echo ""
-    echo "▸ Prompt emitted — the critique runs in this agent session."
-    echo "  When it finishes: ## Plan Think on member tasks; analysis in $REVIEW_FILE."
-    exit 0
-  fi
+  --max-turns "$MAX_TURNS" \
+  --output-format stream-json 2>&1 | tee "$LOG_FILE" | sprintbias_stream_filter; then
 
   if [ ! -f "$REVIEW_FILE" ] || ! grep -q '^PLAN THINK COMPLETE' "$REVIEW_FILE"; then
     echo ""
     echo "⚠ plan think ended without a completion marker."
     echo "  $REVIEW_FILE may be missing or partial — inspect it before acting."
+    echo "  Full run log: $LOG_FILE"
     exit 1
   fi
 
@@ -197,5 +216,6 @@ if sprintbias_run -p "$PROMPT" \
 else
   echo ""
   echo "✗ plan think failed"
+  echo "  Run log: $LOG_FILE"
   exit 1
 fi

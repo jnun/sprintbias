@@ -378,3 +378,81 @@ sprintbias_provider_interactive() {
 
   "${cmd[@]}"
 }
+
+# The Claude result reader, kept in a variable and run with `python3 -c` (the
+# same pattern as _SPRINTBIAS_STREAM_FILTER above). It parses the result JSON
+# once and writes five NUL-delimited fields on stdout — outcome, turns, cost,
+# verdict text, summary (verdict/summary may be multiline, so NUL is the only
+# safe separator). Kept out of a here-doc-in-process-substitution because that
+# nesting mis-parses under set -e. No single quotes in this code.
+_SPRINTBIAS_INTERPRET_PY="$(cat <<'PYEOF'
+import json, sys, re
+
+def emit(outcome, turns="", cost="", verdict="", summary=""):
+    sys.stdout.write("\0".join([outcome, str(turns), str(cost),
+                                verdict, summary]) + "\0")
+    sys.exit(0)
+
+raw = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+try:
+    d = json.loads(raw)
+except Exception:
+    # Non-JSON log: treat as finished so the caller can grep raw text.
+    emit("finished", "", "", raw, raw[-2000:] if len(raw) > 2000 else raw)
+
+turns = d.get("num_turns", "")
+cost = d.get("total_cost_usd", "")
+result = d.get("result", "") or ""
+
+def summarize(text):
+    if not text:
+        return ""
+    m = re.search(r"## Summary\n(.*?)(?=\nVERDICT:|\Z)", text, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    lines = text.strip().split("\n")
+    vi = None
+    for i, l in enumerate(lines):
+        if "VERDICT:" in l:
+            vi = i
+    if vi is not None and vi > 0:
+        return "\n".join(lines[max(0, vi - 30):vi]).strip()
+    return text[-2000:] if len(text) > 2000 else text
+
+if d.get("is_error"):
+    subtype = d.get("subtype") or "error"
+    outcome = {"error_max_turns": "max_turns",
+               "error_during_execution": "error"}.get(subtype, "error")
+    emit(outcome, turns, cost, result, summarize(result))
+
+emit("finished", turns, cost, result, summarize(result))
+PYEOF
+)"
+
+# profile_interpret_run LOG [rc] — the Claude reading of a run's result.
+# Called by sprintbias_interpret_run (lib.sh). Parses the Claude Code result
+# JSON exactly once and fills the normalized record the audits consume:
+#   SPRINTBIAS_RUN_OUTCOME  finished | max_turns | no_start | error
+#   SPRINTBIAS_RUN_TURNS / _COST / _VERDICT_TEXT / _SUMMARY
+# Mapping: subtype error_max_turns -> max_turns, error_during_execution ->
+# error, any other is_error subtype -> error, empty/absent log -> no_start,
+# a clean result -> finished. A non-JSON log is treated as finished so a caller
+# can still grep a verdict from raw text. This is where the Claude JSON shape
+# lives — lib.sh's fallback is only a bridge for providers not yet ported.
+profile_interpret_run() {
+  local log="$1"
+  SPRINTBIAS_RUN_OUTCOME="" SPRINTBIAS_RUN_TURNS="" SPRINTBIAS_RUN_COST=""
+  SPRINTBIAS_RUN_VERDICT_TEXT="" SPRINTBIAS_RUN_SUMMARY=""
+  if [ ! -s "$log" ]; then
+    SPRINTBIAS_RUN_OUTCOME="no_start"
+    return 0
+  fi
+  {
+    IFS= read -r -d '' SPRINTBIAS_RUN_OUTCOME
+    IFS= read -r -d '' SPRINTBIAS_RUN_TURNS
+    IFS= read -r -d '' SPRINTBIAS_RUN_COST
+    IFS= read -r -d '' SPRINTBIAS_RUN_VERDICT_TEXT
+    IFS= read -r -d '' SPRINTBIAS_RUN_SUMMARY
+  } < <(python3 -c "$_SPRINTBIAS_INTERPRET_PY" "$log")
+  return 0
+}

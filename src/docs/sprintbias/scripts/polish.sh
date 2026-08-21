@@ -6,9 +6,12 @@
 #       pass into next/ via the shared workability gate (never raw promote).
 #       Protocol: docs/sprintbias/ai/refine.md
 #
-#   polish <id|file|task.md> [file...]
+#   polish [--force] <id|file|task.md> [file...]
 #       Deep-judge ONE finished piece; file enhancement tasks to backlog/.
-#       Never edits product code. Protocol: docs/sprintbias/ai/audit-excellence.md
+#       Never edits product code. Delegates to polish-judge.sh — the one home
+#       for excellence judgment (plan polish routes there too), which also owns
+#       the skip-if-already-judged guard (--force re-judges).
+#       Protocol: docs/sprintbias/ai/audit-excellence.md
 #
 #   polish --code <id|file|task.md> [file...] [-- max-passes]
 #       Code-diff audit: fixer/verifier loop that may fix issues inline.
@@ -205,7 +208,8 @@ if [ "$MODE" = "code" ]; then
   TOOLS_FIXER="Read,Edit,Write,Bash,Grep,Glob,Agent"
   TOOLS_VERIFIER="Read,Bash,Grep,Glob,Agent"
   PERMISSIONS="auto"
-  MAX_TURNS=30
+  # Tunable so a max-turns abort has a real next step (see the per-step check).
+  MAX_TURNS="${SPRINTBIAS_AUDIT_MAX_TURNS:-30}"
   LOG_DIR="docs/tmp"
   AI_MODE="$(sprintbias_ai_mode)"
 
@@ -256,12 +260,17 @@ ${TASK_FILE:+ORIGINAL TASK FILE: $TASK_FILE
 }CHANGED FILES (context source: $CONTEXT_SOURCE):
 $CHANGED_FILES
 
-Do a fresh-eyes code audit:
-1. Build an impact graph — grep for imports/references to the changed files.
-2. Audit for correctness, project conventions, style (touched lines only),
-   build/type safety, and unsafe patterns.
-3. Fix any issues you find directly.
-4. Re-verify your fixes with read-only checks.
+Do a fresh-eyes code audit with a bias toward action: when the touched lines
+have a clear best-practice fix, apply it and move on; save deeper investigation
+for the genuinely open calls.
+1. Audit the touched lines for correctness, project conventions, style,
+   build/type safety, and unsafe patterns. Apply the clear fix as you find it.
+2. Before a fix that could ripple, grep for imports/references to that changed
+   file to confirm no caller breaks — scope the check to the fix in hand, not
+   the whole tree.
+3. Re-verify your fixes with read-only checks.
+
+Act decisively and reach a verdict without deepening open-endedly.
 
 Finish with a '## Summary' section, then a final line:
 VERDICT: PASS — no issues | FIXED — fixed all | FAIL — couldn't fix all | BLOCKED — needs human"
@@ -368,6 +377,14 @@ $TASK_CONTENT
   VERDICT="FAIL"
   NEXT_MODE="fixer"
   PREV_SUMMARY=""
+  # Salvage state for an aborted step: whether any fixer edit ever landed, the
+  # abort's honest outcome token (saved before a salvage verify overwrites it),
+  # and what the salvage pass banked/verified. Recorded in ## Audit and the
+  # recovery copy so a partial fix is kept, not thrown away.
+  ANY_EDITS_LANDED=0
+  ABORT_OUTCOME=""
+  SALVAGE_PATCH=""
+  SALVAGE_VERIFY=""
   TIMESTAMP_BASE=$(date +%Y%m%d-%H%M%S)
   _model_args=()
   [ -n "$MODEL" ] && _model_args=(--model "$MODEL")
@@ -384,6 +401,27 @@ $TASK_CONTENT
   trap 'echo ""; echo "▸ Audit interrupted"; rm -f "${_cleanup_files[@]}" 2>/dev/null; exit 130' INT TERM
 
   LAST_MODE=""
+
+  # Capture a fixer step's landed edits as a delta patch. One home for the
+  # pre/post diff so BOTH the normal path and an aborted step bank the same
+  # delta — partial work stays visible and recoverable either way. Sets
+  # STEP_DELTA (the delta text) and STEP_PATCH (the written patch path, empty
+  # when nothing changed). $1 = the step's pre-diff tempfile, $2 = step number.
+  _capture_step_delta() {
+    local pre="$1" step="$2" post
+    STEP_DELTA="" STEP_PATCH=""
+    [ -n "$pre" ] || return 0
+    post=$(mktemp "$LOG_DIR/post-diff-XXXXXX")
+    _cleanup_files+=("$post")
+    git diff HEAD > "$post" 2>/dev/null || git diff > "$post" 2>/dev/null || true
+    STEP_DELTA=$(diff "$pre" "$post" 2>/dev/null || true)
+    rm -f "$pre" "$post"
+    _cleanup_files=()
+    if [ -n "$STEP_DELTA" ]; then
+      STEP_PATCH="$LOG_DIR/diff-polish-code-step${step}-$TIMESTAMP_BASE.patch"
+      echo "$STEP_DELTA" > "$STEP_PATCH"
+    fi
+  }
 
   while true; do
     MODE_STEP="$NEXT_MODE"
@@ -474,7 +512,9 @@ VERDICT: PASS    (fixes hold up)   or   VERDICT: FAIL   (issues remain)"
 
     else
       if [ "$STEP" -eq 1 ]; then
-        PASS_CONTEXT="This is the first audit pass. Be thorough."
+        PASS_CONTEXT="This is the first audit pass. Act with bias toward action:
+when the touched lines have a clear best-practice fix, apply it and move on;
+save deeper investigation for the genuinely open calls."
       else
         PASS_CONTEXT="This is fixer pass $FIXER_COUNT. A previous pass identified issues.
 $FEED_FORWARD
@@ -490,10 +530,16 @@ $PASS_CONTEXT
 CHANGED FILES:
 $CHANGED_FILES
 
-1. Build impact graph: Grep for imports/references to changed files.
-2. Audit: correctness, conventions, style (touched lines only), build, safety.
-3. Fix issues you find.
+1. Audit the touched lines: correctness, conventions, style, build, safety.
+   Apply the clear best-practice fix as you find it — don't defer.
+2. Before a fix that could ripple, grep for imports/references to that changed
+   file to confirm no caller breaks. Scope this check to the fix in hand, not
+   the whole tree — it serves a fix already forming, not open-ended exploration.
 $BUILD_BLOCK
+
+You have ~$MAX_TURNS turns — enough to fix the touched lines and reach a verdict.
+Finish inside that budget: act decisively rather than deepening open-endedly.
+Raising SPRINTBIAS_AUDIT_MAX_TURNS is a last resort, not your first move.
 
 End with a '## Summary' section. Then your VERY LAST line must be the verdict
 and nothing after it, in exactly this form — the literal word VERDICT, a colon,
@@ -505,33 +551,115 @@ FAIL: couldn't fix all · BLOCKED: needs a human."
 
     LOG_FILE="$LOG_DIR/log-polish-code-${_log_name%.md}-step${STEP}-${MODE_STEP}-$TIMESTAMP_BASE.json"
 
-    OUTPUT=$(sprintbias_run -p "$PROMPT" \
+    sprintbias_run -p "$PROMPT" \
       ${_model_args[@]+"${_model_args[@]}"} \
       ${_budget_args[@]+"${_budget_args[@]}"} \
       --tools "$ACTIVE_TOOLS" \
       --permissions "$PERMISSIONS" \
       --max-turns "$MAX_TURNS" \
-      --output-format json 2>/dev/null | tee "$LOG_FILE") || true
+      --output-format json >"$LOG_FILE" 2>/dev/null || true
 
-    STEP_VERDICT=$(printf '%s' "$OUTPUT" | sprintbias_parse_verdict 'PASS|FIXED|FAIL|BLOCKED')
+    # One read of the run's result: outcome + the text to grep a verdict from.
+    sprintbias_interpret_run "$LOG_FILE"
+
+    # An aborted step (max-turns / CLI error) leaves the fixer's edits on disk.
+    # Re-running the whole loop just hits the same wall — but the work already
+    # landed is real, so salvage it: bank this step's delta, verify what landed
+    # in ONE bounded pass, then report honestly. Salvage is a single recovery
+    # pass, never a new retry loop.
+    if [ "$SPRINTBIAS_RUN_OUTCOME" != "finished" ]; then
+      ABORT_OUTCOME="$SPRINTBIAS_RUN_OUTCOME"
+      echo "  ⚠ Step did not finish — $(sprintbias_run_hint "$ABORT_OUTCOME")"
+
+      # Bank whatever the fixer landed before it aborted. The pre-diff exists
+      # only for fixer steps (the verifier is read-only), so a verifier-step
+      # abort has no new delta to capture.
+      if [ "$MODE_STEP" = "fixer" ] && [ -n "$PRE_DIFF_FILE" ]; then
+        _capture_step_delta "$PRE_DIFF_FILE" "$STEP"
+        if [ -n "$STEP_DELTA" ]; then
+          ANY_EDITS_LANDED=1
+          SALVAGE_PATCH="$STEP_PATCH"
+          echo "  ▸ Landed edits banked in $(basename "$STEP_PATCH")"
+        else
+          echo "  ▸ No new edits had landed when the step aborted"
+        fi
+      elif [ -n "$PRE_DIFF_FILE" ]; then
+        rm -f "$PRE_DIFF_FILE"; _cleanup_files=()
+      fi
+
+      # Verify what actually landed before reporting out. One bounded pass:
+      #  - nothing landed across the run → nothing to verify.
+      #  - the verifier itself aborted → don't re-run the thing that just failed
+      #    (the double-abort guard); record the edits as unverified.
+      #  - a fixer aborted with edits on disk → run ONE salvage verifier.
+      if [ "$ANY_EDITS_LANDED" -ne 1 ]; then
+        SALVAGE_VERIFY="no edits landed — nothing to verify"
+      elif [ "$MODE_STEP" != "fixer" ]; then
+        SALVAGE_VERIFY="landed edits unverified — the verifier pass aborted"
+        echo "  ⚠ Verifier aborted — landed edits remain unverified"
+      else
+        echo "── Salvage verify ──────────────────────────────────────"
+        SALVAGE_LOG="$LOG_DIR/log-polish-code-${_log_name%.md}-salvage-$TIMESTAMP_BASE.json"
+        SALVAGE_PROMPT="Code verifier (READ-ONLY). CLAUDE.md is auto-loaded.
+
+A previous fixer pass was cut short mid-edit, so its changes landed on disk
+but were never verified. Verify ONLY what actually landed.
+
+$TASK_BLOCK
+
+CHANGED FILES:
+$CHANGED_FILES
+
+1. Read changed files and trace imports/references.
+2. Verify: correctness, conventions, safety.
+$BUILD_BLOCK
+
+Your response's VERY LAST line must be the verdict and nothing after it, in
+exactly this form — the literal word VERDICT, a colon, a space, then ONE
+uppercase token, no bold, no punctuation, no trailing text:
+VERDICT: PASS    (landed edits hold up)   or   VERDICT: FAIL   (issues remain)"
+
+        sprintbias_run -p "$SALVAGE_PROMPT" \
+          ${_model_args[@]+"${_model_args[@]}"} \
+          ${_budget_args[@]+"${_budget_args[@]}"} \
+          --tools "$TOOLS_VERIFIER" \
+          --permissions "$PERMISSIONS" \
+          --max-turns "$MAX_TURNS" \
+          --output-format json >"$SALVAGE_LOG" 2>/dev/null || true
+
+        sprintbias_interpret_run "$SALVAGE_LOG"
+        if [ "$SPRINTBIAS_RUN_OUTCOME" = "finished" ]; then
+          _sv=$(printf '%s' "$SPRINTBIAS_RUN_VERDICT_TEXT" | sprintbias_parse_verdict 'PASS|FAIL')
+          case "$_sv" in
+            PASS) SALVAGE_VERIFY="verified — landed edits hold up (PASS)" ;;
+            FAIL) SALVAGE_VERIFY="verified — landed edits have open issues (FAIL)" ;;
+            *)    SALVAGE_VERIFY="verifier ran but wrote no clear verdict" ;;
+          esac
+          echo "  Salvage verify: ${_sv:-UNCLEAR}"
+        else
+          # Double-abort: the salvage verifier itself did not finish. Record
+          # once and stop — no new retry loop.
+          SALVAGE_VERIFY="landed edits unverified — the salvage verifier also $(sprintbias_run_hint "$SPRINTBIAS_RUN_OUTCOME")"
+          echo "  ⚠ Salvage verifier also did not finish — landed edits remain unverified"
+        fi
+      fi
+
+      VERDICT="ABORTED"
+      break
+    fi
+
+    STEP_VERDICT=$(printf '%s' "$SPRINTBIAS_RUN_VERDICT_TEXT" | sprintbias_parse_verdict 'PASS|FIXED|FAIL|BLOCKED')
     [ -z "$STEP_VERDICT" ] && STEP_VERDICT="UNCLEAR"
 
     echo "  Result: $STEP_VERDICT"
 
     if [ "$MODE_STEP" = "fixer" ] && [ -n "$PRE_DIFF_FILE" ]; then
-      POST_DIFF_FILE=$(mktemp "$LOG_DIR/post-diff-XXXXXX")
-      _cleanup_files+=("$POST_DIFF_FILE")
-      git diff HEAD > "$POST_DIFF_FILE" 2>/dev/null || git diff > "$POST_DIFF_FILE" 2>/dev/null || true
-
-      DIFF_PATCH="$LOG_DIR/diff-polish-code-step${STEP}-$TIMESTAMP_BASE.patch"
-      DIFF_DELTA=$(diff "$PRE_DIFF_FILE" "$POST_DIFF_FILE" 2>/dev/null || true)
-
-      rm -f "$PRE_DIFF_FILE" "$POST_DIFF_FILE"
-      _cleanup_files=()
+      _capture_step_delta "$PRE_DIFF_FILE" "$STEP"
+      DIFF_DELTA="$STEP_DELTA"
 
       if [ -n "$DIFF_DELTA" ]; then
-        echo "$DIFF_DELTA" > "$DIFF_PATCH"
-        echo "  ▸ Changes captured in $(basename "$DIFF_PATCH")"
+        ANY_EDITS_LANDED=1
+        echo "  ▸ Changes captured in $(basename "$STEP_PATCH")"
       fi
 
       if [ -z "$DIFF_DELTA" ]; then
@@ -594,20 +722,44 @@ FAIL: couldn't fix all · BLOCKED: needs a human."
   echo ""
 
   if [ -n "$TASK_FILE" ]; then
-    {
-      echo ""
-      echo "## Audit"
-      echo ""
-      echo "- **Steps run**: $STEP ($FIXER_COUNT fixer + $VERIFY_COUNT verifier)"
-      echo "- **Final verdict**: $VERDICT"
-      echo "- **Final mode**: ${LAST_MODE:-$MODE_STEP}"
-      echo "- **Date**: $(date +%Y-%m-%d)"
-      echo "- **Files audited**: $FILE_COUNT"
-      echo "- **Context source**: $CONTEXT_SOURCE"
-      if [ -n "$BUILD_CHECK_RESULTS" ]; then
-        echo "- **Build checks**: $(echo "$BUILD_CHECK_RESULTS" | head -1 | tr -d '\n')"
-      fi
-    } >> "$TASK_FILE"
+    if [ "$VERDICT" = "ABORTED" ]; then
+      # Honest partial-work record: never a clean PASS, never a silent ERROR that
+      # implies nothing happened. Mirror the deep-judge's aborted-note posture —
+      # name the abort, the edits that landed, and what the verifier found.
+      {
+        echo ""
+        if [ "$ANY_EDITS_LANDED" -eq 1 ]; then
+          echo "## Audit (aborted — fixes landed)"
+        else
+          echo "## Audit (aborted — no fixes landed)"
+        fi
+        echo ""
+        echo "- **Outcome**: the audit $(sprintbias_run_hint "$ABORT_OUTCOME")"
+        echo "- **Steps run**: $STEP ($FIXER_COUNT fixer + $VERIFY_COUNT verifier)"
+        echo "- **Final mode**: ${LAST_MODE:-$MODE_STEP}"
+        echo "- **Edits landed**: $([ "$ANY_EDITS_LANDED" -eq 1 ] && echo yes || echo no)"
+        [ -n "$SALVAGE_PATCH" ] && echo "- **Delta banked**: $SALVAGE_PATCH"
+        echo "- **Verifier**: ${SALVAGE_VERIFY:-unverified — verifier could not run}"
+        echo "- **Date**: $(date +%Y-%m-%d)"
+        echo "- **Files audited**: $FILE_COUNT"
+        echo "- **Context source**: $CONTEXT_SOURCE"
+      } >> "$TASK_FILE"
+    else
+      {
+        echo ""
+        echo "## Audit"
+        echo ""
+        echo "- **Steps run**: $STEP ($FIXER_COUNT fixer + $VERIFY_COUNT verifier)"
+        echo "- **Final verdict**: $VERDICT"
+        echo "- **Final mode**: ${LAST_MODE:-$MODE_STEP}"
+        echo "- **Date**: $(date +%Y-%m-%d)"
+        echo "- **Files audited**: $FILE_COUNT"
+        echo "- **Context source**: $CONTEXT_SOURCE"
+        if [ -n "$BUILD_CHECK_RESULTS" ]; then
+          echo "- **Build checks**: $(echo "$BUILD_CHECK_RESULTS" | head -1 | tr -d '\n')"
+        fi
+      } >> "$TASK_FILE"
+    fi
   fi
 
   case "$VERDICT" in
@@ -615,14 +767,35 @@ FAIL: couldn't fix all · BLOCKED: needs a human."
       echo "✓ Code audit passed ($STEP step(s): $FIXER_COUNT fixer + $VERIFY_COUNT verifier)"
       exit 0
       ;;
-    UNCLEAR)
-      echo "? Code audit: could not parse a verdict after $STEP step(s)"
-      if [ -n "${LOG_FILE:-}" ] && [ ! -s "$LOG_FILE" ]; then
-        echo "  Last log is empty — the AI CLI likely failed to start (check '$SPRINTBIAS_CLI' install/auth)"
+    ABORTED)
+      # ABORT_OUTCOME is the abort kind captured before the salvage verify ran
+      # (which overwrote SPRINTBIAS_RUN_OUTCOME), so the report stays honest.
+      echo "⚠ Code audit aborted — $(sprintbias_run_hint "$ABORT_OUTCOME") (after $STEP step(s))"
+      if [ "$ANY_EDITS_LANDED" -eq 1 ]; then
+        echo "  Fixes already landed — they were kept, not thrown away."
+        [ -n "$SALVAGE_PATCH" ] && echo "    Banked delta: $SALVAGE_PATCH"
+        echo "    Verifier: ${SALVAGE_VERIFY:-unverified — verifier could not run}"
       else
-        echo "  The model's final line held no recognizable VERDICT token."
-        echo "  Inspect the log tail in $LOG_DIR/, then re-run: ./sprint.sh polish --code <files>"
+        echo "  No edits had landed when it aborted."
       fi
+      case "$ABORT_OUTCOME" in
+        no_start)
+          echo "  Confirm the '$SPRINTBIAS_CLI' CLI is installed and authenticated, then re-run." ;;
+        *)
+          # --code IS the edit-now lever: re-run it to push the banked work
+          # forward — it picks up from what already landed. Raising the turn
+          # budget is the last resort, only if it keeps stalling on one step.
+          echo "  Push the banked work forward — re-run to continue from what landed:"
+          echo "    ./sprint.sh polish --code ${TASK_FILE:-<files>}"
+          echo "  Only if it keeps hitting the wall on the same step, give it more room:"
+          echo "    SPRINTBIAS_AUDIT_MAX_TURNS=60 ./sprint.sh polish --code ${TASK_FILE:-<files>}" ;;
+      esac
+      exit 1
+      ;;
+    UNCLEAR)
+      echo "? Code audit finished but its final line held no VERDICT token after $STEP step(s)."
+      echo "  It ran to completion — a formatting slip, not a crash."
+      echo "  Inspect the log tail in $LOG_DIR/, then re-run: ./sprint.sh polish --code ${TASK_FILE:-<files>}"
       exit 1
       ;;
     *)
@@ -635,169 +808,20 @@ FAIL: couldn't fix all · BLOCKED: needs a human."
 fi
 
 # ═════════════════════════════════════════════════════════════════════
-# MODE: judge — deep single-piece judgment (formerly excellence)
+# MODE: judge — deep single-piece judgment → delegate to polish-judge.sh
 # ═════════════════════════════════════════════════════════════════════
+# The excellence deep-judge has one home: polish-judge.sh (so does `plan polish`,
+# which routes there per member). This mode only classifies the CLI arguments
+# (done above) and hands the resolved target off — the guard, the scoping, the
+# ## Excellence append, and enhancement filing all live in that one script.
 if [ "$MODE" = "judge" ]; then
-  MODEL="$(sprintbias_tier_model EXCELLENCE)"
-  TOOLS="Read,Grep,Glob,Bash,Edit,Agent"
-  PERMISSIONS="auto"
-  MAX_TURNS=30
-  LOG_DIR="docs/tmp"
-  PROTOCOL="docs/sprintbias/ai/audit-excellence.md"
-  AI_MODE="$(sprintbias_ai_mode)"
-
-  if [ -z "$TASK_FILE" ] && [ ${#EXPLICIT_FILES[@]} -eq 0 ]; then
-    echo "Usage:" >&2
-    echo "  ./sprint.sh polish <task-file.md>" >&2
-    echo "  ./sprint.sh polish <file1> <file2> ..." >&2
-    exit 1
-  fi
-
-  if [ ! -f "$PROTOCOL" ]; then
-    echo "✗ Protocol file missing: $PROTOCOL" >&2
-    exit 1
-  fi
-
-  mkdir -p "$LOG_DIR"
-
-  sprintbias_change_manifest "$TASK_FILE" ${EXPLICIT_FILES[@]+"${EXPLICIT_FILES[@]}"}
-  CHANGED_FILES="$SPRINTBIAS_CHANGED_FILES"
-  CONTEXT_SOURCE="$SPRINTBIAS_CONTEXT_SOURCE"
-
-  if [ -z "$CHANGED_FILES" ]; then
-    _no_manifest_bail ""
-  fi
-
-  FILE_COUNT=$(echo "$CHANGED_FILES" | wc -l | tr -d ' ')
-  TASK_NAME=""
-  if [ -n "$TASK_FILE" ]; then
-    TASK_NAME=$(basename "$TASK_FILE")
-  fi
-
-  echo "▸ Excellence audit: $FILE_COUNT file(s)${TASK_NAME:+ for: $TASK_NAME}"
-  echo "  Context source: $CONTEXT_SOURCE"
-  echo "  Files:"
-  echo "$CHANGED_FILES" | sed 's/^/    /'
-  echo ""
-
-  if [ -n "$TASK_FILE" ]; then
-    TASK_BLOCK="TASK FILE: $TASK_FILE
-
-ORIGINAL TASK:
----
-$(<"$TASK_FILE")
----"
-  else
-    TASK_BLOCK="No task file provided. Audit the listed files directly; infer the
-intended goal from the code and recent git history."
-  fi
-
-  PROFILE_LINE="$(sprintbias_profile_line)"
-
-  APPEND_STEP=""
-  if [ "$AI_MODE" = "emit" ] && [ -n "$TASK_FILE" ]; then
-    APPEND_STEP="
-6. Append a '## Excellence' section to $TASK_FILE: date, verdict, and your
-   Summary. Do not modify any other part of the task file."
-  fi
-
-  PROMPT="Excellence audit. CLAUDE.md is auto-loaded.${PROFILE_LINE}
-
-Follow this protocol exactly. The two hard rules:
-- You NEVER edit code — enhancements become backlog tasks, not edits.
-- The work is presumed correct — you audit altitude, not syntax.
-
-PROTOCOL ($PROTOCOL):
----
-$(<"$PROTOCOL")
----
-
-$TASK_BLOCK
-
-CHANGED FILES:
-$CHANGED_FILES
-
-1. Read the task, the changed files, and their blast radius (grep for
-   imports/references to the changed files).
-2. Trace the end-to-end path as the person who will actually use this work.
-3. Judge: effectiveness, efficiency, design fit, operability, robustness.
-4. For each ENHANCEMENT finding, run: ./sprint.sh newtask \"<description>\"
-   then append Why and Scope to the created task file in docs/tasks/backlog/.
-5. Output the report per the protocol. Your VERY LAST line must be the verdict
-   and nothing after it — the literal word VERDICT, a colon, a space, then ONE
-   uppercase token (EXCELLENT, FILED, or BLOCKER), no bold. A short reason may
-   follow the token:
-   VERDICT: EXCELLENT | VERDICT: FILED — <n> enhancement task(s) | VERDICT: BLOCKER — <reason>$APPEND_STEP"
-
-  _model_args=()
-  [ -n "$MODEL" ] && _model_args=(--model "$MODEL")
-  # Budget only on a cap-capable tier (today Claude Code) — see lib.sh.
-  _budget_args=()
-  if sprintbias_budget_capable && [ -n "${SPRINTBIAS_BUDGET_AUDIT:-}" ]; then
-    _budget_args=(--budget "$SPRINTBIAS_BUDGET_AUDIT")
-  fi
-
-  if [ "$AI_MODE" = "emit" ]; then
-    sprintbias_run -p "$PROMPT"
-    exit 0
-  fi
-
-  LOG_FILE="$(sprintbias_log_path polish-judge "${TASK_NAME:-adhoc}")"
-
-  OUTPUT=$(sprintbias_run -p "$PROMPT" \
-    ${_model_args[@]+"${_model_args[@]}"} \
-    ${_budget_args[@]+"${_budget_args[@]}"} \
-    --tools "$TOOLS" \
-    --permissions "$PERMISSIONS" \
-    --max-turns "$MAX_TURNS" \
-    --output-format json 2>/dev/null | tee "$LOG_FILE") || true
-
-  VERDICT=$(printf '%s' "$OUTPUT" | sprintbias_parse_verdict 'EXCELLENT|FILED|BLOCKER')
-  [ -z "$VERDICT" ] && VERDICT="UNCLEAR"
-
-  SUMMARY=$(sprintbias_extract_summary "$LOG_FILE")
-
-  FILED_COUNT=$(echo "$OUTPUT" | grep -oE 'FILED: docs/tasks/backlog/' | wc -l | tr -d ' ' || true)
-
-  if [ -n "$TASK_FILE" ]; then
-    {
-      echo ""
-      echo "## Excellence"
-      echo ""
-      echo "- **Date**: $(date +%Y-%m-%d)"
-      echo "- **Verdict**: $VERDICT"
-      echo "- **Tasks filed**: $FILED_COUNT"
-      echo "- **Files reviewed**: $FILE_COUNT"
-      echo "- **Context source**: $CONTEXT_SOURCE"
-      echo ""
-      echo "$SUMMARY"
-    } >> "$TASK_FILE" \
-      || echo "⚠ Could not append ## Excellence section to $TASK_FILE (see $LOG_FILE)"
-  fi
-
-  echo ""
-  case "$VERDICT" in
-    EXCELLENT)
-      echo "✓ Excellence audit: meets the bar — nothing filed"
-      exit 0
-      ;;
-    FILED)
-      echo "✓ Excellence audit: $FILED_COUNT enhancement task(s) filed to docs/tasks/backlog/"
-      exit 0
-      ;;
-    BLOCKER)
-      echo "✗ Excellence audit: BLOCKER — the work does not meet its own task's goal"
-      echo "  See ${TASK_FILE:-$LOG_FILE} for details"
-      exit 1
-      ;;
-    *)
-      echo "? Excellence audit: could not parse a verdict — see $LOG_FILE"
-      if [ ! -s "$LOG_FILE" ]; then
-        echo "  Log is empty — the AI CLI likely failed to start (check '$SPRINTBIAS_CLI' install/auth)"
-      fi
-      exit 1
-      ;;
-  esac
+  _judge_args=()
+  [ "$FORCE" -eq 1 ] && _judge_args+=(--force)
+  [ -n "$TASK_FILE" ] && _judge_args+=(--task "$TASK_FILE")
+  # --model already exported SPRINTBIAS_MODEL_DEFAULT above; the child inherits it.
+  exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/polish-judge.sh" \
+    ${_judge_args[@]+"${_judge_args[@]}"} \
+    ${EXPLICIT_FILES[@]+"${EXPLICIT_FILES[@]}"}
 fi
 
 # ═════════════════════════════════════════════════════════════════════
@@ -806,7 +830,8 @@ fi
 MODEL="$(sprintbias_tier_model POLISH)"
 TOOLS="Read,Edit,Grep,Glob,Bash,Agent"
 PERMISSIONS="auto"
-MAX_TURNS=30
+# Tunable so a max-turns abort has a real next step (see _route_refine).
+MAX_TURNS="${SPRINTBIAS_AUDIT_MAX_TURNS:-30}"
 PROTOCOL="docs/sprintbias/ai/refine.md"
 
 REVIEW_DIR="docs/tasks/review"
@@ -1103,7 +1128,9 @@ _route_refine() {
   local TASK_FILE="${TASK_FILES[$i]}" TASK_NAME="${TASK_FILES[$i]##*/}"
   local LOG_FILE="${LOGS[$i]}" NEXT_ROUND="${ROUNDS[$i]}" BEFORE_SECTIONS="${BEFORE[$i]}"
   local VERDICT AFTER_SECTIONS
-  VERDICT=$(sprintbias_parse_verdict 'PASS|REOPEN|BLOCKER' < "$LOG_FILE")
+  # One read of the judge's result: outcome + the text to grep a verdict from.
+  sprintbias_interpret_run "$LOG_FILE"
+  VERDICT=$(printf '%s' "$SPRINTBIAS_RUN_VERDICT_TEXT" | sprintbias_parse_verdict 'PASS|REOPEN|BLOCKER')
   [ -z "$VERDICT" ] && VERDICT="UNCLEAR"
   AFTER_SECTIONS="$(_rework_sections "$TASK_FILE")"
 
@@ -1143,8 +1170,19 @@ _route_refine() {
       ;;
     *)
       UNCLEAR=$((UNCLEAR + 1))
-      echo "  ? Could not parse a verdict — left in review/. See $LOG_FILE"
-      [ -s "$LOG_FILE" ] || echo "    Log is empty — the AI CLI likely failed to start (check '$SPRINTBIAS_CLI')"
+      if [ "$SPRINTBIAS_RUN_OUTCOME" != "finished" ]; then
+        echo "  ⚠ Judge did not finish — $(sprintbias_run_hint "$SPRINTBIAS_RUN_OUTCOME"). Left in review/"
+        case "$SPRINTBIAS_RUN_OUTCOME" in
+          max_turns)
+            echo "    Re-run with more room:  SPRINTBIAS_AUDIT_MAX_TURNS=60 ./sprint.sh polish --force" ;;
+          no_start)
+            echo "    Confirm the '$SPRINTBIAS_CLI' CLI is installed and authenticated." ;;
+          *)
+            echo "    See $LOG_FILE" ;;
+        esac
+      else
+        echo "  ? Judge finished but its final line held no VERDICT token — left in review/. See $LOG_FILE"
+      fi
       ;;
   esac
 }

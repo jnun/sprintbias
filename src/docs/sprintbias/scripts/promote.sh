@@ -32,18 +32,34 @@ DONE_DIR="docs/tasks/done"
 PLANS_DIR="docs/plans"
 TESTS_PREFIX="docs/tests/"
 
-# ── Args: optional task id, --dry-run ────────────────────────────────
+# ── Args: optional task id, --dry-run, --audit, --move ───────────────
+# Default mode is the pure-shell test-gate. --audit switches to the AI
+# acceptance judge (judges each review/ task's Success criteria, protocol
+# docs/sprintbias/ai/accept.md). --audit reports and moves NOTHING unless --move
+# is also given — auto-advancing to done/ on an AI verdict is a one-way door, so
+# it stays behind an explicit flag the same way --dry-run gates the default mode.
 ONLY_ID=""
 DRY_RUN=0
+AUDIT=0
+MOVE=0
 for _arg in "$@"; do
   case "$_arg" in
     --dry-run) DRY_RUN=1 ;;
+    --audit)   AUDIT=1 ;;
+    --move)    MOVE=1 ;;
     -h|--help) exec "$(dirname "${BASH_SOURCE[0]}")/../../../sprint.sh" help promote ;;
     [0-9]*)    [ -z "$ONLY_ID" ] && ONLY_ID="$_arg" ;;
     *)         echo "Unknown argument: $_arg (try: ./sprint.sh help promote)" >&2; exit 2 ;;
   esac
 done
 unset _arg
+
+# --move only means anything under --audit; the default mode has --dry-run.
+if [ "$MOVE" -eq 1 ] && [ "$AUDIT" -eq 0 ]; then
+  echo "✗ --move applies to --audit only. Default promote already moves proven-green tasks;" >&2
+  echo "  use --dry-run to preview it. Did you mean:  ./sprint.sh promote --audit --move" >&2
+  exit 2
+fi
 
 [ -d "$REVIEW_DIR" ] || { echo "No $REVIEW_DIR/ — nothing to promote."; exit 0; }
 mkdir -p "$DONE_DIR"
@@ -129,6 +145,224 @@ run_test() {  # prints exit code, running the test at most once per path
   RC_PATHS+=("$p"); RC_CODES+=("$rc")
   printf '%s' "$rc"
 }
+
+# ═════════════════════════════════════════════════════════════════════
+# MODE: audit — AI acceptance judge (opt-in). Judges each review/ task's
+# Success criteria (protocol docs/sprintbias/ai/accept.md) and, only under
+# --move, closes the DONE ones review/ → done/. The Depends-on hold gate still
+# applies: a DONE task whose prerequisite is open is held, never moved.
+# ═════════════════════════════════════════════════════════════════════
+if [ "$AUDIT" -eq 1 ]; then
+  PROTOCOL="docs/sprintbias/ai/accept.md"
+  if [ ! -f "$PROTOCOL" ]; then
+    echo "✗ Protocol file missing: $PROTOCOL" >&2
+    exit 1
+  fi
+  AI_MODE="$(sprintbias_ai_mode)"
+  MODEL="$(sprintbias_tier_model ACCEPT)"
+  TOOLS="Read,Grep,Glob,Bash"    # acceptance is read-only — the judge writes nothing
+  PERMISSIONS="auto"
+  MAX_TURNS="${SPRINTBIAS_AUDIT_MAX_TURNS:-30}"
+  LOG_DIR="docs/tmp"
+  mkdir -p "$LOG_DIR"
+
+  MOVE_LABEL="report-only"
+  [ "$MOVE" -eq 1 ] && MOVE_LABEL="--move: DONE → done/"
+
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "▸ promote --audit  review/ acceptance judge ($MOVE_LABEL)"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo ""
+
+  # Build the per-task accept prompt. Success criteria + ## Completed are the
+  # yardstick; the changed-file list is a trust aid, so a missing manifest is not
+  # fatal here (unlike --code) — the judge falls back to ## Completed.
+  _accept_prompt() {
+    local task_file="$1"
+    sprintbias_change_manifest "$task_file"
+    local changed="$SPRINTBIAS_CHANGED_FILES" ctx="$SPRINTBIAS_CONTEXT_SOURCE"
+    local profile_line; profile_line="$(sprintbias_profile_line)"
+    local changed_block
+    if [ -n "$changed" ]; then
+      changed_block="CHANGED FILES (source: $ctx):
+$changed"
+    else
+      changed_block="CHANGED FILES: none detected ($ctx). Judge from the task's
+## Completed section and Success criteria, confirming against git history."
+    fi
+    cat <<PROMPT
+Acceptance judge on ONE finished task. CLAUDE.md is auto-loaded.${profile_line}
+
+You judge ONE thing: are this task's Success criteria met by the work that
+landed? You never edit anything — your only output is the verdict.
+
+PROTOCOL ($PROTOCOL):
+---
+$(<"$PROTOCOL")
+---
+
+TASK FILE: $task_file
+
+ORIGINAL TASK:
+---
+$(<"$task_file")
+---
+
+$changed_block
+
+End with a '## Acceptance' section, then your VERY LAST line must be the verdict
+and nothing after it:
+VERDICT: DONE | VERDICT: NOT-DONE — <the unmet criterion>
+PROMPT
+  }
+
+  # ── emit: hand the sweep to the surrounding agent ──────────────────
+  if [ "$AI_MODE" = "emit" ]; then
+    _profile_line="$(sprintbias_profile_line)"
+    _task_list=""
+    for f in "${TASKS[@]}"; do _task_list="${_task_list}
+- ${f}"; done
+
+    _move_rule="Move NOTHING. This is a report-only run (no --move): for each task
+print its id and the subagent's verdict (DONE / NOT-DONE + reason), then stop.
+Tell the developer to re-run with --move to close the DONE ones."
+    if [ "$MOVE" -eq 1 ]; then
+      _move_rule="For each task, route by the subagent's verdict:
+   - DONE  → close it: git mv $REVIEW_DIR/<file> $DONE_DIR/<file> || mv (fallback).
+             First confirm no open **Depends on** prerequisite (a prereq not yet
+             in review/ or done/ HOLDS the task — leave it in review/ and say so).
+   - NOT-DONE → leave it in $REVIEW_DIR/ and print the unmet criterion."
+    fi
+
+    _RULES="Follow $PROTOCOL exactly. Judge ACCEPTANCE only — are the task's
+Success criteria met by what landed? You never edit anything. End with:
+VERDICT: DONE | VERDICT: NOT-DONE — <unmet criterion>."
+
+    # Summary tail — value check, not ${MOVE:+…} (MOVE=0 is a non-empty string).
+    _summary_tail="DONE vs NOT-DONE"
+    [ "$MOVE" -eq 1 ] && _summary_tail="DONE vs NOT-DONE and how many moved to done/"
+
+    if sprintbias_orchestration_capable; then
+      sprintbias_run -p "You are running the SprintBias promote --audit queue:
+${#TASKS[@]} finished task(s) in review/ to judge for acceptance. CLAUDE.md /
+AGENTS.md is auto-loaded when present.${_profile_line}
+
+Judge each task in $(sprintbias_subagent_own_fresh polish) so contexts never mix.
+You are the orchestrator — the subagents judge; you route the files.
+
+For EACH task file below:
+1. Launch a subagent whose entire instruction is:
+     \"Acceptance judge on ONE finished task. Read the task file at <path> and
+      judge it. $(sprintbias_subagent_no_nest)
+$_RULES\"
+2. When it returns, $_move_rule
+
+Tasks (in order):$_task_list
+
+When every task is judged, report a one-line summary: how many $_summary_tail."
+    else
+      sprintbias_run -p "You are running the SprintBias promote --audit queue:
+${#TASKS[@]} finished task(s) in review/ to judge for acceptance. CLAUDE.md is
+auto-loaded.${_profile_line}
+
+Work the tasks ONE AT A TIME, in the listed order. You have no subagent tool, so
+you are the judge — after each task, reset your focus and start the next clean.
+
+For EACH task file below:
+1. Read the task file at <path> and judge it.
+$_RULES
+2. $_move_rule
+
+Tasks (in order):$_task_list
+
+When every task is judged, report a one-line summary: how many $_summary_tail."
+    fi
+    exit 0
+  fi
+
+  # ── exec: headless loop, one judge per task, serialized ────────────
+  if ! command -v "$SPRINTBIAS_CLI" &>/dev/null; then
+    echo "✗ AI CLI '$SPRINTBIAS_CLI' not found in PATH" >&2
+    echo "  Edit docs/sprintbias/config to change CLI, or install the tool." >&2
+    exit 1
+  fi
+
+  _model_args=(); [ -n "$MODEL" ] && _model_args=(--model "$MODEL")
+  _budget_args=()
+  if sprintbias_budget_capable && [ -n "${SPRINTBIAS_BUDGET_AUDIT:-}" ]; then
+    _budget_args=(--budget "$SPRINTBIAS_BUDGET_AUDIT")
+  fi
+
+  A_DONE=0; A_NOTDONE=0; A_MOVED=0; A_HELD=0; A_UNCLEAR=0
+  N=0; TOTAL=${#TASKS[@]}
+  for f in "${TASKS[@]}"; do
+    name=$(basename "$f")
+    id=$(echo "$name" | grep -oE '^[0-9]+' || true)
+    N=$((N + 1))
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "▸ Audit $N/$TOTAL: #$id  $name"
+
+    LOG_FILE="$(sprintbias_log_path promote-audit "$name")"
+    sprintbias_run -p "$(_accept_prompt "$f")" \
+      ${_model_args[@]+"${_model_args[@]}"} \
+      ${_budget_args[@]+"${_budget_args[@]}"} \
+      --tools "$TOOLS" \
+      --permissions "$PERMISSIONS" \
+      --max-turns "$MAX_TURNS" \
+      --output-format json > "$LOG_FILE" 2>/dev/null || true
+
+    VERDICT=$(sprintbias_parse_verdict 'DONE|NOT-DONE' < "$LOG_FILE")
+    # NOT-DONE contains DONE as a substring — parse_verdict returns the first
+    # token it matched, so guard the order explicitly.
+    if grep -qiE 'VERDICT:[[:space:]]*NOT-DONE' "$LOG_FILE" 2>/dev/null; then
+      VERDICT="NOT-DONE"
+    fi
+
+    if [ "$VERDICT" = "DONE" ]; then
+      held=$(task_held_by "$f")
+      if [ -n "$held" ]; then
+        echo "  ⊘ #$id  DONE but held — **Depends on** prerequisite not yet closed:"
+        while IFS= read -r hr; do
+          [ -n "$hr" ] && echo "        $hr  (needs review/ or done/)"
+        done <<EOF
+$held
+EOF
+        A_HELD=$((A_HELD + 1))
+      elif [ "$MOVE" -eq 1 ]; then
+        move_file "$f" "$DONE_DIR/$name"
+        echo "  ✓ #$id  DONE → done/"
+        A_DONE=$((A_DONE + 1)); A_MOVED=$((A_MOVED + 1))
+      else
+        echo "  ✓ #$id  DONE → would move to done/ (re-run with --move)"
+        A_DONE=$((A_DONE + 1))
+      fi
+    elif [ "$VERDICT" = "NOT-DONE" ]; then
+      # Strip through "NOT-DONE" then any leading punctuation/space (an em-dash is
+      # multibyte, so drop non-alphanumeric leading bytes rather than match it).
+      reason=$(grep -iE 'VERDICT:[[:space:]]*NOT-DONE' "$LOG_FILE" 2>/dev/null | head -1 | sed 's/.*NOT-DONE//; s/^[^[:alnum:]]*//')
+      echo "  ○ #$id  NOT-DONE — stays in review/${reason:+: $reason}"
+      A_NOTDONE=$((A_NOTDONE + 1))
+    else
+      A_UNCLEAR=$((A_UNCLEAR + 1))
+      if _re=$(sprintbias_run_error "$LOG_FILE"); then
+        echo "  ⚠ #$id  judge did not finish — $_re. Left in review/. See $LOG_FILE"
+      else
+        echo "  ? #$id  judge finished with no VERDICT token — left in review/. See $LOG_FILE"
+      fi
+    fi
+  done
+
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  if [ "$MOVE" -eq 1 ]; then
+    echo "▸ audit: $A_MOVED moved → done/, $A_NOTDONE not-done, $A_HELD held (dep), $A_UNCLEAR unclear"
+  else
+    echo "▸ audit: $A_DONE done, $A_NOTDONE not-done, $A_HELD held (dep), $A_UNCLEAR unclear — moved nothing"
+    [ "$A_DONE" -gt 0 ] && echo "  Close the $A_DONE DONE task(s):  ./sprint.sh promote --audit --move${ONLY_ID:+ $ONLY_ID}"
+  fi
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  exit 0
+fi
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "▸ promote  ${DRY_LABEL}review/ → done/ (test-gated)"

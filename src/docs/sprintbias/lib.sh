@@ -1719,6 +1719,52 @@ sprintbias_run() {
     sprintbias_provider_exec "$@"
 }
 
+# sprintbias_stream_filter — render stream-json events as one readable line per
+# step so a live run is visible on the terminal. Reads NDJSON on stdin (the
+# provider-neutral stream-json contract) and prints:
+#   -> tool_use    · assistant text    == result summary    ! non-JSON line
+# Non-JSON lines (e.g. CLI errors on stderr) pass through prefixed with '!'.
+# Shared by every command that streams a live run (work, plan think, …); the
+# raw stream is captured upstream via `tee` before this filter, so log capture
+# is independent of it. When python3 is absent, falls back to `cat` so the run
+# still shows the raw stream rather than nothing.
+sprintbias_stream_filter() {
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -u -c '
+import json, sys
+def hint(inp):
+    for k in ("file_path", "command", "pattern", "description", "path"):
+        if inp.get(k):
+            return " ".join(str(inp[k]).split())[:100]
+    return ""
+for line in sys.stdin:
+    line = line.rstrip("\n")
+    if not line:
+        continue
+    try:
+        e = json.loads(line)
+    except ValueError:
+        print("  ! " + line)
+        continue
+    t = e.get("type")
+    if t == "assistant":
+        for b in e.get("message", {}).get("content", []):
+            if b.get("type") == "tool_use":
+                print("  -> %s %s" % (b.get("name", "?"), hint(b.get("input", {}))))
+            elif b.get("type") == "text" and b.get("text", "").strip():
+                txt = " ".join(b["text"].split())
+                print("   · " + (txt[:200] + "..." if len(txt) > 200 else txt))
+    elif t == "result":
+        secs = int(e.get("duration_ms", 0) / 1000)
+        print("  == %s: %s turns, %dm %02ds, $%.2f" % (
+            e.get("subtype", "?"), e.get("num_turns", "?"),
+            secs // 60, secs % 60, e.get("total_cost_usd") or 0))
+' || cat
+    else
+        cat
+    fi
+}
+
 # sprintbias_interactive_ok — true when a live back-and-forth session is actually
 # possible right now. The single source of truth for that decision, consulted
 # both by sprintbias_run_interactive (to route the run) and by callers like
@@ -1858,6 +1904,43 @@ sprintbias_change_manifest() {
     fi
 }
 
+# ── Excellence judge — shared bits ───────────────────────────────────
+# The excellence deep-judge (polish <id>, plan polish) has one home:
+# polish-judge.sh. These two helpers are what its callers share so the guard and
+# the rules live in exactly one place each.
+
+# True when a task file already carries a judged ## Excellence section — the
+# idempotency signal. A finished piece is judged once; a re-run skips it unless
+# --force, so it never stacks a second section or re-files the same enhancements.
+# polish-judge.sh enforces this per file; plan-polish.sh pre-filters members with
+# it before it builds any prompt.
+#
+# Matches the exact '## Excellence' heading ONLY — an aborted run writes a
+# '## Excellence (aborted — no verdict)' note that is deliberately NOT a judged
+# section, so a plain re-run (after raising the turn budget) judges the task
+# instead of skipping it as already done.
+sprintbias_excellence_has_section() {
+    grep -qE '^## Excellence$' "$1" 2>/dev/null
+}
+
+# The excellence judge's rules + verdict contract, as a prompt fragment. The
+# single-piece judge (polish-judge.sh) inlines the full protocol directly; the
+# plan-scoped orchestrator (plan-polish.sh) hands this compact fragment to each
+# fan-out subagent so both paths state the same rules and the same VERDICT line
+# every caller parses. The full method lives in docs/sprintbias/ai/audit-excellence.md.
+sprintbias_excellence_rules() {
+    cat <<'EOF'
+Follow docs/sprintbias/ai/audit-excellence.md exactly. Your writes are exactly
+two: a new backlog task (via ./sprint.sh newtask "<desc>") for each enhancement
+you find, and an appended '## Excellence' section on the audited task file (date,
+verdict, tasks filed, and your Summary). Everything else is read-only here — the
+task's Success criteria, its ## Completed section, its folder, and all product
+code — so an enhancement is filed, never built, and the task is never reopened.
+Judge the finished work against the higher bar; the code is presumed correct.
+End with: VERDICT: EXCELLENT | FILED — <n> enhancement task(s) | BLOCKER — <reason>.
+EOF
+}
+
 # sprintbias_parse_verdict TOKENS  (reads stdin) -> print the last verdict token.
 # TOKENS is a |-separated list of accepted UPPERCASE tokens, e.g.
 #   printf '%s' "$OUTPUT" | sprintbias_parse_verdict 'PASS|FIXED|FAIL|BLOCKED'
@@ -1909,6 +1992,137 @@ try:
 except Exception as e:
     print(f'(Could not extract summary: {e})')
 " "$json_file" 2>/dev/null || echo "(Could not extract summary)"
+}
+
+# sprintbias_run_error JSON_LOG_FILE -> did the AI CLI fail to finish this run?
+# The audit scripts run the CLI with --output-format json; that result object
+# carries is_error/subtype/errors even when no verdict text was produced (a
+# max-turns abort has no 'result' field at all). Callers used to ignore those
+# fields and mis-report every non-finish as "could not parse a verdict".
+#
+# On a run that did NOT finish normally, print a one-line plain-language
+# diagnosis to stdout and return 0 (so `if MSG=$(sprintbias_run_error log)` is
+# the "did not finish" branch). On a clean/success result, print nothing and
+# return 1 (proceed to parse the verdict). An empty/absent log means the CLI
+# never started; a non-JSON log is treated as "finished" so the caller can still
+# grep a verdict from raw text.
+sprintbias_run_error() {
+    local json_file="$1"
+    if [ ! -s "$json_file" ]; then
+        printf "the AI CLI produced no output — it likely failed to start (check '%s' install/auth)\n" "$SPRINTBIAS_CLI"
+        return 0
+    fi
+    python3 - "$json_file" <<'PY'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(1)          # non-JSON log: let the caller try a raw verdict grep
+if not d.get("is_error"):
+    sys.exit(1)          # clean result: proceed to parse the verdict
+subtype = d.get("subtype") or "error"
+errs = d.get("errors") or []
+turns = d.get("num_turns", "?")
+secs = int((d.get("duration_ms") or 0) / 1000)
+cost = d.get("total_cost_usd") or 0
+reason = {
+    "error_max_turns": "hit its turn limit before finishing",
+    "error_during_execution": "errored partway through",
+}.get(subtype, "did not finish (%s)" % subtype)
+detail = ("; " + errs[0]) if errs else ""
+print("the audit %s (%s turns, %dm %02ds, $%.2f)%s" % (
+    reason, turns, secs // 60, secs % 60, cost, detail))
+sys.exit(0)
+PY
+}
+
+# sprintbias_interpret_run LOG [rc] -> read a run's result exactly once.
+# Answers "what happened to this run?" in one place, so every audit stops
+# reading the same log three times (grep for a verdict, parse is_error, parse a
+# summary) and stops re-deriving the failure kind from a human-readable string.
+# Sets these globals (the normalized record):
+#   SPRINTBIAS_RUN_OUTCOME      finished | max_turns | no_start | error
+#   SPRINTBIAS_RUN_VERDICT_TEXT the run's result text (caller greps its own
+#                               VERDICT token set from this on outcome=finished)
+#   SPRINTBIAS_RUN_TURNS        turns spent (best-effort; may be empty)
+#   SPRINTBIAS_RUN_COST         USD spent  (best-effort; may be empty)
+#   SPRINTBIAS_RUN_SUMMARY      the run's summary text (best-effort)
+# Dispatches to the active profile's profile_interpret_run when defined (Claude
+# does; see cli/claude.sh). When a profile has not implemented one yet
+# (grok/default until task 368), it falls back to today's Claude-shaped
+# is_error/subtype logic so those providers keep their current behavior.
+# The optional rc is accepted for future use — the record is derived from the
+# log file, not stderr (every call site runs the CLI as `... 2>/dev/null`, so
+# the profile's own dropped-flag / retry warnings are already silenced).
+sprintbias_interpret_run() {
+    local log="$1"
+    if declare -F profile_interpret_run >/dev/null 2>&1; then
+        profile_interpret_run "$log" "${2:-}"
+    else
+        _sprintbias_interpret_run_fallback "$log" "${2:-}"
+    fi
+}
+
+# Bridge interpreter for providers whose profile has not defined
+# profile_interpret_run yet (task 368 ports grok/default onto their own). It
+# reproduces today's Claude-shaped is_error/subtype reading so those providers'
+# behavior is unchanged. Not the permanent home of shape knowledge — each
+# profile owns its own shape once it implements profile_interpret_run.
+_sprintbias_interpret_run_fallback() {
+    local log="$1"
+    SPRINTBIAS_RUN_OUTCOME="" SPRINTBIAS_RUN_TURNS="" SPRINTBIAS_RUN_COST=""
+    SPRINTBIAS_RUN_VERDICT_TEXT="" SPRINTBIAS_RUN_SUMMARY=""
+    if [ ! -s "$log" ]; then
+        SPRINTBIAS_RUN_OUTCOME="no_start"
+        return 0
+    fi
+    SPRINTBIAS_RUN_OUTCOME=$(python3 - "$log" <<'PY'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    print("finished"); sys.exit(0)   # non-JSON log: caller greps raw text
+if not d.get("is_error"):
+    print("finished"); sys.exit(0)
+subtype = d.get("subtype") or "error"
+print({"error_max_turns": "max_turns",
+       "error_during_execution": "error"}.get(subtype, "error"))
+PY
+    )
+    : "${SPRINTBIAS_RUN_OUTCOME:=finished}"
+    if [ "$SPRINTBIAS_RUN_OUTCOME" = "finished" ]; then
+        SPRINTBIAS_RUN_VERDICT_TEXT="$(cat "$log")"
+        SPRINTBIAS_RUN_SUMMARY="$(sprintbias_extract_summary "$log")"
+    fi
+    return 0
+}
+
+# sprintbias_run_hint OUTCOME [lever] -> one honest, actionable line for a run
+# that did not produce a usable verdict. Shared so every audit speaks the same
+# run-mechanics vocabulary; only the verdict tokens stay caller-owned. OUTCOME
+# is an interpreter outcome (max_turns | no_start | error) or the pseudo-token
+# no_verdict (the run finished but its final line held no VERDICT token). The
+# optional lever overrides the default next-step copy, so a caller with its own
+# recovery flow (e.g. polish --code salvage, task 371) supplies its own lever
+# rather than inheriting a hard-coded one.
+sprintbias_run_hint() {
+    local outcome="$1" lever="${2:-}"
+    case "$outcome" in
+        max_turns)
+            printf 'hit its turn limit before finishing — %s' \
+                "${lever:-raise --max-turns or narrow scope}" ;;
+        no_start)
+            printf "produced no output, so the '%s' CLI likely failed to start — %s" \
+                "$SPRINTBIAS_CLI" "${lever:-check its install/auth}" ;;
+        error)
+            printf 'errored partway through — %s' \
+                "${lever:-inspect the log}" ;;
+        no_verdict)
+            printf 'finished but wrote no VERDICT token — %s' \
+                "${lever:-a formatting slip, not a crash; re-run}" ;;
+        *)
+            printf 'did not finish — %s' "${lever:-inspect the log}" ;;
+    esac
 }
 
 # ── Auto-load on source ─────────────────────────────────────────────

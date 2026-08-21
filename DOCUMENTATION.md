@@ -104,6 +104,7 @@ Reserve **blocked** / **BLOCKED** for “a decision or clarification is needed.�
 - **Open questions** live under `### Questions for the developer`. Flow: ask → answer → convert the answer into instruction in Problem / Success criteria / Notes → delete the question. READY and promotion into `next/` need a clear list (`None — task is fully defined.`).
 - **`docs/tasks/done/`** is a *lifecycle folder*: you (or an explicit move) put the task there after approving review. Folder location is status; COMPLETE is not a folder name and is not written as a plan status.
 - The one **automated** `review/ → done/` move is `./sprint.sh promote`: a task with **Tests** naming suite scripts that all run green closes itself; work with `none` stays in `review/` for a human. That is how a plan whose tasks are all suite-backed reaches "every member in `done/`" without hand-moves, ready for `./sprint.sh plan done <id>`.
+- For work **without** an automated suite, `./sprint.sh promote --audit` offers an AI *acceptance* judge instead: it reads each `review/` task's **Success criteria** and rules `DONE` / `NOT-DONE`. It reports and moves nothing by default; `--audit --move` closes the DONE ones. Opt-in on purpose — it crosses the default's "never guess" line by trusting an AI sign-off, and the **Depends on** hold still applies. This is a distinct question from `polish` (excellence — worth another pass?) and from default `promote` (correctness — do the Tests pass?).
 - **Two gates, one lifecycle.** The same dependency edge gates both ends of a task's life: **`Depends on` gates `work`** (a task does not *run* until every prerequisite reaches `review/`/`done/`), and **`Tests` gates `promote`** (a task does not *close* until its suite scripts pass **and** its prerequisites are already closed). So `promote` closes in dependency order — a `review/` task whose prerequisite is still open is *held* (not moved), named with its stage, and released automatically on a later run once that prerequisite closes. A dependent never lands in `done/` ahead of the work it needs. `./sprint.sh validate` mirrors this on the close side with a report-only **Tests**-field check, so a **Tests** path that is a typo, missing, or outside `docs/tests/` is named loudly instead of stranding a task in `review/` forever.
 
 **Plans vs. the folders above — don't conflate them either:**
@@ -194,7 +195,8 @@ Help groups: **create · chat · plan · work · look · keep**.
                                       #    (chat backlog mutates task files; chat plan only records IDs.)
 ./sprint.sh plan think [id]           # 3. Optional dual-persona critique of the grouping
 ./sprint.sh plan start [id]           # 4. Commit the plan's members into next/ — latches Status: STARTED
-./sprint.sh plan done [id]            # 5. Retire: when every member is in done/, delete the plan file
+./sprint.sh plan polish [id]          # 5. Optional: excellence-judge the plan's finished work (review/ + done/)
+./sprint.sh plan done [id]            # 6. Retire: when every member is in done/, delete the plan file
 
 # Chat & Work (AI-powered — emit inside Claude/Grok/Cursor sessions, or exec via CLI)
 # Per-run provider (leading flags; does not rewrite docs/sprintbias/config):
@@ -211,6 +213,7 @@ Help groups: **create · chat · plan · work · look · keep**.
 ./sprint.sh polish <id|file>          # Deep-judge one finished task (by id or path); file enhancements to backlog/
 ./sprint.sh polish --code <id|file>   # Code-diff audit (fixer/verifier); may fix issues inline
 ./sprint.sh promote [id] [--dry-run]  # Test-gated close: run each review/ task's **Tests**, all green → done/
+./sprint.sh promote --audit [--move]  # AI acceptance judge: rule DONE/NOT-DONE on Success criteria; --move closes DONE → done/
 ./sprint.sh deps                      # File a backlog task auditing outdated/vulnerable deps
 
 # Look (read-only — surface state, no mutation)

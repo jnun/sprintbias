@@ -29,7 +29,7 @@ Ship truth for flags and gates lives in code; this guide is the human/agent map.
 | One switch | Pick Grok at setup the same way you pick Claude |
 | Live chat | `./sprint.sh chat` opens a Grok TUI from a plain terminal |
 | Emit in-session | Inside Grok Build, prompts land here — no nested CLI |
-| Parallel cycles | `work` / `gate` / `polish` / `plan start` use fresh subagents |
+| Parallel cycles | `work` / `gate` / `polish` / `plan start` / `promote --audit` use fresh subagents |
 | Honest maps | Flags and tool names match real `grok --help`, or are dropped with a warning |
 
 ## Two modes (same product rule as Claude)
@@ -107,6 +107,7 @@ seam, `sprintbias_subagent_type_for <role>`. Every role resolves to
 | `work` | `work.sh` | `general-purpose` | implements product code — full toolset |
 | `gate` | `gate-lib.sh` | `general-purpose` | must Edit/Write the task file **and** `git mv` it (shell); no restricted mode grants both (read-write = edits, no shell; execute = shell, no edits), so `explore` / `read-write` / `execute` all break the contract |
 | `polish` | `polish.sh` | `general-purpose` | reads and rewrites the task file only; the one role where `capability_mode: read-write` would be a safe future restriction — its entry in the seam is where to add it |
+| `accept` | `promote.sh --audit` | `general-purpose` | acceptance judge — read-only (no Edit tool); the shell owns the `git mv` to `done/`, so a future `capability_mode: read-only`/`explore` restriction would fit here cleanly |
 | `chain` | `chat.sh`, `sprintbias_next_blocked_resolution` | `general-purpose` | hands a task toward READY in a fresh context — defines/edits task files |
 
 A future specialization is a one-line change in `sprintbias_subagent_type_for`, not
@@ -116,7 +117,8 @@ Emit prompts get wording from `sprintbias_subagent_*` helpers in `lib.sh` so Cla
 says "Task tool" and Grok says `spawn_subagent`. Because nesting is depth-one,
 every spawned worker's instruction carries `sprintbias_subagent_no_nest` — a
 tier-worded line telling the worker it is a worker, not an orchestrator, and must
-not re-spawn. It rides in the `work`, `gate`, and `polish` emit fan-outs.
+not re-spawn. It rides in the `work`, `gate`, `polish`, and `promote --audit`
+emit fan-outs.
 
 ## Orchestration
 

@@ -1052,44 +1052,9 @@ fi
 
 # ── exec helpers (shared by sequential and parallel) ─────────────────
 
-# Render stream-json events as one line per step so a live run is visible.
-# Non-JSON lines (CLI errors on stderr) pass through prefixed with '!'.
-_stream_filter() {
-  if command -v python3 >/dev/null 2>&1; then
-    python3 -u -c '
-import json, sys
-def hint(inp):
-    for k in ("file_path", "command", "pattern", "description", "path"):
-        if inp.get(k):
-            return " ".join(str(inp[k]).split())[:100]
-    return ""
-for line in sys.stdin:
-    line = line.rstrip("\n")
-    if not line:
-        continue
-    try:
-        e = json.loads(line)
-    except ValueError:
-        print("  ! " + line)
-        continue
-    t = e.get("type")
-    if t == "assistant":
-        for b in e.get("message", {}).get("content", []):
-            if b.get("type") == "tool_use":
-                print("  -> %s %s" % (b.get("name", "?"), hint(b.get("input", {}))))
-            elif b.get("type") == "text" and b.get("text", "").strip():
-                txt = " ".join(b["text"].split())
-                print("   · " + (txt[:200] + "..." if len(txt) > 200 else txt))
-    elif t == "result":
-        secs = int(e.get("duration_ms", 0) / 1000)
-        print("  == %s: %s turns, %dm %02ds, $%.2f" % (
-            e.get("subtype", "?"), e.get("num_turns", "?"),
-            secs // 60, secs % 60, e.get("total_cost_usd") or 0))
-' || cat
-  else
-    cat
-  fi
-}
+# Live progress rendering is sprintbias_stream_filter (lib.sh) — one readable
+# line per stream-json step, shared with plan think and any future streaming
+# command so the renderer stays in lockstep.
 
 # Run the AI on a task already in doing/. Requests the provider-neutral
 # stream-json contract (NDJSON progress + Claude-shaped assistant/result
@@ -1107,7 +1072,7 @@ _run_task() {
       --tools "$TOOLS" \
       --permissions "$PERMISSIONS" \
       --output-format stream-json 2>&1 \
-      | tee "$log" | _stream_filter
+      | tee "$log" | sprintbias_stream_filter
   else
     sprintbias_run -p "$(_task_prompt "$WORKING_DIR/$name")" \
       ${_model_args[@]+"${_model_args[@]}"} \

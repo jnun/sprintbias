@@ -62,7 +62,8 @@ keep	Housekeeping			Integrity, config, sync, deps
   When members are pre-bound, fast-lane next step is `plan start` → `work`
   without full `chat plan` ceremony. Otherwise author with **`chat plan`**, then
   decisive plan verbs: `plan think` (optional critique), `plan start` (gate +
-  commit to `next/`; `--commit-only` skips the AI gate).
+  commit to `next/`; `--commit-only` skips the AI gate), `plan polish`
+  (excellence-judge the plan's finished members in `review/` + `done/`).
 - There is no bare conversational `plan`. Authoring lives in `chat` so one
   engine owns every human-in-the-loop walk.
 - The unit of work stays a **task** (file under `docs/tasks/`, created by
@@ -103,6 +104,7 @@ artifact, never only in the chat.
 Command		Does
 plan think [id]	Automated dual-persona critique of a plan
 plan start [id]	Gate every member and commit into `next/` (no hard size cap; warn over 10; latches STARTED)
+plan polish [id]	Excellence-judge the plan's finished members (`review/` + `done/`) — routes each through the shared deep-judge (`polish-judge.sh`), files enhancements to `backlog/`, skips already-judged members unless `--force`
 plan done [id]	Retire — delete the plan once every member is in `done/`
 
 `next/` **is** the sprint. A plan file never moves; only member tasks do. A plan
@@ -125,6 +127,7 @@ split \<path\>	One-shot: one large task → atomic children (no conversation)
 polish …		Post-work quality: sweep review/, deep-judge a task (id/file), or --code
 			(sweep takes work's --parallel/--fast/--jobs N to fan judges out)
 promote [id]	Test-gated close: run each review/ task's **Tests**, all green → done/
+			--audit: AI acceptance judge (Success criteria → DONE/NOT-DONE); --move closes DONE → done/
 
 Happy path: `plan start` → `work`. `plan start` already gates on commit, so
 `gate` is off-spine — re-gate after edits, or report on backlog/doing/blocked.

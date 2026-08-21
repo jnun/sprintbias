@@ -1,9 +1,16 @@
-Test-gated close — the one automated way a task leaves `review/` for `done/`.
+Close `review/` tasks to `done/` — two gates, your choice of proof.
 
 `work` finishes a task and moves it `doing/ → review/`. From there `done/` is a
-human sign-off (`git mv review/… done/`). `promote` automates that last hop for
-work that can prove itself: a task whose **Tests** field names suite scripts
-that all run green closes itself; everything else waits for a human.
+human sign-off (`git mv review/… done/`). `promote` automates that last hop two
+ways:
+
+- **Default (test-gated, pure shell)** — a task whose **Tests** field names suite
+  scripts that all run green closes itself; everything else waits for a human.
+  Automation never *guesses* a task is done; it demands a passing suite.
+- **`--audit` (AI acceptance judge, opt-in)** — for work without an automated
+  suite, an AI reads each task's **Success criteria** and judges whether the work
+  that landed meets them. It reports by default and moves nothing; add `--move`
+  to close the DONE ones. See **Acceptance audit** below.
 
 **Two gates, one lifecycle.** The same dependency edge that gates the *run*
 also gates the *close*: **`Depends on` gates `work`** (a task does not run until
@@ -52,11 +59,39 @@ can retire it. Retirement stays explicit — promote never deletes a plan:
 
     ./sprint.sh plan done <id>
 
+## Acceptance audit (`--audit`)
+
+Three questions sit at the end of the lifecycle; keep them straight:
+
+- **promote** (default) asks *"do the **Tests** pass?"* — correctness proof.
+- **polish** asks *"is there a bounded gap worth another pass?"* — excellence.
+- **promote --audit** asks *"are the **Success criteria** met?"* — acceptance.
+
+`--audit` judges each `review/` task independently in a fresh context against its
+own Success criteria and `## Completed` section (protocol
+`docs/sprintbias/ai/accept.md`), never editing anything, and prints a
+`DONE` / `NOT-DONE` verdict with a reason per task. It is opt-in because it
+crosses the default's "never guess" line on purpose — you are trusting an AI
+sign-off in place of a suite.
+
+It **moves nothing by default** — that's report-only, so you can read the
+verdicts first. Add **`--move`** to actually close the DONE tasks
+`review/ → done/`. The same **Depends on** hold applies: a DONE task whose
+prerequisite is still open is held in `review/`, never moved ahead of the work
+it needs. When you are unsure, the judge is told to return NOT-DONE — closing to
+`done/` is a one-way door.
+
+`--audit` honors a leading `-c`/`-g` provider flag and `--model` like the other
+AI passes, and `SPRINTBIAS_MODEL_ACCEPT` / config `MODEL_ACCEPT` pin its model.
+
 ## Usage
 
     ./sprint.sh promote              # gate every review/ task with **Tests**
     ./sprint.sh promote 293          # only task #293
     ./sprint.sh promote --dry-run    # run the tests, report verdicts, move nothing
+    ./sprint.sh promote --audit      # AI acceptance judge: report DONE/NOT-DONE, move nothing
+    ./sprint.sh promote --audit --move    # …and close the DONE ones to done/
+    ./sprint.sh promote --audit --move 293  # audit and close just task #293
 
 Exit 0 when nothing failed its test; 1 when a named test failed (those tasks
 stay in `review/`). Tasks skipped for having no **Tests**, and tasks *held* by

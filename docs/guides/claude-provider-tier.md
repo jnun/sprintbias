@@ -75,6 +75,7 @@ work					Driver prompt: one Task-tool subagent per task file; parallel when --fa
 gate (many files)		One subagent per task, all in parallel, shared review contract														Per-file / sequential via sprintbias_run as coded
 plan start (many)		Same gate parallel path (`sprintbias_gate_parallel`) for multi-member promote											Per-file gate via sprintbias_run
 polish (many)			One judge subagent per task; route by verdict																		Per-file sprintbias_run
+promote --audit (many)	One acceptance-judge subagent per task; route DONE → done/ (with --move)												Per-file sprintbias_run, sequential
 chat chain				After READY, spawn a NEW subagent for ./sprint.sh chat next-id														Print or run the next chat command; human continues
 next→blocked handoff	Same: fresh Task subagent for the upstream blocked dep																Command to run in a fresh window
 plan think				Dual-persona critique via sprintbias_run (full flag surface)															Same through the profile
@@ -99,6 +100,7 @@ gate.sh	Parallel multi-file emit review
 gate-lib.sh	Shared parallel prompt ("Task tool") used by gate + plan start
 plan-start.sh	Multi-member emit gate via sprintbias_gate_parallel
 polish.sh	Parallel multi-file emit judge
+promote.sh	--audit: emit acceptance judge (orchestrator/standalone) vs sequential exec loop
 chat.sh		Continue-the-chain subagent wording
 lib.sh		next→blocked Path A subagent wording; sprintbias_tier_model opus default
 

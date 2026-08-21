@@ -54,6 +54,8 @@ MODEL_PROFILE=
 MODEL_CODE_AUDIT=
 MODEL_EXCELLENCE=
 MODEL_POLISH=
+# Acceptance judge for `promote --audit` (Success-criteria sign-off → done/).
+MODEL_ACCEPT=
 MODEL_AUDIT=
 MODEL_DEPS=
 # Cheap pass for chat-folder / chat-bugs verdict-first sort (not a user command).

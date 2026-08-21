@@ -76,7 +76,7 @@ the burn log; **this guide is the living home**.
 
 | ID | Claim | Stamp | Notes |
 |----|--------|-------|-------|
-| KK-20 | Claude emit multi-task uses **Task tool** language | RESOLVED — works | work / gate / polish |
+| KK-20 | Claude emit multi-task uses **Task tool** language | RESOLVED — works | work / gate / polish / promote --audit |
 | KK-21 | Grok emit multi-task uses **`spawn_subagent`** language | RESOLVED — works | Same story, different host API |
 | KK-22 | Shared helpers: `sprintbias_orchestration_capable`, `sprintbias_subagent_*` | RESOLVED — works | No six independent tier forks |
 | KK-23 | Grok subagent nesting depth is **one** | RESOLVED — works | Workers must not re-orchestrate |
@@ -210,6 +210,7 @@ Format: `- YYYY-MM-DD — short description — disposition (NEW TASK / DEFER / 
 - 2026-07-30 — Product docs disagree on shell id (`run_terminal_cmd` vs `run_terminal_command`); both work live. Disposition: #291 pin dual-alias; prefer `run_terminal_command`.
 - 2026-08-10 — Easy Button install smoke (#362, v0.0.81) found **no** provider-tier divergence beyond the intended model defaults: both doors install identically (109 files, `All Checks Passed`) and differ only in the `CLI=`/`PROVIDER=` pair. Offline spine confirmed the pair *resolves*: Claude tree → all roles **`opus`** (tier default); Grok tree → all roles **`grok-4.5`** (tier default). `newtask`/`status` output is identical across doors. Scaffold branches (user-owned `DOCUMENTATION.md` → `SPRINTDOCUMENTATION.md`, silent prepend, same-version re-run) are provider-independent. Disposition: documented in `dual-provider-smoke.md` → Last dry run; nothing new to open.
 - 2026-08-10 — Marker shape is not uniform and that is intentional: SprintBias-owned files (`GETSTARTED.md`, the manual) carry an opening `<!-- SprintBias v… -->` stamp only, while prepend targets (`CLAUDE.md`, `AGENTS.md`, `README.md`, `.gitignore`) carry the paired `<!-- end SprintBias -->` wrapper. A marker check that expects both lines everywhere will false-positive. Disposition: documented in `dual-provider-smoke.md`.
+- 2026-08-20 — `promote --audit` (#373) adds a new AI *acceptance* pass: one judge per `review/` task (Success-criteria sign-off → `done/` with `--move`), riding the same emit fan-out family as `work`/`gate`/`polish` (KK-20/21 wording, `sprintbias_subagent_*` helpers) and a new **`ACCEPT`** model role registered in `model.sh` `KNOWN_ROLES`. Read-only judge (no Edit tool). Provider-independent by construction — no new tier fork. Disposition: documented here + `claude-`/`grok-provider-tier.md`; nothing to open.
 
 ---
 

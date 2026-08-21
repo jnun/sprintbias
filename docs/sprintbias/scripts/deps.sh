@@ -18,7 +18,8 @@ source "$(cd "$SCRIPTS_DIR/.." && pwd)/lib.sh"
 MODEL="$(sprintbias_tier_model DEPS)"
 TOOLS="Read,Grep,Glob,Edit,Bash,Agent"
 PERMISSIONS="auto"
-MAX_TURNS=30
+# Tunable so a max-turns abort has a real next step (see the error branch below).
+MAX_TURNS="${SPRINTBIAS_AUDIT_MAX_TURNS:-30}"
 LOG_DIR="docs/tmp"
 # Per-tool wall-clock cap — a slow or network-bound registry check can't wedge
 # the whole audit. Override with SPRINTBIAS_DEPS_TIMEOUT.
@@ -325,29 +326,47 @@ fi
 
 LOG_FILE="$(sprintbias_log_path deps "$(basename "$TASK_FILE")")"
 
-OUTPUT=$(sprintbias_run -p "$PROMPT" \
+sprintbias_run -p "$PROMPT" \
   ${_model_args[@]+"${_model_args[@]}"} \
   ${_budget_args[@]+"${_budget_args[@]}"} \
   --tools "$TOOLS" \
   --permissions "$PERMISSIONS" \
   --max-turns "$MAX_TURNS" \
-  --output-format json 2>/dev/null | tee "$LOG_FILE") || true
+  --output-format json >"$LOG_FILE" 2>/dev/null || true
 
-VERDICT=$(printf '%s' "$OUTPUT" | sprintbias_parse_verdict 'FILED|CLEAN')
+# Did the CLI finish at all? A max-turns abort or a CLI that never started
+# produces no verdict for a very different reason than an odd answer format —
+# say which, rather than blaming the verdict parse. One read of the run gives
+# the outcome and the result text to grep a verdict from.
+echo ""
+sprintbias_interpret_run "$LOG_FILE"
+if [ "$SPRINTBIAS_RUN_OUTCOME" != "finished" ]; then
+  echo "⚠ Dependency audit did not finish — $(sprintbias_run_hint "$SPRINTBIAS_RUN_OUTCOME")"
+  echo "  The task with raw source data is still filed: $TASK_FILE"
+  case "$SPRINTBIAS_RUN_OUTCOME" in
+    max_turns)
+      echo "  Re-run with more room:  SPRINTBIAS_AUDIT_MAX_TURNS=60 ./sprint.sh deps $TASK_FILE" ;;
+    no_start)
+      echo "  Confirm the '$SPRINTBIAS_CLI' CLI is installed and authenticated, then re-run." ;;
+    *)
+      echo "  Inspect $LOG_FILE, then re-run:  ./sprint.sh deps $TASK_FILE" ;;
+  esac
+  exit 1
+fi
+
+VERDICT=$(printf '%s' "$SPRINTBIAS_RUN_VERDICT_TEXT" | sprintbias_parse_verdict 'FILED|CLEAN')
 [ -z "$VERDICT" ] && VERDICT="UNCLEAR"
 
-echo ""
 case "$VERDICT" in
   FILED|CLEAN)
     echo "✓ Dependency audit complete ($VERDICT): $TASK_FILE"
     exit 0
     ;;
   *)
-    echo "? Dependency audit: could not parse a verdict — see $LOG_FILE"
+    echo "? Dependency audit finished but its final line held no VERDICT token."
+    echo "  It ran to completion — a formatting slip, not a crash."
     echo "  The task with raw source data is still filed: $TASK_FILE"
-    if [ ! -s "$LOG_FILE" ]; then
-      echo "  Log is empty — the AI CLI likely failed to start (check '$SPRINTBIAS_CLI' install/auth)"
-    fi
+    echo "  Full log: $LOG_FILE"
     exit 1
     ;;
 esac
