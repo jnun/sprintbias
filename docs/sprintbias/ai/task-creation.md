@@ -27,6 +27,14 @@ optional fuel or post-work audit.
 | **## References** | No | Direct paths to docs or files known to be related. |
 | **### Files changed** (under **## Completed**) | After work only | The product files you edited to close the task — one path per line, not this task file. |
 
+**Replace the helper comments — never write around them.** The template ships
+each section with an `<!-- ... -->` comment that describes what belongs there.
+That comment is scaffolding for the author, not part of the task. When you fill
+a section, delete its helper comment and put the real content in its place. A
+finished task carries no `<!-- ... -->` guidance blocks — only the author's own
+Problem, Success criteria, and optional Notes/References. Leaving a section
+empty is fine; leaving its helper comment sitting above real content is not.
+
 **How to implement is the developer's decision.** Do not turn the task into a
 detailed outline of exact steps unless the work itself is a library or detailed
 technical fix — then put the new technical *needs* as outcomes under Success

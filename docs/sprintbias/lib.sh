@@ -137,6 +137,66 @@ sprintbias_move_rule() {
     printf '%s' "Always move task files with: git mv SRC DEST || mv SRC DEST. Run git mv first (preserves history when tracked). When git mv fails — usual for new tasks not yet committed — finish that same move with plain mv, then continue. Leave git commit to the developer unless they asked you to commit."
 }
 
+# Strip the task template's authoring scaffolding from a task file.
+# The template ships each section with a <!-- … --> guidance comment, plus the
+# after-work "## Completed / ### Files changed" how-to block and an "AI:" footer.
+# Those instruct whoever authors the task; once the task is run they are dead
+# weight that costs context on every later read. Remove exactly those known
+# template blocks — matched by a signature phrase so an author's own HTML notes
+# (Reviewed dates, risk notes) survive — then squeeze the blank lines they leave
+# behind. Idempotent: a task with no scaffolding passes through unchanged.
+sprintbias_scrub_template_scaffold() {
+    local file="$1"
+    [ -f "$file" ] || return 0
+    command -v awk >/dev/null 2>&1 || return 0
+    local tmp
+    tmp="$(mktemp 2>/dev/null)" || return 0
+    # Signatures are long, ASCII-only substrings unique to each template hint —
+    # long enough that an author's own HTML note never trips one, ASCII so no
+    # locale/encoding fragility. If the template's comment wording is reworded,
+    # update the matching phrase here (and see docs/tasks/.TEMPLATE-task.md).
+    # Blank lines a removed hint leaves behind are dropped surgically (only the
+    # blanks that immediately followed it) so intentional blank lines elsewhere —
+    # inside fenced code blocks especially — are never touched.
+    if awk '
+        function is_scaffold(s) {
+            return (s ~ /Full task-writing guidance is in/ ||
+                    s ~ /audit trail of what was touched/ ||
+                    s ~ /Concisely define the problem at a high level/ ||
+                    s ~ /What done looks like\. When these/ ||
+                    s ~ /Optional helpful hints that assist the developer/ ||
+                    s ~ /Direct paths to docs or files known to be related/)
+        }
+        BEGIN { inc = 0; buf = ""; eat = 0 }
+        {
+            if (inc) {                          # accumulating a multi-line comment
+                buf = buf $0 "\n"
+                if ($0 ~ /-->/) {
+                    inc = 0
+                    if (is_scaffold(buf)) { eat = 1 }
+                    else { printf "%s", buf; eat = 0 }
+                    buf = ""
+                }
+                next
+            }
+            if ($0 ~ /<!--/ && $0 !~ /-->/) { inc = 1; buf = $0 "\n"; next }
+            if ($0 ~ /<!--/ && $0 ~ /-->/) {    # single-line comment
+                if (is_scaffold($0)) { eat = 1 }
+                else { print; eat = 0 }
+                next
+            }
+            if (eat && $0 ~ /^[ \t]*$/) { next } # drop only the blanks a hint left
+            eat = 0
+            print
+        }
+        END { if (inc) printf "%s", buf }        # unterminated comment: emit as-is, never lose data
+    ' "$file" > "$tmp" && [ -s "$tmp" ]; then
+        cat "$tmp" > "$file"
+    fi
+    rm -f "$tmp" 2>/dev/null
+    return 0
+}
+
 # Portable timeout: run_with_timeout SECONDS CMD [ARGS…]
 # For external programs, prefer GNU coreutils `timeout` (or `gtimeout` on
 # macOS). Neither can exec a *shell function* — they only run programs on

@@ -761,6 +761,16 @@ if [ "$COUNT" -eq 0 ]; then
   exit 0
 fi
 
+# Deterministic cleanup at run time: strip the task template's authoring
+# scaffolding (section guidance comments, the after-work Completed how-to block,
+# the AI footer) from every task about to be worked, in both emit and exec
+# modes. The comments have done their authoring job by now; removing them here
+# keeps them out of the worked task and off every later reader's context.
+for ((_i = 0; _i < COUNT; _i++)); do
+  sprintbias_scrub_template_scaffold "${TASK_FILES[$_i]}" || true
+done
+unset _i
+
 if [ "$VERBOSE" -eq 1 ]; then
   for ((i=0; i<COUNT; i++)); do
     _vf="${TASK_FILES[$i]}"
