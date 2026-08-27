@@ -1,9 +1,16 @@
 Decisive plan verbs — critique, commit, and retire. Authoring is `chat plan`.
 
-**plan think [id]** — automated dual-persona critique of a plan (Platform
-Architect + Experience Officer). Annotates each member with ## Plan Think and
-writes plan-level analysis to docs/tmp/plan-think.md. Bare `plan think` picks
-a plan.
+**plan think [id]** — think a plan into alignment. Two collaborating leaders
+(Platform Architect + Experience Officer) evaluate the plan through three
+lenses — best practice, elegant design / coding standards, antifragility — then
+**apply** the improved plan to the plan file (Goal, Why, members, order) and
+**rewrite the Problem/Success of each unstarted member** (backlog/next) to fit
+it, appending a ## Plan Think note per member. A finished member
+(doing/review/done) is trusted as completed-as-defined and never reopened; if
+the plan needs more from it, a new delta task is filed with `newtask` (starting
+from the current code state) and added to the plan. Plan-level analysis lands in
+docs/tmp/plan-think-<id>.md. It never runs `plan start` and never moves task
+files — commitment stays with `plan start`. Bare `plan think` picks a plan.
 
 **plan start [id] [--commit-only]** — gate, then commit that plan's members
 into `next/` (the sprint). Promotes **every** listed member — no hard cap on
@@ -86,7 +93,7 @@ Provider for this run only (AI subcommands; leading flags; no config rewrite):
 Family order:
   1. ./sprint.sh newplan "…" [ids|parent:N]   # scaffold (+ fast-lane bind)
   2. ./sprint.sh chat plan [id]     # author (skip when members already bound)
-  3. ./sprint.sh plan think [id]    # optional critique
+  3. ./sprint.sh plan think [id]    # optional: improve plan + align its tasks
   4. ./sprint.sh plan start [id]    # gate members, commit READY → next/ (latches STARTED)
      ./sprint.sh plan start [id] --commit-only   # pure backlog→next, no AI gate
   5. ./sprint.sh work · loop

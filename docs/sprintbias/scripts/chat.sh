@@ -417,7 +417,7 @@ WHAT A FINISHED TASK LOOKS LIKE (FILL-IN/REFINE parent and every SPLIT child):
 - ## References — optional direct paths to related docs or code. One path per line.
 - '### Questions for the developer' — open questions only (with a suggestion). Answered questions are already body instructions; the list holds what is still open.
 - Leave ## Completed / ### Files changed for after work.
-- NO helper comments remain — the template's '<!-- ... -->' guidance blocks are scaffolding for the author. As you fill each section, delete its helper comment and write the real content in its place; a finished task carries none.
+- NO helper comments remain — the template's '<!-- sb:hint ... -->' guidance blocks are scaffolding for the author. As you fill each section, delete its sb:hint comment and write the real content in its place; a finished task carries none.
 
 RULES:
 - User-story altitude: problem, what done looks like, and technical requirements. Implementer chooses how, guided by instructions from answered questions. STRESS-TEST sharpens the brief only.

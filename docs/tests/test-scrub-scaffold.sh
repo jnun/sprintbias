@@ -112,6 +112,23 @@ printf '# Task 2\n\n<!-- After work only — audit trail of what was touched\nne
 sprintbias_scrub_template_scaffold "$WORK/f.md"
 assert "F: unterminated comment keeps its text (no data loss)" 'grep -q "never closed" "$WORK/f.md"'
 
+# ── Marker is wording-independent: a wrapped hint with NOVEL text (matching no
+#    legacy phrase) is still removed, while a plain author note stays. ──
+printf '# Task 3\n\n## Problem\n\n<!-- sb:hint  totally reworded guidance the phrase list never saw -->\n\n<!-- plain author aside, no marker -->\n\nReal content.\n' > "$WORK/m.md"
+sprintbias_scrub_template_scaffold "$WORK/m.md"
+assert_not "G: sb:hint-wrapped comment removed regardless of wording" 'grep -q "reworded guidance" "$WORK/m.md"'
+assert "G: unmarked author comment preserved" 'grep -q "plain author aside" "$WORK/m.md"'
+assert "G: real content intact" 'grep -q "Real content" "$WORK/m.md"'
+
+# ── The real shipped template: every markered hint strips, structure remains. ──
+TPL="$REPO/docs/tasks/.TEMPLATE-task.md"
+if [ -f "$TPL" ]; then
+    cp "$TPL" "$WORK/tpl.md"
+    sprintbias_scrub_template_scaffold "$WORK/tpl.md"
+    assert_not "H: real template leaves no HTML comment behind" 'grep -q "<!--" "$WORK/tpl.md"'
+    assert "H: template section headings survive the strip" 'grep -q "^## Problem" "$WORK/tpl.md" && grep -q "^## Success criteria" "$WORK/tpl.md"'
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1

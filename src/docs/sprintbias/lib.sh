@@ -151,16 +151,19 @@ sprintbias_scrub_template_scaffold() {
     command -v awk >/dev/null 2>&1 || return 0
     local tmp
     tmp="$(mktemp 2>/dev/null)" || return 0
-    # Signatures are long, ASCII-only substrings unique to each template hint —
-    # long enough that an author's own HTML note never trips one, ASCII so no
-    # locale/encoding fragility. If the template's comment wording is reworded,
-    # update the matching phrase here (and see docs/tasks/.TEMPLATE-task.md).
-    # Blank lines a removed hint leaves behind are dropped surgically (only the
-    # blanks that immediately followed it) so intentional blank lines elsewhere —
-    # inside fenced code blocks especially — are never touched.
+    # Detection keys off the "sb:hint" marker every template hint comment now
+    # carries (docs/tasks/.TEMPLATE-task.md). The marker is wording-independent:
+    # the template's guidance text can be reworded freely and an author's own
+    # HTML note never trips it. The frozen phrase list below is the legacy path
+    # for tasks minted from the pre-marker template — those exact strings match
+    # that historical scaffold and so never need maintenance. Blank lines a
+    # removed hint leaves behind are dropped surgically (only the blanks that
+    # immediately followed it) so intentional blank lines elsewhere — inside
+    # fenced code blocks especially — are never touched.
     if awk '
         function is_scaffold(s) {
-            return (s ~ /Full task-writing guidance is in/ ||
+            return (s ~ /sb:hint/ ||
+                    s ~ /Full task-writing guidance is in/ ||
                     s ~ /audit trail of what was touched/ ||
                     s ~ /Concisely define the problem at a high level/ ||
                     s ~ /What done looks like\. When these/ ||
