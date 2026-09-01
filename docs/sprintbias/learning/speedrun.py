@@ -178,7 +178,7 @@ def go():
     # review ─────────────────────────────────────────────────────────────────────
     track(3)
     moved("doing/71", "review/71")
-    ok(f"{BOLD}1 task worked.{RESET}  Waiting on you: review the diff, commit when happy.")
+    ok(f"{BOLD}1 task worked.{RESET}  Waiting on you: review the diff, then commit and ship when happy.")
     nap(0.3)
 
 def outro():
@@ -189,7 +189,7 @@ def outro():
     line(f"  {DIM}the spine you just watched:{RESET} "
          f"{CYAN}newtask → chat → work{RESET}")
     line(f"  {DIM}the part that's yours:{RESET}     "
-         f"{WHITE}review the diff and commit{RESET}")
+         f"{WHITE}review the diff, then commit and ship{RESET}")
     print()
     line(f"  {DIM}want the why behind each move?{RESET} "
          f"{CYAN}./sprint.sh learn session{RESET}")

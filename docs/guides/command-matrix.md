@@ -115,6 +115,9 @@ stored DONE status.
 
 ### work — autonomous transform
 
+Implements only. Never `git commit`, never `./ship.sh` / version bump / mirror —
+those stay with the developer (even when a task file names them).
+
 Command		Does
 work			Execute all READY tasks in next/ → review/
 work \<id\>		Work ONE task by number; auto-gate into next/ if out of frame, else re-run

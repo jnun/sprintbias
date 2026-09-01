@@ -182,7 +182,7 @@ def act2():
     ok(f"{BOLD}{len(QUEUE)} tasks worked.{RESET}  All in review/ — read the diffs, commit when happy.")
     nap(0.4)
     beat("Each task ran in a clean context — no bleed between them. `work` made "
-         "the changes; it did NOT commit. That call stays yours, every time.")
+         "the changes; it did NOT commit or ship. Those calls stay yours, every time.")
     nap(0.6)
 
 def act3():
@@ -219,8 +219,8 @@ def outro():
          f"{GREY}no bleed, no drift between them{RESET}")
     line(f"    {PURPLE}•{RESET} {WHITE}only what's ready runs{RESET}    "
          f"{GREY}dependency-held work waits its turn{RESET}")
-    line(f"    {PURPLE}•{RESET} {WHITE}you review and commit{RESET}     "
-         f"{GREY}work never commits for you{RESET}")
+    line(f"    {PURPLE}•{RESET} {WHITE}you review, commit, and ship{RESET} "
+         f"{GREY}work never commits or ships for you{RESET}")
     print()
     line(f"  {DIM}the spine:{RESET} "
          f"{CYAN}newtask → chat → plan start → {BOLD}work{RESET}{CYAN} → promote{RESET}")

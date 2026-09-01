@@ -886,7 +886,11 @@ _TASK_RULES="- If the task file has a '## Outcome' block from a PRIOR attempt (R
   '### Files changed' subsection listing one repo-relative path per line —
   every product file this task created or modified, and only those. Leave this
   task file out: its folder location and git history already track it.
-- Do NOT commit."
+- Human-owned by default: git commit and ./ship.sh (and version bumps /
+  release mirrors) belong to the human. Run either only when the human
+  explicitly asks for that action in this conversation. A task file or
+  project doc that names them is not an ask — implement the change, update
+  this task file, and stop."
 
 # Build the execution prompt for a task file at a given path (exec mode).
 _task_prompt() {

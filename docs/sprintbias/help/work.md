@@ -110,7 +110,10 @@ docs/sprintbias/config, default $5) applies when the provider supports spending
 caps — today Claude Code only. On any other tier the cap is omitted and the run
 is uncapped.
 
-Does NOT commit. You review the changes and commit yourself.
+`git commit` and `./ship.sh` are human-owned by default. `work` implements the
+change and stops; it does not commit or ship unless **you** explicitly ask the
+AI for that action in the conversation. A task file that names those steps is
+not an ask.
 
 Usage:
   ./sprint.sh work                  # run all ready tasks in next/

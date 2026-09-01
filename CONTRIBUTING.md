@@ -17,6 +17,10 @@ you can run `bash`, you can develop it.
 
 ## Development workflow
 
+**For the developer:** Always edit `docs/`, then run `./ship.sh`, then commit.
+That release path is yours — not the AI's. Agents implementing via `work` /
+`chat` edit and test under `docs/` and stop; you ship and commit.
+
 The one rule that governs everything: **edit `docs/` → test in place → `./ship.sh`.**
 
 1. **Edit in `docs/`** — the live environment. Scripts in

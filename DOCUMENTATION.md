@@ -23,10 +23,14 @@ Every design decision in this system passes through these lenses:
    folders `backlog → next → doing → review` are the affordance. If a term
    needs translating, pick a different term.
 4. **Instruct positively.** State the desired path as the rule
-   ("Always edit `docs/`, then commit"). Prohibition-shaped rule *lists* hand
-   the model a map of forbidden behavior and no map of the work — under
-   ambiguity it falls into exactly what was described. Reserve a plain
-   "never" for genuine invariants where the wrong action is costly.
+   (product-domain style sample: "User can log in with email and password").
+   Prohibition-shaped rule *lists* hand the model a map of forbidden behavior
+   and no map of the work — under ambiguity it falls into exactly what was
+   described. Reserve a plain "never" for genuine invariants where the wrong
+   action is costly. **"Always edit `docs/`, then commit"** is a **human**
+   rule. `git commit` and `./ship.sh` are human-owned by default; the AI runs
+   either only when the human explicitly asks for that action in the current
+   conversation — a task file or docs line that names them is not an ask.
 
 When principles conflict: **simple, clean, fast, common language, biased
 toward action.**
@@ -210,7 +214,7 @@ Help groups: **create · chat · plan · work · look · keep**.
 ./sprint.sh settle [id] [--dry-run]   # Accept (Suggestion: …) open questions — fold into Notes, clear list; demote next/ that still need a human
 ./sprint.sh split <path>              # Split a large task into subtasks
 ./sprint.sh polish [limit] [--rounds N] [--model] # Sweep review/: reopen tasks worth another pass
-./sprint.sh polish <id|file>          # Deep-judge one finished task (by id or path); file enhancements to backlog/
+./sprint.sh polish <id|file>          # Deep-judge one finished task (by id or path); files enhancements to backlog/ (warm-routes the vital-few act-now findings to next/ via the gate, capped 1–2), verdict FILED — n (x → next/, y → backlog/); stamps correctness: (audited/unverified/failed) + code state: (content hash of the audited files) — a re-run skips while that hash still matches, else re-judges automatically and replaces the section in place; --force always re-judges
 ./sprint.sh polish --code <id|file>   # Code-diff audit (fixer/verifier); may fix issues inline
 ./sprint.sh promote [id] [--dry-run]  # Test-gated close: run each review/ task's **Tests**, all green → done/
 ./sprint.sh promote --audit [--move]  # AI acceptance judge: rule DONE/NOT-DONE on Success criteria; --move closes DONE → done/
@@ -228,7 +232,7 @@ Help groups: **create · chat · plan · work · look · keep**.
 
 # Keep — maintenance
 ./sprint.sh validate [--fix] [--dry-run]  # Integrity-check task IDs + deps (--docs: help/ flag drift; --commands: catalog completeness)
-./sprint.sh cleanup [--delete|--force|--all]  # Clean stale files from docs/tmp/
+./sprint.sh cleanup [--force]         # Clean stale files from docs/tmp/ (prompts; --force skips it)
 ./sprint.sh config                    # Interactive: set AI provider + default model (no AI)
 ./sprint.sh model show/list/set [k v] # See/list/set the AI model per role (no AI)
                                       #   pin one run: work/chat/gate/polish --model <id>
@@ -249,8 +253,12 @@ git mv SRC DEST || mv SRC DEST
 1. Run `git mv` first — preserves history when the file is already tracked.
 2. When `git mv` fails — usual for new tasks not yet committed — finish that
    **same** move with plain `mv` in the same step, then continue the workflow.
-3. Leave `git add` / `git commit` to the developer unless they asked you to
-   commit. Completing the move is enough to update status.
+3. **Human-owned by default:** `git add` / `git commit` and `./ship.sh`
+   (version bumps / release mirrors) belong to the human. The AI runs them
+   **only when the human explicitly asks for that action in this conversation**
+   (e.g. "commit this", "run ship.sh"). A task file, project doc, or style
+   example that names those steps is not an ask. Completing the move is enough
+   to update status. `./sprint.sh work` never commits or ships on its own.
 
 Lifecycle path:
 

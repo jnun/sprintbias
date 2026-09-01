@@ -69,16 +69,43 @@ single-target: they work within one task file, so the flags are ignored there.
 ── Deep-judge ─────────────────────────────────────────────────────────
 
 Judges engineering quality (effectiveness, efficiency, design fit,
-operability, robustness) after correctness is presumed. Verdicts:
+operability, robustness). Correctness is presumed only when a `polish --code`
+has passed on this work; otherwise the run flags it and the judge does not wave
+defects by (see the `correctness:` field below). Verdicts:
   EXCELLENT  — meets the bar, nothing filed            (exit 0)
-  FILED      — N enhancement tasks filed to backlog/   (exit 0)
-  BLOCKER    — work fails its own task's goal          (exit 1)
+  FILED — n (x → next/, y → backlog/) — n enhancement tasks filed, split by
+           where they landed                           (exit 0)
+  BLOCKER  — work fails its own task's goal            (exit 1)
 
-A '## Excellence' section (date, verdict, summary) is appended to the task
-file for the record. That section is also the idempotency signal: a piece that
-already carries one is judged, so a re-run skips it (it would otherwise stack a
-second section and re-file the same enhancements). `--force` re-judges it. The
-same guard covers `plan polish`, which routes through this one judge per member.
+Filed tasks default to `backlog/`, the queue a human re-triages later. The vital
+few a senior engineer would act on NOW — rated both high-confidence and
+high-value — may be warm-routed into `next/` instead, so a good, act-now finding
+does not go cold in the backlog. Warm routing goes through the same workability
+gate `plan start` uses (it is READY-vetted before it sits in `next/`), never a
+raw move, and is hard-capped at 1–2 per audit so the judge cannot fast-track a
+whole audit as urgent. The `FILED — n (x → next/, y → backlog/)` summary shows
+the split.
+
+A '## Excellence' section (date, verdict, correctness, tasks filed, routing,
+files reviewed, context source, code state, summary) is appended to the task file
+for the record. The `routing:` field records the warm-route split (e.g. `1 →
+next/, 2 → backlog/`). The `correctness:` field records whether a code audit backs
+this judgment: `audited` (a passed `polish --code` is on file), `unverified` (none
+has run — run one before trusting the verdict), or `failed` (a `polish --code` ran
+and did not clear the work — worse than unverified). The `code state:` field is a
+content hash of the audited files as they stood when judged.
+
+That section is also the idempotency signal, keyed on the code state: a re-run
+skips a piece that already carries one ONLY while the audited files still hash to
+the stamped code state (it would otherwise stack a second section and re-file the
+same enhancements). When the audited files have MOVED since the verdict, the
+stamp is stale, so the re-run re-judges automatically rather than presenting the
+old verdict as current — replacing the '## Excellence' block in place, never
+stacking a second. An auto re-judge re-runs the full audit, so it can re-file
+enhancements just as `--force` does — and it fires more readily than a manual
+`--force`, so an edited-then-re-polished task may accrue newly filed tasks.
+`--force` re-judges unconditionally. The same guard covers `plan polish`, which
+routes through this one judge per member.
 
 ── Code audit ─────────────────────────────────────────────────────────
 

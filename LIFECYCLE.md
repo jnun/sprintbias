@@ -18,11 +18,16 @@ This repo has two parallel trees. Always know which one you're touching.
 
 ## The flow
 
+**Audience:** Steps 2–3 (and `git commit`) are for the **developer**. Agents
+editing via `work` / `chat` do step 1 only — leave `./ship.sh` and commit to
+the human. "Always edit `docs/`, then commit" is a developer rule, not an AI
+order.
+
 **1. Edit `docs/`** — Change scripts (`docs/sprintbias/scripts/`), AI guidance (`docs/sprintbias/ai/`), or `DOCUMENTATION.md` at the repo root. Run and test in place.
 
-**2. `./ship.sh`** — The one and only mirror step. It rsyncs `docs/sprintbias/` and the root files (`sprint.sh`, `DOCUMENTATION.md`, `GETSTARTED.md`) into `src/`, then bumps `src/VERSION` (patch by default; `./ship.sh minor` or `major`). New files under `docs/sprintbias/` ship automatically. Preview first with `./ship.sh --dry-run`. Never hand-copy files into `src/`.
+**2. `./ship.sh`** (developer) — The one and only mirror step. It rsyncs `docs/sprintbias/` and the root files (`sprint.sh`, `DOCUMENTATION.md`, `GETSTARTED.md`) into `src/`, then bumps `src/VERSION` (patch by default; `./ship.sh minor` or `major`). New files under `docs/sprintbias/` ship automatically. Preview first with `./ship.sh --dry-run`. Never hand-copy files into `src/`.
 
-**3. `./setup.sh`** — Installs `src/` into a target project: `DOCUMENTATION.md` and `sprint.sh` at the root, plus `docs/sprintbias/` and empty `docs/tasks/`, `docs/features/`, etc. Re-running it updates the framework while preserving the user's own content and their generated `DOC_STATE.md` (counters are lifted to match the highest ID already on disk). Leftover files from an earlier docs system (old launcher, old framework folder, undotted templates) are removed.
+**3. `./setup.sh`** (developer) — Installs `src/` into a target project: `DOCUMENTATION.md` and `sprint.sh` at the root, plus `docs/sprintbias/` and empty `docs/tasks/`, `docs/features/`, etc. Re-running it updates the framework while preserving the user's own content and their generated `DOC_STATE.md` (counters are lifted to match the highest ID already on disk). Leftover files from an earlier docs system (old launcher, old framework folder, undotted templates) are removed.
 
 ## What does not flow
 

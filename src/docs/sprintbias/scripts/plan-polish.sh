@@ -139,14 +139,18 @@ if [ ${#FIN_PATHS[@]} -eq 0 ]; then
 fi
 
 # ── Idempotency pre-filter (deterministic, shared predicate) ─────────
-# A finished member already carrying a ## Excellence section was judged already;
-# skip it unless --force. Enforced here in the shell for BOTH emit and exec so
-# the guard is deterministic, not left to the model — the same test polish-judge.sh
-# applies per file (sprintbias_excellence_has_section).
+# A finished member is skipped only while its ## Excellence verdict still matches
+# the code it judged; a member whose audited files moved since is re-judged, not
+# parked — the same staleness bug this plan fixed on the single-piece path. The
+# check runs here in the shell for BOTH emit and exec so it is deterministic, not
+# left to the model, and it is the SAME test polish-judge.sh's guard applies per
+# file (sprintbias_excellence_is_stale), so the two entry points cannot diverge.
+# is_stale resolves each member's own change manifest (no precomputed hash here).
 TO_JUDGE=()
 ALREADY=()
 for p in "${FIN_PATHS[@]}"; do
-  if [ "$FORCE" -ne 1 ] && sprintbias_excellence_has_section "$p"; then
+  if [ "$FORCE" -ne 1 ] && sprintbias_excellence_has_section "$p" \
+     && ! sprintbias_excellence_is_stale "$p"; then
     ALREADY+=("$p")
   else
     TO_JUDGE+=("$p")
@@ -154,7 +158,7 @@ for p in "${FIN_PATHS[@]}"; do
 done
 
 if [ ${#ALREADY[@]} -gt 0 ]; then
-  echo "⊘ Skipping ${#ALREADY[@]} member(s) already judged (carry a ## Excellence section):"
+  echo "⊘ Skipping ${#ALREADY[@]} member(s) already judged (verdict still matches the current code):"
   for p in "${ALREADY[@]}"; do echo "    ${p##*/}"; done
   echo "  Re-judge anyway:  ./sprint.sh plan polish $PLAN_ID --force"
 fi
@@ -180,11 +184,38 @@ if [ "$AI_MODE" = "emit" ]; then
   fi
   _profile_line="$(sprintbias_profile_line)"
   _rules="$(sprintbias_excellence_rules)"
+  _today="$(date +%Y-%m-%d)"
 
-  _member_list=""
+  # Per-member '## Excellence' appender, rendered HERE by the shell from the ONE
+  # spec (sprintbias_excellence_block) — the same pattern polish-judge.sh emit's
+  # APPEND_STEP uses. Each member's deterministic fields (code-state hash,
+  # correctness, file count, context source) are resolved and baked in; the
+  # subagent fills only verdict / tasks filed / routing / Summary. This single-
+  # sources the field set across all three excellence paths and, crucially,
+  # carries the Code state stamp on the emit-plan path so the staleness guard
+  # (sprintbias_excellence_is_stale) can detect a moved tree instead of degrading
+  # to always-skip. sprintbias_change_manifest clobbers the SPRINTBIAS_CHANGED_FILES
+  # / _CONTEXT_SOURCE globals each call, so capture each member's values into
+  # locals before the next iteration.
+  _member_blocks=""
   for p in "${TO_JUDGE[@]}"; do
-    _member_list="${_member_list}
-- ${p}  ($(basename "$(dirname "$p")")/)"
+    sprintbias_change_manifest "$p"
+    _m_files="$SPRINTBIAS_CHANGED_FILES"
+    _m_ctx="$SPRINTBIAS_CONTEXT_SOURCE"
+    _m_key="$(sprintbias_manifest_state_hash "$_m_files")"
+    _m_correct="$(sprintbias_correctness_state "$p")"
+    _m_count=0
+    [ -n "$_m_files" ] && _m_count=$(printf '%s\n' "$_m_files" | wc -l | tr -d ' ')
+    _m_block="$(sprintbias_excellence_block "$_today" "<VERDICT>" "$_m_correct" "<N>" "<x → next/, y → backlog/>" "$_m_count" "$_m_ctx" "$_m_key" "<your 2–5 sentence Summary>")"
+    _member_blocks="${_member_blocks}
+
+### ${p}  ($(basename "$(dirname "$p")")/)
+Append this exact '## Excellence' section to ${p}. Fill only <VERDICT>, the <N>
+tasks you filed, the routing split, and your Summary; copy every other field
+verbatim — Code state is the audited files' content hash, do NOT recompute it. If
+a '## Excellence' section already exists, REPLACE it in place through its next
+'## ' heading; never stack a second one:
+${_m_block}"
   done
 
   if sprintbias_orchestration_capable; then
@@ -195,17 +226,22 @@ CLAUDE.md / AGENTS.md is auto-loaded when present.${_profile_line}
 Judge each member in $(sprintbias_subagent_own_fresh polish) so contexts never
 mix. You are the orchestrator — the subagents judge and write; you only route.
 
-For EACH member task file below, launch a subagent whose entire instruction is:
+For EACH member below, launch a subagent whose entire instruction is:
    \"Excellence-judge ONE finished task. Read the task file at <path> and judge
-    its finished work against the higher bar.
+    its finished work against the higher bar. Append the exact '## Excellence'
+    block shown for this task below, filling only the placeholders.
 $(sprintbias_subagent_no_nest)
 $_rules\"
 
-Members (plan order):$_member_list
+Members (plan order), each with the exact '## Excellence' block to append:$_member_blocks
 
 When every member is judged, report a one-line summary: how many EXCELLENT vs
-FILED (with total enhancement tasks filed) vs BLOCKER. Filed enhancements land
-in docs/tasks/backlog/; nothing was reopened or moved." || {
+FILED (with total enhancement tasks filed, and their routing split) vs BLOCKER.
+Filed enhancements default to docs/tasks/backlog/; up to 1–2 per member that
+clear the \"a senior engineer would act now\" bar are warm-routed into
+docs/tasks/next/ through the shared gate. The audited tasks themselves are never
+reopened or moved. Report the filed total with its split, e.g. FILED — 3 (1 →
+next/, 2 → backlog/)." || {
       echo "✗ plan polish failed" >&2; exit 1; }
   else
     sprintbias_run -p "You are running the SprintBias plan-polish pass: $COUNT finished
@@ -216,15 +252,20 @@ Work the members ONE AT A TIME, in the listed order. You have no subagent tool,
 so you are the judge — after each member, reset your focus and start the next
 from a clean slate.
 
-For EACH member task file below:
-1. Read the task file at <path> and judge its finished work.
+For EACH member below:
+1. Read its task file and judge its finished work. Append the exact '## Excellence'
+   block shown for that member, filling only the placeholders.
 $_rules
 
-Members (plan order):$_member_list
+Members (plan order), each with the exact '## Excellence' block to append:$_member_blocks
 
 When every member is judged, report a one-line summary: how many EXCELLENT vs
-FILED (with total enhancement tasks filed) vs BLOCKER. Filed enhancements land
-in docs/tasks/backlog/; nothing was reopened or moved."
+FILED (with total enhancement tasks filed, and their routing split) vs BLOCKER.
+Filed enhancements default to docs/tasks/backlog/; up to 1–2 per member that
+clear the \"a senior engineer would act now\" bar are warm-routed into
+docs/tasks/next/ through the shared gate. The audited tasks themselves are never
+reopened or moved. Report the filed total with its split, e.g. FILED — 3 (1 →
+next/, 2 → backlog/)."
   fi
   exit 0
 fi
@@ -240,9 +281,12 @@ fi
 # own verdict contract (- **Verdict**: … / - **Tasks filed**: …), not its human
 # stdout. A bump in the section count confirms a verdict was written; no bump
 # means polish-judge.sh bailed before judging (it could not scope the task's
-# changes), surfaced as unscoped rather than miscounted. Members are pre-filtered
-# above, so a guard-skip never reaches this loop.
+# changes), surfaced as unscoped rather than miscounted. The state-aware
+# pre-filter above passes through only unjudged or stale members, so every member
+# reaching this loop is one polish-judge.sh will judge — a guard-skip (a fresh,
+# still-current verdict) never reaches here.
 EXCELLENT=0; FILED_MEMBERS=0; FILED_TASKS=0; BLOCKERS=0; UNCLEAR=0; UNSCOPED=0
+NEXT_TASKS=0; BACKLOG_TASKS=0
 TOTAL_START=$SECONDS
 
 for ((i=0; i<COUNT; i++)); do
@@ -270,6 +314,15 @@ for ((i=0; i<COUNT; i++)); do
         FILED_MEMBERS=$((FILED_MEMBERS + 1))
         n=$(grep '^- \*\*Tasks filed\*\*:' "$p" | tail -1 | grep -oE '[0-9]+' | head -1)
         [[ "$n" =~ ^[0-9]+$ ]] && FILED_TASKS=$((FILED_TASKS + n))
+        # Aggregate the warm-route split from the member's ## Excellence block.
+        # Routing renders as "<x> → next/, <y> → backlog/" (or "—" when nothing
+        # filed); the arrow is multibyte, so anchor on the next//backlog/ keyword
+        # and pull the digit run just before it — locale-independent.
+        _routing=$(grep '^- \*\*Routing\*\*:' "$p" | tail -1)
+        rn=$(printf '%s' "$_routing" | grep -oE '[0-9]+[^0-9]+next/' | grep -oE '^[0-9]+')
+        rb=$(printf '%s' "$_routing" | grep -oE '[0-9]+[^0-9]+backlog/' | grep -oE '^[0-9]+')
+        [[ "$rn" =~ ^[0-9]+$ ]] && NEXT_TASKS=$((NEXT_TASKS + rn))
+        [[ "$rb" =~ ^[0-9]+$ ]] && BACKLOG_TASKS=$((BACKLOG_TASKS + rb))
         ;;
       BLOCKER)   BLOCKERS=$((BLOCKERS + 1)) ;;
       *)         UNCLEAR=$((UNCLEAR + 1)) ;;
@@ -280,9 +333,20 @@ done
 
 TOTAL_ELAPSED=$((SECONDS - TOTAL_START))
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "▸ Done: $EXCELLENT excellent, $FILED_MEMBERS filed ($FILED_TASKS enhancement task(s) → backlog/), $BLOCKERS blocker(s), $UNCLEAR unclear, $UNSCOPED unscoped — total $((TOTAL_ELAPSED / 60))m $((TOTAL_ELAPSED % 60))s"
+# Show the warm-route split when any filed task landed in next/; otherwise the
+# plain backlog-bound total (the common case) stays unchanged.
+if [ "$NEXT_TASKS" -gt 0 ]; then
+  _filed_split="$FILED_TASKS enhancement task(s) — $NEXT_TASKS → next/, $BACKLOG_TASKS → backlog/"
+else
+  _filed_split="$FILED_TASKS enhancement task(s) → backlog/"
+fi
+echo "▸ Done: $EXCELLENT excellent, $FILED_MEMBERS filed ($_filed_split), $BLOCKERS blocker(s), $UNCLEAR unclear, $UNSCOPED unscoped — total $((TOTAL_ELAPSED / 60))m $((TOTAL_ELAPSED % 60))s"
 if [ "$FILED_TASKS" -gt 0 ]; then
-  echo "  → Review filed enhancements:  ./sprint.sh chat backlog"
+  if [ "$NEXT_TASKS" -gt 0 ]; then
+    echo "  → Review filed enhancements:  ./sprint.sh chat next  (warm-routed) and  ./sprint.sh chat backlog"
+  else
+    echo "  → Review filed enhancements:  ./sprint.sh chat backlog"
+  fi
 fi
 if [ "$UNSCOPED" -gt 0 ]; then
   echo "  → $UNSCOPED member(s) had no scopable change set — add a '### Files changed' block under ## Completed, then re-run."

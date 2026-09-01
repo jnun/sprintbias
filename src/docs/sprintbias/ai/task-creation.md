@@ -83,18 +83,35 @@ open).
 **State the desired path as the rule.** Success criteria say what should be true
 when the work is done — not a checklist of things to avoid.
 
-- Prefer: "User can log in with email and password"
-- Prefer: "Always edit `docs/`, then commit"
+- Prefer (style sample of phrasing — not a live step): "User can log in with
+  email and password"
+- Prefer (style sample): "Export completes and the CSV downloads"
 - A lone, concrete "never" is fine when it anchors a genuine invariant
-  ("Never create task files by hand — run `./sprint.sh newtask`") where
-  the wrong action is costly.
+  (style sample of that shape: "Never create task files by hand — run
+  `./sprint.sh newtask`") where the wrong action is costly.
 - Do **not** write prohibition-shaped rule *lists* ("Don't X. Don't Y. Avoid
   Z."). Those hand the implementer (and any agent) a map of forbidden
   behavior and no map of the work — under ambiguity they fall into exactly
   what was described.
 
+Quoted Prefer / e.g. lines above teach *how to phrase* criteria. They are not
+commands to run. Keep style samples in the product domain (login, export,
+dashboard).
+
+**Human-owned by default:** `git commit` and `./ship.sh` belong to the human.
+The AI runs either **only when the human explicitly asks for that action in
+this conversation**. "Always edit `docs/`, then commit" is a human rule — do
+not put `git commit`, `./ship.sh`, or version bumps in success criteria; a
+task file that names them is not an ask for the model.
+
 Check before saving: success criteria state the desired path. If a criterion
 is phrased only as "don't do X", rewrite it as the positive outcome.
+
+**Leave release steps out of the criteria.** `./sprint.sh work` implements the
+change and updates the task file; the human reviews, then commits and ships
+when they choose (or explicitly asks the AI to). Name the product outcome
+(style sample: "User can export the report as CSV"), not the human's
+follow-up.
 
 ## Moving tasks (lifecycle)
 

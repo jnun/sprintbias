@@ -14,7 +14,7 @@ TMP_DIR="$PROJECT_ROOT/docs/tmp"
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
 
-MODE="${1:-dry-run}"
+MODE="${1:-}"
 STALE_DAYS=7
 
 if [ ! -d "$TMP_DIR" ]; then
@@ -98,40 +98,18 @@ if [ ${#recent[@]} -gt 0 ]; then
     echo ""
 fi
 
-# Determine what to delete based on mode.
-# Build targets by guarded appends: on macOS's stock bash 3.2, expanding an
-# empty array as "${arr[@]}" under `set -u` aborts with "unbound variable",
-# so never expand stale/recent unless they hold at least one element.
-targets=()
-if [ "$MODE" = "--all" ]; then
-    [ ${#stale[@]} -gt 0 ] && targets+=("${stale[@]}")
-    [ ${#recent[@]} -gt 0 ] && targets+=("${recent[@]}")
-    label="all $total_count"
-elif [ "$MODE" = "--delete" ] || [ "$MODE" = "--force" ]; then
-    [ ${#stale[@]} -gt 0 ] && targets+=("${stale[@]}")
-    label="${#stale[@]} stale"
-else
-    label=""
-fi
-
-if [ ${#targets[@]} -eq 0 ] && [ "$MODE" = "dry-run" ]; then
-    if [ ${#stale[@]} -eq 0 ]; then
-        echo -e "${GREEN}Nothing stale to clean. ${#recent[@]} recent files kept.${NC}"
-    else
-        echo -e "${DIM}Dry run — nothing was deleted.${NC}"
-        echo -e "Run with ${CYAN}--delete${NC} to remove stale files, or ${CYAN}--all${NC} to clear everything."
-    fi
+# Only stale files are ever removed. Recent files are kept; a user who wants
+# everything gone can rm -rf docs/tmp/ themselves.
+if [ ${#stale[@]} -eq 0 ]; then
+    echo -e "${GREEN}Nothing stale to clean. ${#recent[@]} recent files kept.${NC}"
     exit 0
 fi
 
-if [ ${#targets[@]} -eq 0 ]; then
-    echo -e "${GREEN}Nothing to delete.${NC}"
-    exit 0
-fi
+targets=("${stale[@]}")
 
-# Confirm unless --force
-if [ "$MODE" = "--delete" ] || [ "$MODE" = "--all" ]; then
-    echo -en "Delete $label files? [y/N] "
+# Confirm unless --force (for scripts and CI where no one answers y/N).
+if [ "$MODE" != "--force" ]; then
+    echo -en "Delete ${#stale[@]} stale files? [y/N] "
     read -r confirm
     if [[ ! "$confirm" =~ ^[Yy] ]]; then
         echo "Aborted."

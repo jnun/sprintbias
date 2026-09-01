@@ -182,7 +182,7 @@ def act2():
     ok(f"{BOLD}1 task worked.{RESET}  Review the diff and commit when happy.")
     nap(0.5)
     beat("backlog → next → doing → review, each move an honest status change. "
-         "sprint.sh made the changes; it did NOT commit — that call stays yours.")
+         "sprint.sh made the changes; it did NOT commit or ship — those calls stay yours.")
     nap(0.7)
 
 def outro():
@@ -196,7 +196,7 @@ def outro():
     line(f"    {PURPLE}•{RESET} {WHITE}the gate guards{RESET}        "
          f"{GREY}only READY work runs; vague work waits in blocked/{RESET}")
     line(f"    {PURPLE}•{RESET} {WHITE}you stay in control{RESET}    "
-         f"{GREY}it works the queue, you review and commit{RESET}")
+         f"{GREY}it works the queue; you review, commit, and ship{RESET}")
     print()
     line(f"  {DIM}the spine you just watched:{RESET} "
          f"{CYAN}newtask → chat → work{RESET}")

@@ -64,22 +64,30 @@ docs/guides/provider-reality.md
 docs/tasks/doing/364-audit-the-headless-audit-run-result-interpretation.md
 docs/plans/22-fix-the-audit-run-result-interpretation-mechanism.md
 
-<!-- After work only — audit trail of what was touched. Helps committers,
-     later audits, and "what broke?" recovery. List the product files you
-     edited to complete the task — one repo-relative path per line. Leave this
-     task file out: its folder location and git history already track it. Copy
-     the two headings below to column 0
-     (UNINDENTED — they are indented here only so a fresh, unworked task is not
-     mistaken for a finished one), then list the paths under "Files changed":
+## Completed
 
-       ## Completed
+Verified Grok's buffered `--output-format json` against a real captured log
+(not an assumption): it carries `text` (result), `stopReason`
+(`end_turn` clean / `cancelled` on max-turns exhaustion), and Claude-compatible
+`num_turns` / `total_cost_usd` — but NO `is_error`/`subtype`, so the old
+Claude-shaped fallback silently reported every Grok run (max-turns aborts
+included) as finished. Grok now owns `profile_interpret_run`: reads `text`,
+maps `cancelled → max_turns`, normal stops → finished, other non-empty stops →
+error. default.sh owns the no-JSON case: empty log → no_start, non-zero rc →
+error, else finished; raw stdout is the verdict text, tail is the summary, and
+cost/turns stay empty (honestly unknown, never a faked 0). All three profiles
+emit the identical outcome vocabulary (finished | max_turns | no_start | error)
+through the shared `sprintbias_run_hint`. Finding recorded in
+docs/guides/provider-reality.md (resolves the audit-364 known unknown). Locked
+by docs/tests/test-run-interpret.sh (12 assertions) + existing
+test-grok-provider.sh (75 pass).
 
-       ### Files changed
-       docs/sprintbias/scripts/example.sh
-       docs/sprintbias/help/example.md
-
-     Keep the wording exact — `## Completed` and `### Files changed` — the tasks
-     runner and lib.sh key off them verbatim. Do not fill this before work. -->
+### Files changed
+docs/sprintbias/cli/grok.sh
+docs/sprintbias/cli/default.sh
+docs/sprintbias/lib.sh
+docs/guides/provider-reality.md
+docs/tests/test-run-interpret.sh
 
 <!--
 AI: Full task-writing guidance is in docs/sprintbias/ai/task-creation.md

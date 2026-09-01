@@ -134,7 +134,7 @@ move_file() {
 # Same behavior as move_file. Include this string once; show concrete
 # `git mv … || mv …` lines for each destination.
 sprintbias_move_rule() {
-    printf '%s' "Always move task files with: git mv SRC DEST || mv SRC DEST. Run git mv first (preserves history when tracked). When git mv fails — usual for new tasks not yet committed — finish that same move with plain mv, then continue. Leave git commit to the developer unless they asked you to commit."
+    printf '%s' "Always move task files with: git mv SRC DEST || mv SRC DEST. Run git mv first (preserves history when tracked). When git mv fails — usual for new tasks not yet committed — finish that same move with plain mv, then continue. git commit and ./ship.sh are human-owned by default — run either only when the human explicitly asks for that action in this conversation."
 }
 
 # Strip the task template's authoring scaffolding from a task file.
@@ -1986,6 +1986,161 @@ sprintbias_excellence_has_section() {
     grep -qE '^## Excellence$' "$1" 2>/dev/null
 }
 
+# True when a task file carries a completed (non-aborted) '## Audit' section —
+# the marker `polish --code` writes on a finished code audit. Mirrors
+# sprintbias_excellence_has_section: matches the exact '## Audit' heading ONLY,
+# so the '## Audit (aborted …)' notes never count as a real audit. Presence
+# alone is NOT proof of correctness — a FAIL/BLOCKED/UNCLEAR audit also writes
+# this heading; read the recorded verdict with sprintbias_correctness_state.
+sprintbias_audit_has_section() {
+    grep -qE '^## Audit$' "$1" 2>/dev/null
+}
+
+# The correctness state of a finished task, derived from the '## Audit' marker
+# `polish --code` writes (polish.sh, `**Final verdict**:`). The excellence
+# deep-judge gates its "presumed correct" posture on this: correctness is
+# presented as established ONLY when a code audit actually ran AND passed.
+# Echoes exactly one token:
+#   audited     a plain '## Audit' block records a PASS or FIXED **Final verdict**
+#   failed      a plain '## Audit' block records FAIL/BLOCKED/UNCLEAR — worse
+#               than unverified: an audit ran and did NOT clear the work
+#   unverified  no '## Audit' block (or only an aborted note) — never audited
+sprintbias_correctness_state() {
+    local file="$1" verdict
+    [ -n "$file" ] && [ -f "$file" ] || { echo "unverified"; return; }
+    if ! sprintbias_audit_has_section "$file"; then
+        echo "unverified"; return
+    fi
+    verdict=$(grep -E '^- \*\*Final verdict\*\*:' "$file" 2>/dev/null | tail -1 \
+        | sed -E 's/^- \*\*Final verdict\*\*:[[:space:]]*//' | tr -d '[:space:]')
+    case "$verdict" in
+        PASS|FIXED) echo "audited" ;;
+        *)          echo "failed" ;;
+    esac
+}
+
+# The ONE source of truth for the '## Excellence' section's field set. Both run
+# paths render THIS: polish-judge.sh's headless appender passes real values, and
+# its emit-mode APPEND_STEP prompt passes placeholders the judging agent fills.
+# Keeping the field list here means a new field lands once and cannot drift
+# between paths. Args, in order:
+#   date verdict correctness tasks_filed routing files_reviewed context_source code_state summary
+# `routing` records where the filed tasks went — the warm-route split, e.g.
+# "1 → next/, 2 → backlog/" (or "—" when nothing was filed). `code_state` is the
+# content hash of the audited files at judgment time (sprintbias_manifest_state_hash)
+# — the idempotency guard re-judges when it no longer matches the current tree.
+sprintbias_excellence_block() {
+    printf '\n## Excellence\n\n'
+    printf -- '- **Date**: %s\n' "$1"
+    printf -- '- **Verdict**: %s\n' "$2"
+    printf -- '- **Correctness**: %s\n' "$3"
+    printf -- '- **Tasks filed**: %s\n' "$4"
+    printf -- '- **Routing**: %s\n' "$5"
+    printf -- '- **Files reviewed**: %s\n' "$6"
+    printf -- '- **Context source**: %s\n' "$7"
+    printf -- '- **Code state**: %s\n' "$8"
+    printf '\n%s\n' "$9"
+}
+
+# sprintbias_manifest_state_hash CHANGED_FILES  -> print a content hash (or "").
+# The idempotency state key: a hash over the CURRENT contents of the audited
+# files (the resolved change manifest), not the git-diff text — the diff churns
+# on line numbers, the contents are what actually moved. Each file is streamed
+# behind a path header so a rename that preserves bytes still changes the hash.
+# Missing files contribute only their header. Empty input yields the empty
+# string, which the guard reads as "no state to compare" (skip, not re-judge).
+sprintbias_manifest_state_hash() {
+    local files="$1" f
+    [ -n "$(printf '%s' "$files" | tr -d '[:space:]')" ] || { echo ""; return; }
+    {
+        printf '%s\n' "$files" | while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            printf '::%s::\n' "$f"
+            [ -f "$f" ] && cat "$f"
+        done
+    } | sprintbias_hash_stdin
+}
+
+# sprintbias_hash_stdin  (reads stdin) -> print a short, stable content hash.
+# git is a hard dependency of sprintbias, so git hash-object is the primary
+# hasher (stable blob SHA-1, machine-independent); shasum/cksum are fallbacks so
+# the guard degrades rather than errors if git is somehow absent. Truncated to
+# 16 chars for a readable stamp — both write and compare truncate identically.
+sprintbias_hash_stdin() {
+    local h=""
+    if command -v git >/dev/null 2>&1; then
+        h="$(git hash-object --stdin 2>/dev/null || true)"
+    fi
+    if [ -z "$h" ] && command -v shasum >/dev/null 2>&1; then
+        h="$(shasum -a 256 | cut -d' ' -f1)"
+    fi
+    [ -z "$h" ] && h="$(cksum | tr -d ' ')"
+    printf '%s\n' "${h:0:16}"
+}
+
+# sprintbias_excellence_state_key TASK_FILE -> print the stamped Code state hash.
+# Reads the `- **Code state**:` field from the EXACT '## Excellence' block only
+# (an aborted note or another heading is skipped), so the guard compares like
+# with like. Empty when the field is absent — a section written before code-state
+# stamping — which the guard treats as "nothing to compare" (skip, not re-judge).
+sprintbias_excellence_state_key() {
+    awk '
+        /^## Excellence$/ { inblk=1; next }
+        inblk && /^## / { inblk=0 }
+        inblk && /^- \*\*Code state\*\*:/ {
+            sub(/^- \*\*Code state\*\*:[[:space:]]*/, "")
+            gsub(/[[:space:]]/, "")
+            print; exit
+        }
+    ' "$1" 2>/dev/null
+}
+
+# sprintbias_excellence_is_stale TASK_FILE [CURRENT_STATE_KEY] -> exit 0 when the
+# task carries a '## Excellence' verdict that no longer matches the current code
+# state (re-judge), exit 1 otherwise (never judged, still matches, or can't tell
+# → skip). This is the ONE staleness test both entry points share — the
+# single-piece guard (polish-judge.sh) and the plan-scoped pre-filter
+# (plan-polish.sh) — so "was this judged as it currently stands" is decided in one
+# place and the two guards cannot drift apart. Pass the current-state hash when
+# the caller already resolved it (the single-piece guard needs it for stamping);
+# omit it and the predicate resolves it from the task's own change manifest (the
+# pre-filter's per-member case). Degrade rule preserved: an unstamped section
+# (written before code-state stamping) or an unresolvable manifest counts as NOT
+# stale — never re-judge blindly. Resolving the manifest clobbers the
+# SPRINTBIAS_CHANGED_FILES/_CONTEXT_SOURCE globals, so callers that need those
+# must read them before calling, or pass the hash in to avoid the resolve.
+sprintbias_excellence_is_stale() {
+    local f="$1" current stamped
+    sprintbias_excellence_has_section "$f" || return 1
+    stamped="$(sprintbias_excellence_state_key "$f")"
+    if [ "$#" -ge 2 ]; then
+        current="$2"
+    else
+        sprintbias_change_manifest "$f"
+        current="$(sprintbias_manifest_state_hash "$SPRINTBIAS_CHANGED_FILES")"
+    fi
+    [ -n "$current" ] && [ -n "$stamped" ] && [ "$current" != "$stamped" ]
+}
+
+# sprintbias_excellence_strip_section TASK_FILE — remove the single '## Excellence'
+# block in place so a re-judge REPLACES it rather than stacking a second one.
+# Scoped to the exact '## Excellence' heading through the next '## ' heading (or
+# EOF): Success criteria, ## Completed, ## Audit, and any '## Excellence (aborted
+# …)' note are untouched. Trailing blank lines are collapsed so the re-appended
+# block keeps one clean separator.
+sprintbias_excellence_strip_section() {
+    local f="$1"
+    awk '
+        /^## Excellence$/ { skip=1; next }
+        skip && /^## / { skip=0 }
+        !skip {
+            if ($0 ~ /^[[:space:]]*$/) { blank++; next }
+            while (blank-- > 0) print ""
+            blank=0; print
+        }
+    ' "$f" > "$f.tmp" && mv "$f.tmp" "$f" || rm -f "$f.tmp"
+}
+
 # The excellence judge's rules + verdict contract, as a prompt fragment. The
 # single-piece judge (polish-judge.sh) inlines the full protocol directly; the
 # plan-scoped orchestrator (plan-polish.sh) hands this compact fragment to each
@@ -1995,12 +2150,24 @@ sprintbias_excellence_rules() {
     cat <<'EOF'
 Follow docs/sprintbias/ai/audit-excellence.md exactly. Your writes are exactly
 two: a new backlog task (via ./sprint.sh newtask "<desc>") for each enhancement
-you find, and an appended '## Excellence' section on the audited task file (date,
-verdict, tasks filed, and your Summary). Everything else is read-only here — the
-task's Success criteria, its ## Completed section, its folder, and all product
-code — so an enhancement is filed, never built, and the task is never reopened.
-Judge the finished work against the higher bar; the code is presumed correct.
-End with: VERDICT: EXCELLENT | FILED — <n> enhancement task(s) | BLOCKER — <reason>.
+you find, and an appended '## Excellence' section on the audited task file —
+write it EXACTLY as the pre-rendered block you are given for this task, filling
+only the placeholders (verdict, tasks filed, routing, Summary) and copying every
+other field verbatim; do not invent, drop, or reorder fields. Everything else is
+read-only here — the task's Success criteria,
+its ## Completed section, its folder, and all product code — so an enhancement is
+filed, never built, and the task is never reopened. Default every filed task to
+backlog/; warm-route at most 1–2 that clear the "a senior engineer would act now"
+bar into next/ by promoting them through the shared gate (promote-to-sprint.sh),
+never a raw git mv. Record the split as routing (e.g. "1 → next/, 2 → backlog/").
+Presume the code correct
+ONLY when a passing code audit is on record: a plain '## Audit' section (not an
+'aborted' note) whose **Final verdict** is PASS or FIXED — stamp correctness:
+audited. Otherwise stamp correctness: unverified (no ## Audit) or correctness:
+failed (a ## Audit recording FAIL/BLOCKED/UNCLEAR — worse than unverified), do
+NOT presume correctness, and treat any defect you stumble on as a DEFECT finding
+recommending ./sprint.sh polish --code rather than waving it by.
+End with: VERDICT: EXCELLENT | FILED — <n> enhancement task(s) (<x> → next/, <y> → backlog/) | BLOCKER — <reason>.
 EOF
 }
 
@@ -2110,10 +2277,11 @@ PY
 #   SPRINTBIAS_RUN_TURNS        turns spent (best-effort; may be empty)
 #   SPRINTBIAS_RUN_COST         USD spent  (best-effort; may be empty)
 #   SPRINTBIAS_RUN_SUMMARY      the run's summary text (best-effort)
-# Dispatches to the active profile's profile_interpret_run when defined (Claude
-# does; see cli/claude.sh). When a profile has not implemented one yet
-# (grok/default until task 368), it falls back to today's Claude-shaped
-# is_error/subtype logic so those providers keep their current behavior.
+# Dispatches to the active profile's profile_interpret_run when defined. Every
+# shipped profile now implements its own — claude (Claude result JSON), grok
+# (Grok's native "text"/"stopReason" shape), and default (the no-JSON plain-log
+# case). The fallback below stays only as a defensive bridge for any profile
+# that defines sprintbias_provider_exec but no profile_interpret_run.
 # The optional rc is accepted for future use — the record is derived from the
 # log file, not stderr (every call site runs the CLI as `... 2>/dev/null`, so
 # the profile's own dropped-flag / retry warnings are already silenced).
@@ -2126,11 +2294,11 @@ sprintbias_interpret_run() {
     fi
 }
 
-# Bridge interpreter for providers whose profile has not defined
-# profile_interpret_run yet (task 368 ports grok/default onto their own). It
-# reproduces today's Claude-shaped is_error/subtype reading so those providers'
-# behavior is unchanged. Not the permanent home of shape knowledge — each
-# profile owns its own shape once it implements profile_interpret_run.
+# Bridge interpreter for any profile that defines sprintbias_provider_exec but
+# no profile_interpret_run. All shipped profiles (claude/grok/default) now own
+# their own reader, so this is a defensive fallback only. It reproduces the
+# Claude-shaped is_error/subtype reading. Not the permanent home of shape
+# knowledge — each profile owns its own shape in cli/<name>.sh.
 _sprintbias_interpret_run_fallback() {
     local log="$1"
     SPRINTBIAS_RUN_OUTCOME="" SPRINTBIAS_RUN_TURNS="" SPRINTBIAS_RUN_COST=""

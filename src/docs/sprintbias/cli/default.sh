@@ -52,6 +52,38 @@ sprintbias_provider_exec() {
   "${cmd[@]}"
 }
 
+# profile_interpret_run LOG [rc] — the no-result-object reading of a run.
+# Called by sprintbias_interpret_run (lib.sh). The default profile drops
+# --output-format entirely, so the log is plain provider stdout with no result
+# JSON to key off. Derive the normalized record from what a plain log does
+# carry:
+#   empty / absent log     -> no_start  (the CLI produced nothing at all)
+#   rc given and non-zero  -> error     (the run exited badly, when a caller
+#                                        threads the rc through as $2)
+#   otherwise              -> finished  (caller greps its VERDICT token from
+#                                        the raw text below)
+# The raw stdout becomes the verdict text so the shared VERDICT grep still
+# works, and its tail becomes the summary. There is no structured result here,
+# so cost/turns have no honest source — they stay empty (unknown), never a
+# faked 0. This is the first-class no-JSON case, not a Claude-shape assumption.
+profile_interpret_run() {
+  local log="$1" rc="${2:-}"
+  SPRINTBIAS_RUN_OUTCOME="" SPRINTBIAS_RUN_TURNS="" SPRINTBIAS_RUN_COST=""
+  SPRINTBIAS_RUN_VERDICT_TEXT="" SPRINTBIAS_RUN_SUMMARY=""
+  if [ ! -s "$log" ]; then
+    SPRINTBIAS_RUN_OUTCOME="no_start"
+    return 0
+  fi
+  if [ -n "$rc" ] && [ "$rc" != "0" ]; then
+    SPRINTBIAS_RUN_OUTCOME="error"
+  else
+    SPRINTBIAS_RUN_OUTCOME="finished"
+  fi
+  SPRINTBIAS_RUN_VERDICT_TEXT="$(cat "$log")"
+  SPRINTBIAS_RUN_SUMMARY="$(tail -c 2000 "$log")"
+  return 0
+}
+
 # No sprintbias_provider_interactive here on purpose: a generic CLI can't be
 # trusted to host a live REPL, so this profile does not set
 # SPRINTBIAS_PROVIDER_INTERACTIVE. sprintbias_interactive_ok then returns false and

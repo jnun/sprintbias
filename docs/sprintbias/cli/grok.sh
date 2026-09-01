@@ -209,3 +209,97 @@ sprintbias_provider_interactive() {
 
   "${cmd[@]}"
 }
+
+# The Grok result reader, kept in a variable and run with `python3 -c` (same
+# pattern as cli/claude.sh's _SPRINTBIAS_INTERPRET_PY). It writes five
+# NUL-delimited fields on stdout — outcome, turns, cost, verdict text, summary
+# (verdict/summary may be multiline, so NUL is the only safe separator). No
+# single quotes in this code.
+#
+# Grok's buffered `--output-format json` is NOT Claude-shaped (verified against
+# a real captured log, 2026-08-27 — see docs/guides/provider-reality.md):
+#   result text  -> "text"          (Claude uses "result")
+#   stop signal  -> "stopReason"    (Claude uses "is_error" + "subtype")
+#   turns/cost   -> "num_turns" / "total_cost_usd"  (same keys as Claude)
+# There is no is_error/subtype key, so the Claude-shaped fallback read every
+# Grok run as finished. Map Grok's native stopReason instead:
+#   cancelled                              -> max_turns  (under SprintBias every
+#       headless call is turn-bounded, and Grok surfaces max-turns exhaustion as
+#       stopReason=cancelled with "max turns reached" on stderr — which callers
+#       suppress, so the log's stopReason is the only surviving signal)
+#   end_turn / stop_sequence / max_tokens  -> finished
+#   any other non-empty stopReason         -> error
+#   empty stopReason                        -> finished if text present, else error
+_SPRINTBIAS_GROK_INTERPRET_PY="$(cat <<'PYEOF'
+import json, sys, re
+
+def emit(outcome, turns="", cost="", verdict="", summary=""):
+    sys.stdout.write("\0".join([outcome, str(turns), str(cost),
+                                verdict, summary]) + "\0")
+    sys.exit(0)
+
+raw = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+try:
+    d = json.loads(raw)
+except Exception:
+    # Grok writes a JSON object under --output-format json; a non-JSON log is a
+    # last-resort case — grep raw text and let the caller find its verdict.
+    emit("finished", "", "", raw, raw[-2000:] if len(raw) > 2000 else raw)
+
+turns = d.get("num_turns", "")
+cost = d.get("total_cost_usd", "")
+text = d.get("text", "") or d.get("result", "") or ""
+stop = (d.get("stopReason") or d.get("stop_reason") or "").lower()
+
+def summarize(t):
+    if not t:
+        return ""
+    m = re.search(r"## Summary\n(.*?)(?=\nVERDICT:|\Z)", t, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    lines = t.strip().split("\n")
+    vi = None
+    for i, l in enumerate(lines):
+        if "VERDICT:" in l:
+            vi = i
+    if vi is not None and vi > 0:
+        return "\n".join(lines[max(0, vi - 30):vi]).strip()
+    return t[-2000:] if len(t) > 2000 else t
+
+if stop == "cancelled":
+    emit("max_turns", turns, cost, text, summarize(text))
+# Any non-normal stopReason means the run did not complete cleanly. Report
+# error (never finished) so the caller does not trust a partial/aborted run.
+if stop and stop not in ("end_turn", "stop_sequence", "max_tokens"):
+    emit("error", turns, cost, text, summarize(text))
+# Empty stopReason with no text at all: the object carried no usable result.
+if not stop and not text:
+    emit("error", turns, cost, text, summarize(text))
+emit("finished", turns, cost, text, summarize(text))
+PYEOF
+)"
+
+# profile_interpret_run LOG [rc] — the Grok reading of a run's result.
+# Called by sprintbias_interpret_run (lib.sh). Parses Grok's buffered result
+# JSON once and fills the normalized record the audits consume:
+#   SPRINTBIAS_RUN_OUTCOME  finished | max_turns | no_start | error
+#   SPRINTBIAS_RUN_TURNS / _COST / _VERDICT_TEXT / _SUMMARY
+# empty/absent log -> no_start; otherwise the stopReason mapping documented on
+# _SPRINTBIAS_GROK_INTERPRET_PY above. This is where the Grok JSON shape lives.
+profile_interpret_run() {
+  local log="$1"
+  SPRINTBIAS_RUN_OUTCOME="" SPRINTBIAS_RUN_TURNS="" SPRINTBIAS_RUN_COST=""
+  SPRINTBIAS_RUN_VERDICT_TEXT="" SPRINTBIAS_RUN_SUMMARY=""
+  if [ ! -s "$log" ]; then
+    SPRINTBIAS_RUN_OUTCOME="no_start"
+    return 0
+  fi
+  {
+    IFS= read -r -d '' SPRINTBIAS_RUN_OUTCOME
+    IFS= read -r -d '' SPRINTBIAS_RUN_TURNS
+    IFS= read -r -d '' SPRINTBIAS_RUN_COST
+    IFS= read -r -d '' SPRINTBIAS_RUN_VERDICT_TEXT
+    IFS= read -r -d '' SPRINTBIAS_RUN_SUMMARY
+  } < <(python3 -c "$_SPRINTBIAS_GROK_INTERPRET_PY" "$log")
+  return 0
+}

@@ -1,9 +1,11 @@
 # Excellence Audit Protocol
 
-Judge finished work against a higher bar than "it runs." The code audit
-(`polish --code`) already checked correctness, conventions, and safety. Your
-job is altitude: is this well-engineered, does it fully solve the problem,
-and what would make it genuinely better?
+Judge finished work against a higher bar than "it runs." When a code audit
+(`polish --code`) has already passed on this work, correctness, conventions,
+and safety are established — your job is altitude: is this well-engineered,
+does it fully solve the problem, and what would make it genuinely better?
+When no passing audit is on record, correctness is NOT yet established; you
+still judge altitude, but you do not wave defects by — see Posture.
 
 ## The Bar
 
@@ -14,10 +16,18 @@ minimum, not the standard. You are auditing for the second kind.
 
 ## Posture
 
-- **The work is presumed correct.** Do not re-litigate bugs, style, or
-  conventions — that audit already ran. If you stumble on a genuine defect,
-  record it as a DEFECT finding and recommend a `polish --code` pass. Do not
-  fix it.
+- **Presume correctness ONLY when a code audit passed.** The run reports a
+  correctness state, read from the task's `## Audit` marker (`polish --code`
+  writes it): `audited` when a plain `## Audit` section records a PASS or FIXED
+  **Final verdict**; `unverified` when there is no such section; `failed` when a
+  `## Audit` records FAIL/BLOCKED/UNCLEAR (worse than unverified — an audit ran
+  and did not clear the work). When `audited`, do not re-litigate bugs, style, or
+  conventions — that audit already ran. When `unverified` or `failed`, do NOT
+  presume correctness: if you stumble on a genuine defect, record it as a DEFECT
+  finding and recommend a `./sprint.sh polish --code` pass. Either way, you never
+  fix it — defects and enhancements alike leave this run as findings, not edits.
+  Stamp the state you were given on the `## Excellence` section's `correctness:`
+  field so the record shows what backed the judgment.
 - **You never edit code. Not one line.** An excellence finding is never a
   license to build — "let me build that" mid-audit is the exact failure mode
   this protocol exists to prevent. Improvements become filed tasks, not
@@ -93,6 +103,38 @@ The bar for filing: would a senior engineer, told about this, act on it?
 File the vital few, not the trivial many. Zero filed tasks is a legitimate
 outcome — do not invent work to look thorough.
 
+### Where a filed task lands: backlog by default, next only when it's act-now
+
+Every ENHANCEMENT you file defaults to `backlog/` — the malleable queue a human
+re-triages later. That default is right for almost everything. `backlog/` is not
+a demotion; it is where a finding waits until it earns a sprint slot.
+
+The exception is the **vital few** you would rate BOTH high-confidence AND
+high-value — the finding a senior engineer, told about it, would **act on now**,
+not "eventually." Those you may **warm-route** into `next/` so a good, act-now
+improvement does not go cold in the backlog. Warm routing is a filed *new* task
+being promoted — never the reopening of the audited task, and never a raw
+`git mv`. Promote it through the same workability gate `plan start` and the
+sweep use, so it is vetted READY before it sits in `next/`:
+
+    ./sprint.sh newtask "Short imperative description"
+    # append Why + Scope to the created docs/tasks/backlog/<id>-<slug>.md, then:
+    bash docs/sprintbias/scripts/promote-to-sprint.sh docs/tasks/backlog/<id>-<slug>.md
+
+Two hard limits keep the warm lane trustworthy:
+
+- **Cap: at most 1–2 warm-routed tasks per audit.** `next/` is the justified
+  exception, not the norm. If a third finding also feels urgent, that is the
+  signal to stop and leave it in `backlog/` — you cannot fast-track a whole
+  audit by self-declaring it all urgent.
+- **"Act now" means genuinely act-now.** A small, high-confidence altitude fix
+  on freshly-reviewed code is act-now. "Seems nice," "would be cleaner," or a
+  large or speculative change is not — it stays in `backlog/`. When in doubt,
+  `backlog/`.
+
+Record the split: how many filed tasks went to `next/` and how many to
+`backlog/` (see Report Format).
+
 ## Report Format
 
 End with exactly this structure:
@@ -103,8 +145,11 @@ End with exactly this structure:
 
     ### Findings
     - [SEVERITY] one line each, with file references
-    - FILED: docs/tasks/backlog/<id>-<slug>.md (one line per task filed)
+    - FILED → next/:    docs/tasks/next/<id>-<slug>.md    (warm-routed)
+    - FILED → backlog/: docs/tasks/backlog/<id>-<slug>.md (default)
 
-    VERDICT: EXCELLENT | FILED — <n> enhancement task(s) | BLOCKER — <reason>
+    VERDICT: EXCELLENT | FILED — <n> (<x> → next/, <y> → backlog/) | BLOCKER — <reason>
 
-The `VERDICT:` line must be the last line of your output.
+List one FILED line per task filed, marking its destination. The `VERDICT:` line
+must be the last line of your output; on a FILED verdict it carries the routing
+split (e.g. `FILED — 3 (1 → next/, 2 → backlog/)`).

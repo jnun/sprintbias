@@ -51,7 +51,7 @@ sync          | keep     | [--all]             | Push task changes to GitHub | s
 validate      | keep     | [--fix] [--dry-run] | Integrity-check task IDs and Depends on / Dependents | validate
 validate      | keep     | --docs              | Check help/*.md for flag drift vs scripts
 validate      | keep     | --commands          | Check every command is fully surfaced (this registry ↔ dispatch ↔ help ↔ manual)
-cleanup       | keep     | [--delete/--force/--all] | Clean stale scratch files | cleanup
+cleanup       | keep     | [--force]           | Clean stale scratch files | cleanup
 deps          | keep     |                     | File a backlog task auditing outdated/vulnerable deps | deps
 model         | keep     | show/list/set [k v] | See the effective AI model per role, list provider models, or set a default (no AI)
 config        | keep     |                     | Interactively set the AI provider and default model in docs/sprintbias/config (no AI)

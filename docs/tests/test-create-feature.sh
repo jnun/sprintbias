@@ -70,7 +70,7 @@ assert_contains "Status field" "$content" "**Status:** BACKLOG"
 assert_contains "Overview section" "$content" "## Overview"
 assert_contains "User Stories section" "$content" "## User Stories"
 assert_contains "Requirements section" "$content" "## Requirements"
-assert_contains "Testing section" "$content" "## Testing Strategy"
+assert_contains "Acceptance Criteria section" "$content" "## Acceptance Criteria"
 
 # Test 4: Created date is today
 echo "Test 4: Created date is today"

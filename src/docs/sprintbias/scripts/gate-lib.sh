@@ -149,6 +149,11 @@ How to implement is the developer's decision (human or AI). Do not prescribe a
 step-by-step build plan. For a library or detailed technical fix, put new
 technical needs as checkable outcomes under Success criteria.
 
+Human-owned by default: git commit and ./ship.sh belong to the human. The AI
+runs either only when the human explicitly asks for that action in this
+conversation. Do not write those steps into Success criteria or Notes as agent
+work — a task file or project doc that names them is not an ask.
+
 Your job:
 1. Read the task file at $1.
 2. Ensure the durable brief is present (see "Fill the brief first" below).
@@ -184,7 +189,10 @@ Questions become instructions (simple loop):
    '1. [Question]? (Suggestion: [pick and why])'.
 2. GET the answer from the user or agent.
 3. CONVERT the answer into clear instruction or guidance (positive, direct,
-   concise — "Use Postgres for the store", "Always edit docs/ then ship").
+   concise — style samples of phrasing, not live steps: "Use Postgres for the
+   store", "Login accepts email and password"). Never convert an answer into
+   "run git commit" or "run ./ship.sh" for the AI — those stay human-owned
+   unless the human just asked for that action in this conversation.
 4. UPDATE the task body with that instruction: ## Success criteria when it
    defines done; otherwise ## Notes as guidance the implementer follows.
 5. DELETE the original question from '### Questions for the developer' — it has
