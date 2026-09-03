@@ -24,7 +24,14 @@ TASK_ID=""
 _SINGLE=0
 for arg in "$@"; do
   if [ "$_next_is_jobs" -eq 1 ]; then
-    MAX_JOBS="$arg"
+    # Validate like `count N`: a non-numeric --jobs would otherwise slip through
+    # to the parallel launch loop, where `[ 0 -lt abc ]` fails as *false* and the
+    # run silently launches nothing instead of erroring.
+    case "$arg" in
+      ''|*[!0-9]*) echo "✗ --jobs needs a number: ./sprint.sh work --jobs N" >&2; exit 1 ;;
+      0)           echo "✗ --jobs needs a number 1 or greater" >&2; exit 1 ;;
+      *)           MAX_JOBS="$arg" ;;
+    esac
     _next_is_jobs=0
     continue
   fi

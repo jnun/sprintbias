@@ -61,36 +61,22 @@ needing one run per link. That is sequencing, not a blocked condition.
 With --fast, independent tasks overlap while dependents still wait their
 turn.
 
-Failure stamps: when a task routes to blocked/ (stopped short) or hard-fails
-(CLI exited non-zero, left in doing/), work appends a durable **## Outcome**
-block so the failure is diagnosable instead of a mystery hold:
+**Finish-first** (same action-bias as `conversation.md` / polish): READY + met
+deps → implement → `## Completed` → `review/`. Prefer clear best practice;
+pick a sensible default and finish. A product/scope fork that needs a human
+gets a one-line `## Outcome` and lands in `blocked/`.
 
-  ## Outcome
-  **Result**: incomplete | failed | blocked
-  **Reason**: …
-  **At**: YYYY-MM-DD
-
-A dependent's hold line then names that outcome — e.g.
-`294 (blocked/ — incomplete: run ended without a '## Completed') — chat 294`
-— so you can see WHY a
-prerequisite is holding the chain. A task that later completes drops the stale
-stamp on its way to review/.
-
-The stamp also feeds the next attempt: when work re-runs a task that carries a
-prior **## Outcome** (failed/incomplete/blocked), it reads that Reason FIRST and
-must fix the root cause before redoing the work — a retry down the same path
-earns the same failure. If the Reason shows the task is mis-defined or too big
-for one run, the attempt says so and stops instead of burning another identical
-try. So each failure sharpens the next attempt rather than repeating it.
+`## Outcome` (incomplete | failed | blocked) lets dependents name why they
+wait; a later success drops it on the way to `review/`. Retries fix the Reason
+first, then finish.
 
 For each ready task it:
   - Moves the task file to doing/ (`git mv SRC DEST || mv SRC DEST`)
   - Reads the task, reads CLAUDE.md, makes all code changes
   - Streams progress live (one line per step); full event log in docs/tmp/
   - Checks off completed items, adds a ## Completed summary
-  - Moves the task file to review/ (or blocked/ with a ## Outcome stamp if it
-    stopped short and needs a decision)
-  - Stops on failure so you can inspect (a ## Outcome: failed stamp is written)
+  - Moves to review/ (## Outcome → blocked/ when a human decision is needed)
+  - On hard CLI failure, leaves the task in doing/ (## Outcome: failed)
 
 When work lands in `review/`, the end-of-run summary says **Requires human
 review** — that is not `blocked/`. Implementation is done; close is a human

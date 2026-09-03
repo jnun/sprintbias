@@ -72,6 +72,8 @@
 #     sprintbias_fold_target FILE   — id a task was folded into, or empty
 #     sprintbias_classify_dep ID [MISSING_AS] — one token:
 #         review|done|doing|next|backlog|blocked|folded|missing (policy knob)
+#     sprintbias_deps_not_sprint_ready FILE — dep ids still in backlog/ or blocked/
+#         (empty = every dep is next/doing/review/done, folded, or archived)
 #     sprintbias_dependents_of ID   — ids that depend on ID (forward + reverse edges)
 #     sprintbias_rewrite_dep_id FROM TO — fold FROM→TO across Depends on/Dependents/
 #         Blocks on every task; leave a fold note on FROM's kept file
@@ -1031,6 +1033,34 @@ sprintbias_unmet_deps() {
 $(sprintbias_iter_id_list "$raw")
 EOF
     [ -n "$unmet" ] && printf '%s' "$unmet" | tr ' ' '\n' \
+        | grep -E '^[0-9]+$' | sort -un | tr '\n' ' ' | sed 's/[[:space:]]*$//'
+    return 0
+}
+
+# sprintbias_deps_not_sprint_ready FILE -> space-separated dependency task IDs
+# that are still outside the sprint: sitting in backlog/ or blocked/. Empty
+# output means every declared dependency is already in next/ or doing/ (in the
+# sprint), finished (review/ or done/), folded, or archived (no file — treated
+# as complete). Distinct from sprintbias_unmet_deps, which also treats next/
+# and doing/ as unmet (those are frontier holds for *running* a task). This
+# helper answers "may this task enter next/?" — a task whose prerequisite is
+# still in backlog/ or blocked/ is not workable for the sprint yet.
+sprintbias_deps_not_sprint_ready() {
+    local file="$1" raw id class out=""
+    raw=$(sprintbias_meta_value "$file" "Depends on")
+    [ -z "$raw" ] && return 0
+    while read -r kind tok; do
+        [ "$kind" = "id" ] || continue
+        id="$tok"
+        # missing → done (archived-complete); folded is never open work.
+        class=$(sprintbias_classify_dep "$id" done)
+        case "$class" in
+            backlog|blocked) out="$out $id" ;;
+        esac
+    done <<EOF
+$(sprintbias_iter_id_list "$raw")
+EOF
+    [ -n "$out" ] && printf '%s' "$out" | tr ' ' '\n' \
         | grep -E '^[0-9]+$' | sort -un | tr '\n' ' ' | sed 's/[[:space:]]*$//'
     return 0
 }

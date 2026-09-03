@@ -14,7 +14,7 @@
 # Per-run override (does not rewrite this file): ./sprint.sh -c | -g <command>
 # or env SPRINTBIAS_CLI / SPRINTBIAS_PROVIDER (legacy SPRINTMD_CLI /
 # SPRINTMD_PROVIDER still honored).
-CLI=claude
+CLI=grok
 
 # Capability tier for this install:
 #   claude-code | grok-build | cursor | openai | generic
@@ -23,7 +23,7 @@ CLI=claude
 # and degrade gracefully elsewhere. Empty = inferred from CLI above. See
 # docs/sprintbias/ai/provider-capabilities.md.
 # Per-run: ./sprint.sh -c (claude-code) or ./sprint.sh -g (grok-build).
-PROVIDER=claude-code
+PROVIDER=grok-build
 
 # How AI commands deliver their prompt:
 #   emit  — print the prompt for the agent you're already in (Claude Code,
@@ -37,7 +37,7 @@ MODE=
 # default on claude-code / grok-build via sprintbias_tier_model).
 # Use a model id your CLI understands (grok models / claude docs). Claude-only
 # names (opus, sonnet, haiku) on grok-build are auto-remapped to grok-4.5.
-MODEL_DEFAULT=claude-opus-4-8
+MODEL_DEFAULT=grok-4.5
 
 # Per-script models. Empty = fall back to MODEL_DEFAULT.
 # Interactive + spine flows (chat, gate, work, polish, …): when left empty on

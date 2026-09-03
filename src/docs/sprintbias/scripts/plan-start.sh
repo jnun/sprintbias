@@ -9,9 +9,17 @@
 # code `./sprint.sh gate` runs). READY → stamp + next/; BLOCKED → blocked/;
 # COMPLETE → review/. --commit-only skips the gate for pure backlog→next mv.
 #
-# Size: promote EVERY listed member — no hard cap on plan size. A soft warning
-# prints when the plan has more than 10 members (still promotes all). Plans are
-# free to be larger; the warning is a nudge, not a gate.
+# Dependency workability (structural, both gated and --commit-only): a member
+# may enter next/ only when every **Depends on** prerequisite is already in the
+# sprint (next/ or doing/), finished (review/ or done/), or co-promoted in this
+# same start. A dep still in backlog/ or blocked/ that is not itself being
+# promoted makes the dependent unworkable — it stays in backlog/ (or is demoted
+# from next/). Definition clarity alone is not enough.
+#
+# Size: promote EVERY listed member that is workable — no hard cap on plan size.
+# A soft warning prints when the plan has more than 10 members (still promotes
+# all workable ones). Plans are free to be larger; the warning is a nudge, not
+# a gate.
 #
 # Misplaced members in next/ (no READY stamp): demote to backlog/ so a bad mv
 # is self-healing. Default mode then gates them with everyone else; --commit-only
@@ -306,6 +314,142 @@ if [ "${PLAN_SYNCED:-0}" -gt 0 ] 2>/dev/null; then
   echo "  · synced Plan on $PLAN_SYNCED task(s)"
 fi
 
+# ── Dependency workability filter ────────────────────────────────────
+# Audit **Depends on** before any promote. Co-promote candidates (backlog
+# members in MOVE_*) count as sprint-ready once they themselves clear this
+# filter — so A→B both in the plan can enter next/ together. A dep still in
+# backlog/ or blocked/ that is NOT a co-promote candidate holds the dependent
+# out of next/. READY next/ members with the same gap are demoted to backlog/.
+HELD_DEP=0
+
+# Candidate ids being considered for promote / stay-in-next this run.
+_cand_ids=""
+if [ ${#MOVE_NAMES[@]} -gt 0 ]; then
+  for _n in "${MOVE_NAMES[@]}"; do
+    _cand_ids="$_cand_ids ${_n%%-*}"
+  done
+fi
+if [ ${#SKIP_NEXT[@]} -gt 0 ]; then
+  for _line in "${SKIP_NEXT[@]}"; do
+    _rid="$(printf '%s' "$_line" | grep -oE '[0-9]+' | head -1)"
+    [ -n "$_rid" ] || continue
+    _cand_ids="$_cand_ids $_rid"
+  done
+fi
+
+# Fixed-point: an id is workable when every outside-sprint dep is itself a
+# workable co-promote candidate (or there are no such deps).
+_workable=""
+_changed=1
+while [ "$_changed" -eq 1 ]; do
+  _changed=0
+  for _cid in $_cand_ids; do
+    case " $_workable " in *" $_cid "*) continue ;; esac
+    _cpath="$(sprintbias_task_path "$_cid" 2>/dev/null || true)"
+    [ -n "$_cpath" ] || continue
+    _outside="$(sprintbias_deps_not_sprint_ready "$_cpath")"
+    _pending=0
+    _hard=""
+    for _d in $_outside; do
+      case " $_workable " in
+        *" $_d "*) continue ;;  # co-promote already cleared
+      esac
+      case " $_cand_ids " in
+        *" $_d "*) _pending=1 ;;  # may clear on a later pass
+        *) _hard="${_hard} $_d" ;;
+      esac
+    done
+    if [ -z "$_hard" ] && [ "$_pending" -eq 0 ]; then
+      _workable="$_workable $_cid"
+      _changed=1
+    fi
+  done
+done
+_workable=" ${_workable} "
+
+# Format "depends on #N (stage/)" for hold messages; skip co-candidates.
+_held_dep_bits() {
+  local file="$1" outside d stage bits=""
+  outside="$(sprintbias_deps_not_sprint_ready "$file")"
+  for d in $outside; do
+    case " $_cand_ids " in *" $d "*) continue ;; esac
+    stage="$(sprintbias_task_stage "$d" 2>/dev/null || true)"
+    [ -n "$stage" ] || stage="?"
+    [ -n "$bits" ] && bits="$bits, "
+    bits="${bits}#${d} (${stage}/)"
+  done
+  if [ -n "$bits" ]; then
+    printf '%s' "$bits"
+  else
+    printf 'unresolved co-promote deps'
+  fi
+}
+
+# Rebuild MOVE_* keeping only workable candidates; report holds.
+if [ ${#MOVE_PATHS[@]} -gt 0 ]; then
+  _new_paths=()
+  _new_names=()
+  i=0
+  while [ "$i" -lt "${#MOVE_PATHS[@]}" ]; do
+    _src="${MOVE_PATHS[$i]}"
+    _name="${MOVE_NAMES[$i]}"
+    _id="${_name%%-*}"
+    case "$_workable" in
+      *" $_id "*)
+        _new_paths+=("$_src")
+        _new_names+=("$_name")
+        ;;
+      *)
+        _bits="$(_held_dep_bits "$_src")"
+        echo "  ⊘ held (deps not in sprint): #${_id} depends on ${_bits} — left in backlog/"
+        echo "    A task is workable for next/ only when every dependency is in next/"
+        echo "    (or doing/review/done), or co-promoted in this start. Define/start"
+        echo "    the missing dep first, or add it to this plan."
+        HELD_DEP=$((HELD_DEP + 1))
+        ;;
+    esac
+    i=$((i + 1))
+  done
+  MOVE_PATHS=("${_new_paths[@]+"${_new_paths[@]}"}")
+  MOVE_NAMES=("${_new_names[@]+"${_new_names[@]}"}")
+fi
+
+# Demote READY next/ members whose deps are still outside the sprint.
+if [ ${#SKIP_NEXT[@]} -gt 0 ]; then
+  _keep_next=()
+  for _line in "${SKIP_NEXT[@]}"; do
+    _rid="$(printf '%s' "$_line" | grep -oE '[0-9]+' | head -1)"
+    _rname="$(printf '%s' "$_line" | sed 's/^#[0-9][0-9]*[[:space:]]*//')"
+    case "$_workable" in
+      *" $_rid "*)
+        _keep_next+=("$_line")
+        ;;
+      *)
+        _rpath="$(sprintbias_task_path "$_rid" 2>/dev/null || true)"
+        _bits="unresolved co-promote deps"
+        [ -n "$_rpath" ] && _bits="$(_held_dep_bits "$_rpath")"
+        dest="$BACKLOG_DIR/$_rname"
+        if [ -e "$dest" ]; then
+          echo "  ⚠ deps not in sprint but backlog already has $_rname — left in next/"
+          _keep_next+=("$_line")
+        elif [ -n "$_rpath" ]; then
+          move_file "$_rpath" "$dest"
+          echo "  ⊘ held (deps not in sprint): #${_rid} depends on ${_bits} — demoted next/ → backlog/"
+          DEMOTED=$((DEMOTED + 1))
+          HELD_DEP=$((HELD_DEP + 1))
+        else
+          _keep_next+=("$_line")
+        fi
+        ;;
+    esac
+  done
+  SKIP_NEXT=("${_keep_next[@]+"${_keep_next[@]}"}")
+fi
+unset -f _held_dep_bits
+unset _cand_ids _workable _changed _cid _cpath _outside _pending _hard _d
+unset _new_paths _new_names _src _name _id _bits _keep_next
+unset _rid _rname _rpath _n _line dest i
+
 # Notices for skips
 if [ ${#SKIP_NEXT[@]} -gt 0 ]; then
   for line in "${SKIP_NEXT[@]}"; do
@@ -394,6 +538,7 @@ else
 fi
 [ ${#SKIP_NEXT[@]} -gt 0 ] && echo "  (already queued READY: ${#SKIP_NEXT[@]})"
 [ ${#SKIP_PAST[@]} -gt 0 ] && echo "  (already past next/: ${#SKIP_PAST[@]})"
+[ "${HELD_DEP:-0}" -gt 0 ] && echo "  (held — deps not in sprint: $HELD_DEP)"
 
 # One-way STARTED latch: this plan has now been committed to the sprint. Set on
 # every successful exit — gated, emit, --commit-only, and idempotent re-runs —
