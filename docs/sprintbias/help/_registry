@@ -29,7 +29,7 @@ newtest       | create   | <name>              | Create a test loop to validate 
 
 chat          | chat     | [target] [--model]  | id: define/refine/split one task · folder (blocked/next/backlog): sweep · plan [id]: author a plan · bugs: sweep inbox · nothing: walk sprint health (spine: chat → plan start → work) | chat
 
-plan          | plan     | think/start/polish/done [id] | think: improve the plan + align its member tasks (best-practice / elegant-design / antifragile lenses) · start: gate + commit members to next/ (the sprint), latches STARTED · polish: excellence-judge the plan's finished work (review/ + done/) · done: delete the plan once every member is in done/ — heads the spine → work | feature-plan
+plan          | plan     | think/start/polish/done [id] | think: improve the plan + align its member tasks (best-practice / elegant-design / antifragile lenses) · start: gate + commit workable members to next/ (deps in sprint or co-promoted), latches STARTED · polish: excellence-judge the plan's finished work (review/ + done/) · done: delete the plan once every member is in done/ — heads the spine → work | feature-plan
 
 work          | work     | [N] [count N] [--fast] [--model] | Execute — happy path: run READY tasks in next/ → review/ (after plan start). `work N` works one task by id; `count N` caps how many run | work
 loop          | work     | [--refill] [--retry]| Autopilot spine — plan start refill (gates as it commits) then work drain | loop

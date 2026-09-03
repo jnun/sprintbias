@@ -45,9 +45,16 @@ make_plan() {
 }
 
 # Create a task file for member ID in the given lifecycle folder.
+# Optional $3 = Depends-on value (default none). Optional $4 = READY stamp.
 make_task() {
-    local id="$1" folder="$2"
-    printf '# Task %s: member\n' "$id" > "$TMPDIR/docs/tasks/$folder/${id}-member.md"
+    local id="$1" folder="$2" deps="${3:-none}" ready="${4:-}"
+    {
+        printf '# Task %s: member\n\n' "$id"
+        printf '**Depends on**: %s\n' "$deps"
+        if [ "$ready" = "READY" ]; then
+            printf '\n## Questions\n\n**Status: READY**\n'
+        fi
+    } > "$TMPDIR/docs/tasks/$folder/${id}-member.md"
 }
 
 assert_contains() {
@@ -161,8 +168,7 @@ assert_eq "DRAFT plan left unstarted" "DRAFT" \
 echo "Test 7: next/ member already stamped READY stays in next/"
 setup
 make_plan 106 STARTED "- [ ] #508 — ready member" >/dev/null
-printf '# Task 508: member\n\n## Questions\n\n**Status: READY**\n' \
-  > "$TMPDIR/docs/tasks/next/508-member.md"
+make_task 508 next none READY
 out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/plan.sh start 106 --commit-only 2>&1) || {
     echo "  FAIL: plan start should exit 0 for stamped next/ member"
     echo "$out"
@@ -201,6 +207,87 @@ if [ -n "$out" ]; then
   done
   assert_eq "All 12 members promoted into next/" "12" "$_moved"
   assert_contains "Summary names total member count" "$out" "12 members"
+fi
+
+# --- Test 9: member depending on outside-plan backlog dep is held ---
+echo "Test 9: member with Depends on outside the plan (backlog) stays in backlog/"
+setup
+make_plan 108 READY "- [ ] #620 — dependent" >/dev/null
+make_task 620 backlog "630"
+make_task 630 backlog   # prereq exists but is NOT a plan member
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/plan.sh start 108 --commit-only 2>&1) || {
+  echo "  FAIL: plan start should exit 0 when holding an unworkable member"
+  echo "$out"
+  FAIL=$((FAIL + 1))
+  out=""
+}
+if [ -n "$out" ]; then
+  assert_contains "Hold message names deps not in sprint" "$out" "held (deps not in sprint)"
+  assert_contains "Hold message names the outside dep" "$out" "#630 (backlog/)"
+  assert_eq "Dependent left in backlog/" "true" \
+    "$([ -f "$TMPDIR/docs/tasks/backlog/620-member.md" ] && echo true || echo false)"
+  assert_eq "Dependent not promoted to next/" "false" \
+    "$([ -f "$TMPDIR/docs/tasks/next/620-member.md" ] && echo true || echo false)"
+  assert_eq "Outside dep left untouched in backlog/" "true" \
+    "$([ -f "$TMPDIR/docs/tasks/backlog/630-member.md" ] && echo true || echo false)"
+fi
+
+# --- Test 10: co-promote members that depend on each other both enter next/ ---
+echo "Test 10: co-promote A→B both in the plan both land in next/"
+setup
+make_plan 109 READY "- [ ] #640 — prereq" "- [ ] #641 — dependent" >/dev/null
+make_task 640 backlog none
+make_task 641 backlog "640"
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/plan.sh start 109 --commit-only 2>&1) || {
+  echo "  FAIL: plan start should exit 0 for co-promote chain"
+  echo "$out"
+  FAIL=$((FAIL + 1))
+  out=""
+}
+if [ -n "$out" ]; then
+  assert_eq "Prereq promoted to next/" "true" \
+    "$([ -f "$TMPDIR/docs/tasks/next/640-member.md" ] && echo true || echo false)"
+  assert_eq "Dependent co-promoted to next/" "true" \
+    "$([ -f "$TMPDIR/docs/tasks/next/641-member.md" ] && echo true || echo false)"
+fi
+
+# --- Test 11: dep already in next/ allows dependent promote ---
+echo "Test 11: dependent promotes when its dep is already READY in next/"
+setup
+make_plan 110 READY "- [ ] #650 — dependent" >/dev/null
+make_task 650 backlog "651"
+make_task 651 next none READY
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/plan.sh start 110 --commit-only 2>&1) || {
+  echo "  FAIL: plan start should exit 0 when dep is already in next/"
+  echo "$out"
+  FAIL=$((FAIL + 1))
+  out=""
+}
+if [ -n "$out" ]; then
+  assert_eq "Dependent promoted because dep is in next/" "true" \
+    "$([ -f "$TMPDIR/docs/tasks/next/650-member.md" ] && echo true || echo false)"
+  assert_eq "Existing dep stayed in next/" "true" \
+    "$([ -f "$TMPDIR/docs/tasks/next/651-member.md" ] && echo true || echo false)"
+fi
+
+# --- Test 12: READY next/ member demoted when dep sits in backlog outside ---
+echo "Test 12: READY next/ member with outside backlog dep is demoted"
+setup
+make_plan 111 STARTED "- [ ] #660 — dependent" >/dev/null
+make_task 660 next "661" READY
+make_task 661 backlog
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/plan.sh start 111 --commit-only 2>&1) || {
+  echo "  FAIL: plan start should exit 0 when demoting unworkable next/ member"
+  echo "$out"
+  FAIL=$((FAIL + 1))
+  out=""
+}
+if [ -n "$out" ]; then
+  assert_contains "Demotes next/ member with outside dep" "$out" "demoted next/ → backlog/"
+  assert_eq "Dependent demoted to backlog/" "true" \
+    "$([ -f "$TMPDIR/docs/tasks/backlog/660-member.md" ] && echo true || echo false)"
+  assert_eq "Dependent no longer in next/" "false" \
+    "$([ -f "$TMPDIR/docs/tasks/next/660-member.md" ] && echo true || echo false)"
 fi
 
 echo ""

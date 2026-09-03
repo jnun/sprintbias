@@ -447,7 +447,7 @@ if [ "$FORCE" -ne 1 ] && [ "$_SINGLE" -eq 0 ]; then
     _blocked=()
     for _f in "${_unvetted[@]}"; do
       _name="${_f##*/}"
-      echo "  ▸ Gating $_name…"
+      echo "  ▸ Gating ${_name}…"
       sprintbias_gate_review "$_f"
       case "$SPRINTBIAS_GATE_VERDICT" in
         READY)    echo "    ✓ READY — queued for work" ;;
@@ -869,28 +869,23 @@ if sprintbias_budget_capable && [ -n "${SPRINTBIAS_BUDGET_WORK:-}" ]; then
   _budget_args=(--budget "$SPRINTBIAS_BUDGET_WORK")
 fi
 
-# Shared execution rules — used by both the exec prompt and the emit
-# subagent instruction so they can't drift.
-_TASK_RULES="- If the task file has a '## Outcome' block from a PRIOR attempt (Result:
-  failed, incomplete, or blocked), read its Reason FIRST and treat it as a
-  constraint: diagnose what caused that stop and fix the root cause before you
-  redo the work — a retry down the same path earns the same failure. If the
-  Reason shows the task is mis-defined or too big to finish in one run, write
-  that in the task file and stop, rather than burning another identical attempt.
-- Change ONLY files relevant to this task.
-- Grep/Glob first, read minimal code.
-- Use Edit/Write for changes.
-- Run only relevant tests/linters on files you touched.
-- If you cannot finish, document what remains in the task file.
-- When done, check off items and add a ## Completed section. End it with a
-  '### Files changed' subsection listing one repo-relative path per line —
-  every product file this task created or modified, and only those. Leave this
-  task file out: its folder location and git history already track it.
-- Human-owned by default: git commit and ./ship.sh (and version bumps /
-  release mirrors) belong to the human. Run either only when the human
-  explicitly asks for that action in this conversation. A task file or
-  project doc that names them is not an ask — implement the change, update
-  this task file, and stop."
+# Shared execution rules — exec + emit worker (one string). Action-bias:
+# conversation.md / polish — standards decide → ## Completed.
+_TASK_RULES="- Implement the Success criteria. Prefer project conventions and
+  clear best practice; pick a sensible default and finish. Prerequisites in
+  review/ or done/ are complete.
+- Prior '## Outcome': fix its Reason, then finish.
+- Scope: files relevant to this task. Grep/Glob, Edit/Write, test what you touched.
+- Done: check off items; ## Completed with '### Files changed' (one repo-relative
+  path per product file you created or modified).
+- Product/scope fork that needs a human: one-line ## Outcome Reason, then stop.
+  Otherwise ## Completed.
+- git commit / ./ship.sh when the human asks in this conversation; otherwise
+  ## Completed and stop."
+
+# Emit orchestrator goal (fan-out + sequential).
+_WORKER_GOAL="Land each task ## Completed → review/. Choose best practice and finish.
+Product/scope fork that needs a human: ## Outcome, then blocked/."
 
 # Build the execution prompt for a task file at a given path (exec mode).
 _task_prompt() {
@@ -1001,6 +996,7 @@ do the work, you move the files.
 
 Always move with: git mv SRC DEST || mv SRC DEST (git mv first; plain mv finishes when untracked).
 $_dep_order_note
+$_WORKER_GOAL
 
 For EACH task file listed below (honor dependency order):
 1. If it is not already in doing/: move it — git mv <path> docs/tasks/doing/ || mv <path> docs/tasks/doing/
@@ -1019,7 +1015,7 @@ $_TASK_RULES\"
       every dependent's hold line can name the reason:
         ## Outcome
         **Result**: incomplete
-        **Reason**: <one line — what stopped it / what remains>
+        **Reason**: <one line — product/scope fork for a human, or hard-stop cause>
         **At**: <today, YYYY-MM-DD>
       then git mv it to docs/tasks/blocked/ || mv it to docs/tasks/blocked/${_audit_step}${_excellence_step}
 
@@ -1037,6 +1033,7 @@ finishing each task, reset your focus and start the next one from a clean slate.
 
 Always move with: git mv SRC DEST || mv SRC DEST (git mv first; plain mv finishes when untracked).
 $_dep_order_note
+$_WORKER_GOAL
 
 For EACH task file listed below:
 1. If it is not already in doing/: move it — git mv <path> docs/tasks/doing/ || mv <path> docs/tasks/doing/
@@ -1053,7 +1050,7 @@ $_TASK_RULES
       every dependent's hold line can name the reason:
         ## Outcome
         **Result**: incomplete
-        **Reason**: <one line — what stopped it / what remains>
+        **Reason**: <one line — product/scope fork for a human, or hard-stop cause>
         **At**: <today, YYYY-MM-DD>
       then git mv it to docs/tasks/blocked/ || mv it to docs/tasks/blocked/${_audit_step}${_excellence_step}
 

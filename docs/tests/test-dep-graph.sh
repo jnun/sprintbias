@@ -89,6 +89,20 @@ assert_empty  "9055's only dep (missing 9010) is dropped by unmet_deps" \
 assert_eq     "…but classify_dep still flags that same id" "missing" \
     "$(sprintbias_classify_dep 9010)"
 
+# sprintbias_deps_not_sprint_ready: only backlog/blocked count as "outside
+# sprint". next/doing are in-sprint (frontier); review/done/missing/folded are
+# finished. Distinct from unmet_deps, which also treats next/doing as unmet.
+echo "sprintbias_deps_not_sprint_ready names only backlog/blocked prereqs"
+# 9055 → missing 9010: archived-complete → empty (may enter next/).
+assert_empty "missing prereq is sprint-ready (archived-complete)" \
+    "$(sprintbias_deps_not_sprint_ready docs/tasks/next/9055-*.md)"
+# 9060 → backlog 9009: outside sprint → must name 9009.
+assert_eq "backlog prereq is NOT sprint-ready" "9009" \
+    "$(sprintbias_deps_not_sprint_ready docs/tasks/next/9060-*.md)"
+# 9051 → next peer 9003: in-sprint frontier → empty (may share next/).
+assert_empty "next/ peer prereq is sprint-ready (frontier)" \
+    "$(sprintbias_deps_not_sprint_ready docs/tasks/next/9051-*.md)"
+
 # ── dependents_of: forward edges ∪ declared reverse edges ──────────────
 echo "sprintbias_dependents_of unions forward (Depends on) and reverse edges"
 # 9017: 9016 depends on it (forward only — 9017's Blocks omits 9016, the one-way

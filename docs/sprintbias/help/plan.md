@@ -13,12 +13,13 @@ docs/tmp/plan-think-<id>.md. It never runs `plan start` and never moves task
 files — commitment stays with `plan start`. Bare `plan think` picks a plan.
 
 **plan start [id] [--commit-only]** — gate, then commit that plan's members
-into `next/` (the sprint). Promotes **every** listed member — no hard cap on
-plan size. A soft warning prints when the plan has more than 10 members; the
-start still continues and gates/promotes all of them. `next/` IS the sprint, so
-workability is decided BEFORE a member is runnable: each backlog member is run
-through the shared workability gate (the same review `./sprint.sh gate` runs),
-and only what grades READY sits in `next/` stamped for `work`. Location-aware:
+into `next/` (the sprint). Promotes **every workable** listed member — no hard
+cap on plan size. A soft warning prints when the plan has more than 10 members;
+the start still continues and gates/promotes all workable ones. `next/` IS the
+sprint, so workability is decided BEFORE a member is runnable: each backlog
+member is run through the shared workability gate (the same review
+`./sprint.sh gate` runs), and only what grades READY sits in `next/` stamped
+for `work`. Location-aware:
 
   backlog/  → gate in place, then:
                 READY   → stamp + move to next/
@@ -31,14 +32,25 @@ and only what grades READY sits in `next/` stamped for `work`. Location-aware:
   doing|review|done → skip with a notice
   missing   → hard error (dangling member)
 
+**Dependencies gate entry to `next/`.** Before promote (gated or `--commit-only`),
+each member's **Depends on** is audited. A task is workable for the sprint only
+when every prerequisite is already in `next/` or `doing/`, finished
+(`review/` / `done/`), or co-promoted in this same start. A dependency still in
+`backlog/` or `blocked/` that is not itself being promoted makes the dependent
+**unworkable** — it stays in `backlog/` (or is demoted from `next/`) with a hold
+message naming the missing dep. Definition clarity alone is not enough; bring
+the dep into the sprint first (add it to this plan, start its plan, or finish
+it). Co-members that depend on each other may enter `next/` together.
+
 A member already sitting in `blocked/` stops the start with a `chat <id>`
 pointer — `blocked/` means a decision or clarification is still needed, so the
 start does not silently re-spend AI budget re-gating work someone already
 flagged. Resolve it (`chat <id>`), re-queue it to `backlog/`, then re-run
 `plan start`.
 
-`--commit-only` skips the gate and does the pure, deterministic `backlog → next`
-move — for power users, tests, and non-AI environments. Members are NOT vetted.
+`--commit-only` skips the AI gate and does the pure, deterministic
+`backlog → next` move — for power users, tests, and non-AI environments.
+Members are NOT AI-vetted, but the dependency workability filter still runs.
 Unstamped `next/` members are still demoted to `backlog/` (healed), but not
 re-promoted without a gate.
 

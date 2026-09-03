@@ -103,7 +103,7 @@ artifact, never only in the chat.
 
 Command		Does
 plan think [id]	Automated dual-persona critique of a plan
-plan start [id]	Gate every member and commit into `next/` (no hard size cap; warn over 10; latches STARTED)
+plan start [id]	Gate every workable member and commit into `next/` (deps must be in sprint or co-promoted; no hard size cap; warn over 10; latches STARTED)
 plan polish [id]	Excellence-judge the plan's finished members (`review/` + `done/`) — routes each through the shared deep-judge (`polish-judge.sh`), files enhancements to `backlog/`, skips already-judged members unless `--force`
 plan done [id]	Retire — delete the plan once every member is in `done/`
 
@@ -143,9 +143,13 @@ bare number is read id-first (a number that names an existing task targets that
 task, uniform with `work`/`chat`); only a number matching no task is a sweep
 limit.
 
-**Completion path — two gates, one lifecycle.** The same dependency edge gates
-both ends of a task's life:
+**Completion path — dependency edge, one lifecycle.** The same **Depends on**
+edge gates entry, run, and close:
 
+- **`Depends on` gates `plan start`.** A member does not enter `next/` until
+  every prerequisite is already in the sprint (`next/` / `doing/`), finished
+  (`review/` / `done/`), or co-promoted in that start. An outside-sprint dep
+  (still in `backlog/` or `blocked/`) makes the dependent unworkable.
 - **`Depends on` gates `work`.** A task does not *run* until every prerequisite
   reaches `review/` or `done/`. `work` holds a dependent until then.
 - **`Tests` gates `promote`.** A task does not *close* until the suite scripts
