@@ -1068,6 +1068,41 @@ $_EMIT_REPORT"
   exit 0
 fi
 
+# ── Run journal (exec only) ──────────────────────────────────────────
+# A per-task JSON log already exists (docs/tmp/log-work-*.json). This is the
+# missing RUN-level record: one JSONL file capturing the plan and every task
+# transition (started / routed <dest> / crashed <log>). The per-task logs prove
+# what one agent did; the journal proves what the QUEUE did — so a run that dies
+# mid-queue leaves a readable post-mortem instead of JSON archaeology, and later
+# gives `work --resume` a plan + position to pick up from. The folder-as-state
+# design already survives a mid-response disconnect; the journal complements it.
+# Best-effort throughout: _journal never fails a run.
+RUN_JOURNAL="$LOG_DIR/run-work-$(date +%Y%m%d-%H%M%S).jsonl"
+: > "$RUN_JOURNAL" 2>/dev/null || RUN_JOURNAL=""
+_journal() {
+  [ -n "$RUN_JOURNAL" ] || return 0
+  local event="$1"; shift
+  local ts key val out
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
+  out="$(printf '{"ts":"%s","event":"%s"' "$ts" "$event")"
+  # Remaining args are key value pairs; every value is JSON-string-escaped.
+  while [ $# -ge 2 ]; do
+    key="$1"; val="$2"; shift 2
+    val="${val//\\/\\\\}"; val="${val//\"/\\\"}"
+    out="$out$(printf ',"%s":"%s"' "$key" "$val")"
+  done
+  printf '%s}\n' "$out" >> "$RUN_JOURNAL" 2>/dev/null || true
+}
+
+# Open the journal with the plan for this run (basenames, in launch order).
+_journal_plan=""
+for ((_ji = 0; _ji < COUNT; _ji++)); do
+  _journal_plan="$_journal_plan ${TASK_FILES[$_ji]##*/}"
+done
+_journal run count "$COUNT" parallel "$PARALLEL" jobs "$MAX_JOBS" \
+  plan "${_journal_plan# }"
+unset _journal_plan _ji
+
 # ── exec helpers (shared by sequential and parallel) ─────────────────
 
 # Live progress rendering is sprintbias_stream_filter (lib.sh) — one readable
@@ -1101,14 +1136,62 @@ _run_task() {
   fi
 }
 
-# Route a finished task (in doing/) to review/ or blocked/, update counters.
+# Route a finished task to review/ or blocked/, or leave a crash in doing/.
 # Args: name  exit_code
+#
+# Location-aware and crash-safe. The file is USUALLY in doing/, but a resumed
+# session can finish the move to review/ itself before we route, and a routing
+# step that assumes doing/ and calls move_file on a path that has moved aborts
+# the whole run under `set -e` — that is what once took out six tasks. So we
+# resolve where the file actually is first, trust a terminal folder the run
+# already reached, and never invent a move onto a missing path. Every branch
+# ends by returning 0; the call sites also guard with `|| true` as a backstop.
+# Crash vocabulary is deliberate: a non-zero exit is a TOOL failure, stamped
+# 'failed' and LEFT in doing/ (the resumable state) — never filed in blocked/,
+# which means "a human owes a decision", not "the tool died".
 _route_result() {
-  local name="$1" rc="$2"
-  if [ "$rc" -eq 0 ] && grep -q '^## Completed' "$WORKING_DIR/$name"; then
+  local name="$1" rc="$2" cur=""
+  if   [ -f "$WORKING_DIR/$name" ]; then cur="$WORKING_DIR/$name"
+  elif [ -f "$REVIEW_DIR/$name" ];  then cur="$REVIEW_DIR/$name"
+  elif [ -f "$BLOCKED_DIR/$name" ]; then cur="$BLOCKED_DIR/$name"
+  fi
+
+  # Already promoted to review/ by a resumed run that finished the move itself:
+  # trust that terminal state — count it complete, don't re-move or re-audit.
+  if [ "$cur" = "$REVIEW_DIR/$name" ]; then
+    COMPLETED=$((COMPLETED + 1))
+    _note_review "$name"
+    _journal routed task "$name" dest review note already-promoted
+    echo "  ✓ Complete → $REVIEW_DIR/$name (already promoted during the run)"
+    return 0
+  fi
+
+  # Already parked in blocked/ (a prior pass stamped and filed it): leave it.
+  if [ "$cur" = "$BLOCKED_DIR/$name" ]; then
+    INCOMPLETE=$((INCOMPLETE + 1))
+    _note_fail "$name" blocked "$BLOCKED_DIR" "already in blocked/ (see ## Outcome)"
+    _journal routed task "$name" dest blocked note already-parked
+    echo "  ⚠ Already in $BLOCKED_DIR/$name — left in place."
+    return 0
+  fi
+
+  # Gone from every lifecycle folder we track. Never fabricate a move onto a
+  # missing path (that is what crashed the queue) — state it and move on.
+  if [ -z "$cur" ]; then
+    FAILED=$((FAILED + 1))
+    _note_fail "$name" failed "$WORKING_DIR" \
+      "task file not found in doing/, review/, or blocked/ after the run"
+    _journal routed task "$name" dest missing rc "$rc"
+    echo "  ✗ $name not found in doing/, review/, or blocked/ after the run — cannot route."
+    echo "    Log: docs/tmp/log-work-${name%.md}-*.json"
+    return 0
+  fi
+
+  # Normal case: the file is still in doing/ ($cur == $WORKING_DIR/$name).
+  if [ "$rc" -eq 0 ] && grep -q '^## Completed' "$cur"; then
     if [ "$RUN_AUDIT" -eq 1 ] && [ -f "$POLISH_SCRIPT" ]; then
       echo "  ▸ Running code audit..."
-      if bash "$POLISH_SCRIPT" --code "$WORKING_DIR/$name"; then
+      if bash "$POLISH_SCRIPT" --code "$cur"; then
         echo "  ✓ Audit passed"
       else
         echo "  ⚠ Audit completed with warnings (see task file)"
@@ -1122,48 +1205,57 @@ _route_result() {
     # the UNCLEAR/parse-failure case, which is not a blocker.
     if [ "$RUN_EXCELLENCE" -eq 1 ] && [ -f "$POLISH_SCRIPT" ]; then
       echo "  ▸ Running excellence audit..."
-      if bash "$POLISH_SCRIPT" "$WORKING_DIR/$name"; then
+      if bash "$POLISH_SCRIPT" "$cur"; then
         echo "  ✓ Excellence audit passed"
       else
         echo "  ⚠ Excellence audit completed with findings (see task file)"
       fi
-      if grep -q '^- \*\*Verdict\*\*: BLOCKER' "$WORKING_DIR/$name"; then
+      if grep -q '^- \*\*Verdict\*\*: BLOCKER' "$cur"; then
         BLOCKERS=$((BLOCKERS + 1))
         echo "  ⚠ Excellence: BLOCKER recorded — routing to review/ for human attention"
       fi
     fi
     # Completed cleanly — drop any stale failure stamp from a prior attempt so
     # it doesn't ride into review/ contradicting the ## Completed section.
-    _strip_outcome "$WORKING_DIR/$name"
-    move_file "$WORKING_DIR/$name" "$REVIEW_DIR/$name"
+    _strip_outcome "$cur"
+    move_file "$cur" "$REVIEW_DIR/$name"
     COMPLETED=$((COMPLETED + 1))
     _note_review "$name"
+    _journal routed task "$name" dest review rc 0
     echo "  ✓ Complete → $REVIEW_DIR/$name"
     echo "    Requires human review (or ./sprint.sh promote when **Tests** is set)"
   elif [ "$rc" -eq 0 ]; then
     # Ran to completion but never wrote ## Completed. Stamp only what we
     # observed — the section is missing — and name no cause, because nothing
     # here measured one. The wording is identical on every tier.
-    _stamp_outcome "$WORKING_DIR/$name" incomplete \
+    _stamp_outcome "$cur" incomplete \
       "run ended without a '## Completed' section"
-    move_file "$WORKING_DIR/$name" "$BLOCKED_DIR/$name"
+    move_file "$cur" "$BLOCKED_DIR/$name"
     INCOMPLETE=$((INCOMPLETE + 1))
     _note_fail "$name" incomplete "$BLOCKED_DIR" \
       "run ended without a '## Completed' section"
+    _journal routed task "$name" dest blocked reason incomplete
     echo "  ⚠ Incomplete — no '## Completed' section."
     echo "    → Moved to $BLOCKED_DIR/$name (## Outcome stamped: incomplete)"
   else
-    # Hard fail: the CLI exited non-zero. Leave the file in doing/ for
-    # inspection (loop's orphan sweep rescues it to blocked/), but stamp the
-    # Outcome first so the failure is diagnosable and dependents can name it.
-    _stamp_outcome "$WORKING_DIR/$name" failed \
+    # Crash: the CLI (or its provider profile) reported non-zero. This is a TOOL
+    # failure, not an underdefined task, so it must NEVER land in blocked/. Leave
+    # it in doing/ — the resumable state — stamp 'failed' naming the log, and let
+    # the queue stop. Resume it with the printed command; loop's orphan sweep
+    # also requeues abandoned doing/ tasks.
+    _stamp_outcome "$cur" failed \
       "task run exited non-zero (rc=$rc) — see docs/tmp/log-work-${name%.md}-*.json"
     FAILED=$((FAILED + 1))
     _note_fail "$name" failed "$WORKING_DIR" "CLI exited non-zero (rc=$rc)"
     HARD_FAIL=1
-    echo "  ✗ Failed (exit $rc) — left in $WORKING_DIR/$name (## Outcome stamped: failed)"
+    _journal crashed task "$name" rc "$rc" \
+      log "docs/tmp/log-work-${name%.md}-*.json"
+    echo "  ✗ Crashed (exit $rc) — a tool failure, not a bad task."
+    echo "    Left in $WORKING_DIR/$name (## Outcome stamped: failed)."
+    echo "    Resume: ./sprint.sh work ${name%%-*} --force"
     echo "    Log: docs/tmp/log-work-${name%.md}-*.json"
   fi
+  return 0
 }
 
 trap 'echo ""; [ -n "${TASK_NAME:-}" ] && echo "▸ Interrupted — current task left in $WORKING_DIR/$TASK_NAME" || echo "▸ Interrupted"; exit 130' INT TERM
@@ -1306,6 +1398,7 @@ if [ "$PARALLEL" -eq 1 ]; then
       STATE[$idx]=1
       RUNNING=$((RUNNING + 1)); LAUNCHED=$((LAUNCHED + 1))
       echo "  ▸ Launched $LAUNCHED/$COUNT: $name"
+      _journal task_started task "$name" mode parallel
     done
   }
 
@@ -1330,7 +1423,9 @@ if [ "$PARALLEL" -eq 1 ]; then
         _elapsed=$((SECONDS - TOTAL_START))
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "▸ Finished ${TASK_FILES[$i]##*/} (${_elapsed}s)"
-        _route_result "${TASK_FILES[$i]##*/}" "$_rc"
+        # `|| true`: _route_result is internally crash-safe, but the guard keeps
+        # any unforeseen non-zero from it out of the poll loop's `set -e`.
+        _route_result "${TASK_FILES[$i]##*/}" "$_rc" || true
         echo ""
         _progressed=1
       fi
@@ -1375,6 +1470,7 @@ while [ "$LAUNCHED" -lt "$COUNT" ]; do
   LAUNCHED=$((LAUNCHED + 1))
   N=$LAUNCHED
   TASK_START=$SECONDS
+  _journal task_started task "$TASK_NAME" mode sequential
 
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "▸ Task $N/$COUNT: $TASK_NAME"
@@ -1440,6 +1536,7 @@ Rules:
         move_file "$WORKING_DIR/$TASK_NAME" "$REVIEW_DIR/$TASK_NAME"
         COMPLETED=$((COMPLETED + 1))
         _note_review "$TASK_NAME"
+        _journal routed task "$TASK_NAME" dest review reason drift-complete
         echo "    Requires human review (or ./sprint.sh promote when **Tests** is set)"
         echo ""
         continue
@@ -1475,6 +1572,7 @@ Rules:
             move_file "$WORKING_DIR/$TASK_NAME" "$BLOCKED_DIR/$TASK_NAME"
             _note_fail "$TASK_NAME" blocked "$BLOCKED_DIR" \
               "drift check flagged codebase drift; sent to manual review"
+            _journal routed task "$TASK_NAME" dest blocked reason drift-manual-review
             echo ""
             continue
             ;;
@@ -1490,6 +1588,7 @@ Rules:
         _stamp_outcome "$WORKING_DIR/$TASK_NAME" blocked \
           "drift check: outdated — ${_drift_reason:-references stale codebase}"
         move_file "$WORKING_DIR/$TASK_NAME" "$BLOCKED_DIR/$TASK_NAME"
+        _journal routed task "$TASK_NAME" dest blocked reason drift-outdated
         echo ""
         continue
         ;;
@@ -1499,11 +1598,14 @@ Rules:
     esac
   fi
 
-  # '|| _rc=$?' keeps set -e from killing the whole queue on a CLI error —
-  # the result must reach _route_result so the task gets routed and reported.
+  # Both calls are guarded from `set -e`: `|| _rc=$?` lets a CLI crash reach
+  # _route_result (so the task is routed and reported instead of the queue dying
+  # on the exit code), and `|| true` does the same for the routing step — a
+  # resumed session may have moved the file out from under it, and an unguarded
+  # non-zero there is exactly what once killed the rest of the queue.
   _rc=0
   _run_task "$TASK_NAME" 1 || _rc=$?
-  _route_result "$TASK_NAME" "$_rc"
+  _route_result "$TASK_NAME" "$_rc" || true
 
   TASK_ELAPSED=$((SECONDS - TASK_START))
   echo "⏱ Elapsed: $((TASK_ELAPSED / 60))m $((TASK_ELAPSED % 60))s"

@@ -73,8 +73,11 @@ if result_line:
 PYEOF
 )"
 
-# Error text that justifies a retry. Deliberately narrow: budget caps, turn
-# caps, and flag errors must NOT retry.
+# Canonical transient strings — the errors we KNOW a resume can clear. Retry is a
+# denylist now (retry unless fatal or a deterministic cap, see below), so this is
+# no longer the gate; it is a known-good short-circuit checked before the
+# non-retry denylist, so a clear transient ("API Error: 500 …") always resumes
+# even if its text happens to brush a denylist word.
 _SPRINTBIAS_TRANSIENT_RE='API Error|Connection (closed|error|reset)|overloaded|rate.?limit|timed? ?out|50[023]|529'
 
 # Failures a human must fix — expired/invalid credentials, a required re-login,
@@ -83,6 +86,16 @@ _SPRINTBIAS_TRANSIENT_RE='API Error|Connection (closed|error|reset)|overloaded|r
 # the broad transient pattern above and burn the whole retry budget re-running
 # something retrying can never repair. Matching here surfaces them at once.
 _SPRINTBIAS_FATAL_RE='invalid.{0,12}(api.?key|token)|authentication_error|unauthoriz|/login|please (run|log|sign).{0,4}(in|/login)|OAuth|token (has )?expired|re-?authenticat|credit balance'
+
+# Deterministic caps and malformed-invocation failures. Unlike a transient blip,
+# the NEXT attempt would hit the identical wall — a turn limit is still a turn
+# limit, a budget cap still a budget cap, a bad flag still a bad flag — so
+# retrying only wastes time and tokens. These are the ONLY non-fatal failures
+# that skip the retry; every other observed failure (including novel crash
+# strings like error_during_execution) is treated as transient and resumed. Kept
+# tight and mostly keyed to the CLI's own structured/usage output so a task whose
+# result merely mentions "budget" can't be mistaken for a budget cap.
+_SPRINTBIAS_NONRETRY_RE='"subtype" *: *"error_max_turns"|max.?turns (reached|exceeded|limit)|reached.{0,8}max.?turns|max-budget|budget (cap|limit|exceeded)|cost limit|[Uu]nknown (option|argument|flag)|[Uu]nrecognized (option|argument)|^[Uu]sage:'
 
 # OS family — used to tailor the "install a timeout tool" hint below, since the
 # package and binary differ per platform (macOS ships none; Linux has it in
@@ -273,6 +286,10 @@ sprintbias_provider_exec() {
       failed=1
     fi
 
+    # Classify the failure. The failure-string space is open-ended, so this is a
+    # DENYLIST, not an allowlist: retry unless the error is one a retry cannot
+    # repair. An allowlist here is what let a novel string (error_during_execution)
+    # fall through to "surface silently, never retry" and cost a whole task run.
     local transient=0 timed_out=0
     if [ "$failed" -eq 1 ]; then
       if grep -qiE "$_SPRINTBIAS_FATAL_RE" "$out" "$errf" 2>/dev/null; then
@@ -285,14 +302,35 @@ sprintbias_provider_exec() {
         # a wedged/stalled request. Always retryable, and note it explicitly
         # since the killed CLI may have printed nothing to match the regex.
         transient=1; timed_out=1
+      elif grep -qiE "$_SPRINTBIAS_TRANSIENT_RE" "$out" "$errf" 2>/dev/null; then
+        # A known-transient string — resume clears it. Checked before the
+        # denylist so a clear transient always wins over an incidental word.
+        transient=1
+      elif grep -qE "$_SPRINTBIAS_NONRETRY_RE" "$out" "$errf" 2>/dev/null; then
+        # Deterministic caps (turn/budget) and malformed flags: the next attempt
+        # hits the identical wall, so retrying is pure waste. Leave transient=0.
+        :
       elif [ -s "$out" ] || [ -s "$errf" ]; then
-        # Silent startup deaths (empty output) and non-transient errors
-        # (bad flags, budget/turn caps) never retry.
-        grep -qiE "$_SPRINTBIAS_TRANSIENT_RE" "$out" "$errf" 2>/dev/null && transient=1
+        # Every OTHER observed failure — an is_error result under a 0 exit, a
+        # novel crash string, an unclassified error — defaults to transient and
+        # is resumed once. A crash must fall toward "try again", never toward a
+        # silently-surfaced dead end.
+        transient=1
       fi
+      # Empty out AND empty errf (silent startup death) stays transient=0:
+      # nothing to resume from, no evidence a retry would differ.
     fi
 
     if [ "$failed" -eq 0 ] || [ "$transient" -eq 0 ] || [ "$attempt" -gt "$max_retries" ]; then
+      # A failure the result JSON reported under a 0 exit code (is_error:true —
+      # the mid-response-drop signature) must NOT be handed back as success.
+      # Promote it to a non-zero status so the caller routes it as the failure it
+      # is, never as "ran clean but wrote nothing". This is the single
+      # highest-value guard here: it stops a crash from being laundered into a
+      # "badly defined task" and parked for a human decision it never needed.
+      if [ "$failed" -eq 1 ] && [ "$rc" -eq 0 ]; then
+        rc=1
+      fi
       cat "$out"
       [ -s "$errf" ] && cat "$errf" >&2
       rm -f "$out" "$errf"
