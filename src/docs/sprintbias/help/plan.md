@@ -1,23 +1,24 @@
 Decisive plan verbs — critique, commit, and retire. Authoring is `chat plan`.
 
-**plan think [id]** — think a plan into alignment. Two collaborating leaders
-(Platform Architect + Experience Officer) evaluate the plan through three
-lenses — best practice, elegant design / coding standards, antifragility — then
-**apply** the improved plan to the plan file (Goal, Why, members, order) and
-**rewrite the Problem/Success of each unstarted member** (backlog/next) to fit
-it, appending a ## Plan Think note per member. A finished member
-(doing/review/done) is trusted as completed-as-defined and never reopened; if
-the plan needs more from it, a new delta task is filed with `newtask` (starting
-from the current code state) and added to the plan. Plan-level analysis lands in
-docs/tmp/plan-think-<id>.md. It never runs `plan start` and never moves task
-files — commitment stays with `plan start`. Bare `plan think` picks a plan.
+**plan think [id] [--model <id>]** — think a plan into alignment. Two
+collaborating leaders (Platform Architect + Experience Officer) evaluate the
+plan through three lenses — best practice, elegant design / coding standards,
+antifragility — then **apply** the improved plan to the plan file (Goal, Why,
+members, order) and **rewrite the Problem/Success of each unstarted member**
+(backlog/next) to fit it, appending a ## Plan Think note per member. A finished
+member (doing/review/done) is trusted as completed-as-defined and never
+reopened; if the plan needs more from it, a new delta task is filed with
+`newtask` (starting from the current code state) and added to the plan.
+Plan-level analysis lands in docs/tmp/plan-think-<id>.md. It never runs
+`plan start` and never moves task files — commitment stays with `plan start`.
+Bare `plan think` picks a plan.
 
-**plan start [id] [--commit-only]** — gate, then commit that plan's members
-into `next/` (the sprint). Promotes **every workable** listed member — no hard
-cap on plan size. A soft warning prints when the plan has more than 10 members;
-the start still continues and gates/promotes all workable ones. `next/` IS the
-sprint, so workability is decided BEFORE a member is runnable: each backlog
-member is run through the shared workability gate (the same review
+**plan start [id] [--commit-only] [--model <id>]** — gate, then commit that
+plan's members into `next/` (the sprint). Promotes **every workable** listed
+member — no hard cap on plan size. A soft warning prints when the plan has more
+than 10 members; the start still continues and gates/promotes all workable ones.
+`next/` IS the sprint, so workability is decided BEFORE a member is runnable:
+each backlog member is run through the shared workability gate (the same review
 `./sprint.sh gate` runs), and only what grades READY sits in `next/` stamped
 for `work`. Location-aware:
 
@@ -74,9 +75,10 @@ The run ends with a summary — ready → next/, blocked, done counts — and th
 step is `./sprint.sh work`. Lifecycle moves use `git mv SRC DEST || mv SRC DEST`
 (git mv first; plain mv finishes when untracked). The developer owns commits.
 
-**plan polish [id] [--force]** — excellence-judge the plan's finished work. Runs
-the same deep-judge as `polish <id>` (one shared unit) over every member that has
-reached `review/` or `done/` — the plan-scoped equivalent of polishing one task.
+**plan polish [id] [--force] [--model <id>]** — excellence-judge the plan's
+finished work. Runs the same deep-judge as `polish <id>` (one shared unit) over
+every member that has reached `review/` or `done/` — the plan-scoped equivalent
+of polishing one task.
 Each finished member is judged against a higher bar than "it runs": it never
 edits product code and never reopens the task, appends a `## Excellence` section,
 and files any enhancements as new `backlog/` tasks. Members still in
@@ -92,15 +94,24 @@ stored DONE status). If any member is still outstanding, it reports what remains
 and does nothing. Bare `plan done` picks a plan.
 
 Usage:
-  ./sprint.sh plan think  [id]
-  ./sprint.sh plan start  [id] [--commit-only]
-  ./sprint.sh plan polish [id] [--force]
+  ./sprint.sh plan think  [id] [--model <id>]
+  ./sprint.sh plan start  [id] [--commit-only] [--model <id>]
+  ./sprint.sh plan polish [id] [--force] [--model <id>]
   ./sprint.sh plan done   [id]
   ./sprint.sh plan              # prints this usage (no auto-planner)
 
 Provider for this run only (AI subcommands; leading flags; no config rewrite):
   ./sprint.sh -g plan think [id]     # Grok Build
   ./sprint.sh -c plan start [id]     # Claude Code
+
+Model for this run only: add --model <id> (e.g. ./sprint.sh plan start 23 --model claude-opus-4-8).
+Precedence (same as work/chat/gate/polish):
+  --model flag / SPRINTBIAS_MODEL_<ROLE> env
+    → config MODEL_<ROLE> → config MODEL_DEFAULT → tier default → CLI default
+Roles: plan think → PLAN_THINK · plan start → GATE · plan polish → EXCELLENCE.
+Persist a pin with: ./sprint.sh model set gate claude-opus-4-8
+(or `model set default …`). The short alias `opus` follows Claude's latest;
+pin a full id when you want a specific generation.
 
 Family order:
   1. ./sprint.sh newplan "…" [ids|parent:N]   # scaffold (+ fast-lane bind)

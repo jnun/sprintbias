@@ -102,9 +102,9 @@ artifact, never only in the chat.
 ### plan — compose the sprint
 
 Command		Does
-plan think [id]	Automated dual-persona critique of a plan
-plan start [id]	Gate every workable member and commit into `next/` (deps must be in sprint or co-promoted; no hard size cap; warn over 10; latches STARTED)
-plan polish [id]	Excellence-judge the plan's finished members (`review/` + `done/`) — routes each through the shared deep-judge (`polish-judge.sh`), files enhancements to `backlog/`, skips already-judged members unless `--force`
+plan think [id] [--model]	Automated dual-persona critique of a plan
+plan start [id] [--model]	Gate every workable member and commit into `next/` (deps must be in sprint or co-promoted; no hard size cap; warn over 10; latches STARTED; `--model` pins the gate model)
+plan polish [id] [--model]	Excellence-judge the plan's finished members (`review/` + `done/`) — routes each through the shared deep-judge (`polish-judge.sh`), files enhancements to `backlog/`, skips already-judged members unless `--force`
 plan done [id]	Retire — delete the plan once every member is in `done/`
 
 `next/` **is** the sprint. A plan file never moves; only member tasks do. A plan
@@ -122,7 +122,7 @@ Command		Does
 work			Execute all READY tasks in next/ → review/
 work \<id\>		Work ONE task by number; auto-gate into next/ if out of frame, else re-run
 work count N	Execute at most N READY tasks (replaces the old bare-number cap)
-work --model \<id\>	Pin the model for this run only (also chat / gate / polish)
+work --model \<id\>	Pin the model for this run only (also chat / gate / polish / plan think|start|polish)
 loop			Autopilot: plan start refill + work drain
 gate [folder]	READY-gate next/ (default), or quality report on another folder
 settle [id]	Accept (Suggestion: …) open questions; demote READY+openQ out of next/

@@ -30,9 +30,9 @@ usage() {
 plan — decisive plan verbs (authoring is chat plan)
 
 Usage:
-  ./sprint.sh plan think  [id]   dual-persona critique of a plan
-  ./sprint.sh plan start  [id]   commit plan members into next/ (the sprint)
-  ./sprint.sh plan polish [id]   excellence-judge the plan's finished work (review/ + done/; --force re-judges)
+  ./sprint.sh plan think  [id] [--model <id>]   dual-persona critique of a plan
+  ./sprint.sh plan start  [id] [--commit-only] [--model <id>]   commit plan members into next/ (the sprint)
+  ./sprint.sh plan polish [id] [--force] [--model <id>]   excellence-judge finished work (review/ + done/)
   ./sprint.sh plan done   [id]   retire a plan once every member is in done/
 
   ./sprint.sh chat plan [id]     author/refine a plan conversationally

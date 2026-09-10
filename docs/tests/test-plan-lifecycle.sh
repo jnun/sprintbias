@@ -59,7 +59,8 @@ make_task() {
 
 assert_contains() {
     local desc="$1" haystack="$2" needle="$3"
-    if echo "$haystack" | grep -qF "$needle"; then
+    # -- so needles that start with '-' (e.g. "--model needs…") are not flags.
+    if echo "$haystack" | grep -qF -- "$needle"; then
         echo "  PASS: $desc"; PASS=$((PASS + 1))
     else
         echo "  FAIL: $desc (expected to contain '$needle')"; FAIL=$((FAIL + 1))
@@ -289,6 +290,28 @@ if [ -n "$out" ]; then
   assert_eq "Dependent no longer in next/" "false" \
     "$([ -f "$TMPDIR/docs/tasks/next/660-member.md" ] && echo true || echo false)"
 fi
+
+# --- Test: plan start accepts --model (pin for gate; no silent ignore) ---
+echo "Test: plan start --model is accepted with --commit-only (no AI)"
+setup
+make_plan 110 READY "- [ ] #710 — member" >/dev/null
+make_task 710 backlog
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/plan.sh start 110 --commit-only --model claude-opus-4-8 2>&1) && rc=0 || rc=$?
+assert_eq "plan start --model --commit-only exits 0" "0" "$rc"
+assert_eq "Member still promoted with --model present" "true" \
+  "$([ -f "$TMPDIR/docs/tasks/next/710-member.md" ] && echo true || echo false)"
+# Unknown flag must fail loudly (regression: --model used to be silently dropped).
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/plan.sh start 110 --commit-only --not-a-flag 2>&1) && rc=0 || rc=$?
+assert_eq "Unknown flag exits non-zero" "1" "$rc"
+assert_contains "Unknown flag names itself" "$out" "Unknown flag"
+
+# --model without a value must fail.
+setup
+make_plan 111 READY "- [ ] #711 — member" >/dev/null
+make_task 711 backlog
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/plan.sh start 111 --commit-only --model 2>&1) && rc=0 || rc=$?
+assert_eq "--model without id exits non-zero" "1" "$rc"
+assert_contains "--model needs a model id" "$out" "--model needs a model id"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

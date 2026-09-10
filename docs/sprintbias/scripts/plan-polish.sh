@@ -23,14 +23,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLANS_DIR="docs/plans"
 PROTOCOL="docs/sprintbias/ai/audit-excellence.md"
 
-# ── Args: plan id (positional) + --force ─────────────────────────────
+# ── Args: plan id (positional) + --force / --model ───────────────────
+# --model pins the excellence judge for this run (SPRINTBIAS_MODEL_DEFAULT),
+# forwarded into polish-judge.sh the same way polish itself does.
 FORCE=0
 PLAN_ID=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --force) FORCE=1; shift ;;
-    -h|--help) echo "Usage: ./sprint.sh plan polish [id] [--force]"; exit 0 ;;
-    -*) echo "✗ Unknown flag: $1" >&2; echo "Usage: ./sprint.sh plan polish [id] [--force]" >&2; exit 1 ;;
+    --model)
+      [ $# -ge 2 ] && [ -n "$2" ] || { echo "✗ --model needs a model id" >&2; exit 1; }
+      export SPRINTBIAS_MODEL_DEFAULT="$2"; shift 2 ;;
+    -h|--help) echo "Usage: ./sprint.sh plan polish [id] [--force] [--model <id>]"; exit 0 ;;
+    -*) echo "✗ Unknown flag: $1" >&2; echo "Usage: ./sprint.sh plan polish [id] [--force] [--model <id>]" >&2; exit 1 ;;
     *) [ -z "$PLAN_ID" ] && PLAN_ID="$1"; shift ;;
   esac
 done
@@ -298,6 +303,8 @@ for ((i=0; i<COUNT; i++)); do
 
   _pj_args=(--task "$p")
   [ "$FORCE" -eq 1 ] && _pj_args=(--force --task "$p")
+  # Honor plan polish --model / MODEL_DEFAULT pin (polish-judge resolves EXCELLENCE).
+  [ -n "${SPRINTBIAS_MODEL_DEFAULT:-}" ] && _pj_args+=(--model "$SPRINTBIAS_MODEL_DEFAULT")
 
   before=$(_excellence_count "$p")
   bash "$SCRIPT_DIR/polish-judge.sh" "${_pj_args[@]}" || true

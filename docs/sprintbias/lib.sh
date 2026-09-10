@@ -1786,14 +1786,30 @@ sprintbias_emit_prompt() {
 # AI call). Always writes stderr; if stderr is not a TTY (common when callers
 # do `sprintbias_run … 2>/dev/null | tee log`), also writes /dev/tty so the
 # human still sees the line without double-printing on a normal terminal.
+# Optional args: when called as sprintbias_announce_provider "$@" from
+# sprintbias_run, peeks for --model <id> and appends · model: <id> so the
+# pin the CLI will receive is visible before "session started (…)".
 sprintbias_announce_provider() {
     [ -n "${_SPRINTBIAS_PROVIDER_ANNOUNCED:-}" ] && return 0
     _SPRINTBIAS_PROVIDER_ANNOUNCED=1
-    local cli tier mode line
+    local cli tier mode line model="" peek_next=0 a
     cli="${SPRINTBIAS_CLI:-?}"
     tier="$(sprintbias_ai_tier)"
     mode="$(sprintbias_ai_mode)"
-    line=$(printf '▸ Provider: %s (%s) · mode: %s' "$cli" "$tier" "$mode")
+    for a in "$@"; do
+      if [ "$peek_next" -eq 1 ]; then
+        model="$a"
+        break
+      fi
+      case "$a" in
+        --model) peek_next=1 ;;
+      esac
+    done
+    if [ -n "$model" ]; then
+      line=$(printf '▸ Provider: %s (%s) · mode: %s · model: %s' "$cli" "$tier" "$mode" "$model")
+    else
+      line=$(printf '▸ Provider: %s (%s) · mode: %s' "$cli" "$tier" "$mode")
+    fi
     printf '%s\n' "$line" >&2
     if [ ! -t 2 ] && { true >/dev/tty; } 2>/dev/null; then
         printf '%s\n' "$line" >/dev/tty 2>/dev/null || true
@@ -1803,7 +1819,7 @@ sprintbias_announce_provider() {
 # sprintbias_run — route an AI request to emit or exec based on the mode.
 # Same argument surface as the provider profiles.
 sprintbias_run() {
-    sprintbias_announce_provider
+    sprintbias_announce_provider "$@"
     SPRINTBIAS_LAST_MODE="$(sprintbias_ai_mode)"
     if [ "$SPRINTBIAS_LAST_MODE" = "emit" ]; then
         sprintbias_emit_prompt "$@"
@@ -1924,7 +1940,7 @@ sprintbias_tty() {
 #          stays in its REPL. Otherwise degrade to the one-shot exec path.
 # Used by chat.sh — the one command that is a dialogue rather than a job.
 sprintbias_run_interactive() {
-    sprintbias_announce_provider
+    sprintbias_announce_provider "$@"
     SPRINTBIAS_LAST_MODE="$(sprintbias_ai_mode)"
     if [ "$SPRINTBIAS_LAST_MODE" = "emit" ]; then
         sprintbias_emit_prompt "$@"

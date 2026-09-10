@@ -73,6 +73,61 @@ if result_line:
 PYEOF
 )"
 
+# Terminal-result parser — the single authority on whether a run failed AND on
+# the error text used to classify that failure. $out is NOT always just the
+# terminal result object: work.sh requests --output-format stream-json directly,
+# so the stream filter above never runs (it only fires on the json→stream-json
+# auto-upgrade) and $out receives the RAW NDJSON event stream — intermediate
+# tool_result blocks (a failed grep, a missing file), assistant prose across
+# every turn, whole task files echoed by tools. Scanning that raw stream is the
+# root of two bugs: a mid-task tool_result is_error:true fails a SUCCESSFUL run,
+# and task prose that happens to contain "credit balance" / "API Error" /
+# "max turns" misclassifies a GENUINE failure's retry disposition. So this parser
+# reads the LAST type=="result" object alone:
+#   exit status — 0 when that object reports is_error true, else 1 (the failed?
+#     gate reads this).
+#   stdout — the authoritative classification text, emitted ONLY when the result
+#     actually errored: a reconstructed "subtype": "<subtype>" line (so the
+#     non-retry regex still catches error_max_turns) followed by the result
+#     string (the API/error message). The caller greps THIS + the CLI's own
+#     stderr, never the raw stream, so task content can't skew classification.
+# Handles all three shapes: NDJSON (work.sh), single-line buffered json, and a
+# pretty-printed buffered object (whole-file fallback). No single quotes in this
+# code — it is embedded in one.
+_SPRINTBIAS_RESULT_PARSE_PY="$(cat <<'PYEOF'
+import json, sys
+raw = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+result = None
+for line in raw.splitlines():
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        ev = json.loads(line)
+    except ValueError:
+        continue
+    if isinstance(ev, dict) and ev.get("type") == "result":
+        result = ev
+if result is None:
+    # Fallback: a pretty-printed buffered object no per-line parse could read.
+    # A whole-file JSON object in this pipeline IS the buffered result object, so
+    # accept it on the is_error key rather than a type tag we cannot rely on being
+    # present in every buffered shape.
+    try:
+        ev = json.loads(raw)
+        if isinstance(ev, dict) and "is_error" in ev:
+            result = ev
+    except ValueError:
+        pass
+if result is not None and result.get("is_error"):
+    subtype = result.get("subtype") or "error"
+    text = result.get("result") or ""
+    sys.stdout.write("\"subtype\": \"%s\"\n%s" % (subtype, text))
+    sys.exit(0)
+sys.exit(1)
+PYEOF
+)"
+
 # Canonical transient strings — the errors we KNOW a resume can clear. Retry is a
 # denylist now (retry unless fatal or a deterministic cap, see below), so this is
 # no longer the gate; it is a known-good short-circuit checked before the
@@ -199,9 +254,12 @@ sprintbias_provider_exec() {
   local resume_prompt="Our connection broke mid-response and this session has been resumed. Review the conversation above and pick up exactly where you left off — do not redo completed work. If no prior progress is visible, start the task from the beginning using the original instructions. The original output requirements still apply."
 
   local attempt=0 rc=0 session=""
-  local out errf
+  local out errf errtext
   out="$(mktemp)" || return 1
   errf="$(mktemp)" || { rm -f "$out"; return 1; }
+  # Authoritative error text of the terminal result event — the ONLY task-derived
+  # text classification is allowed to see (built each attempt by the parser).
+  errtext="$(mktemp)" || { rm -f "$out" "$errf"; return 1; }
 
   # ── Wall-clock guard (built once; applies to every attempt) ───────
   # Prefix the CLI call with `timeout` so a wedged stream that never returns
@@ -277,12 +335,26 @@ sprintbias_provider_exec() {
     fi
 
     # ── Evaluate: success, hard failure, or transient? ──────────────
+    # Parse the terminal result event ONCE: exit status says whether it errored,
+    # and $errtext receives the authoritative error text for classification (empty
+    # unless the result truly errored). Everything downstream keys off these two,
+    # never the raw $out stream — see the parser's header for why.
+    : > "$errtext"
+    local result_errored=1
+    if python3 -c "$_SPRINTBIAS_RESULT_PARSE_PY" "$out" > "$errtext" 2>/dev/null; then
+      result_errored=0
+    fi
+
     local failed=0
     if [ "$rc" -ne 0 ]; then
+      # Non-zero exit: the CLI/timeout itself failed. Its diagnostics are in
+      # $errf; a terminal result may or may not exist.
       failed=1
-    elif grep -q '"is_error": *true' "$out" 2>/dev/null; then
-      # Exit 0 but the result object itself reports an error (this is how
-      # a mid-response connection drop actually presents).
+    elif [ "$result_errored" -eq 0 ]; then
+      # Exit 0 but the TERMINAL result event reports an error — the mid-response
+      # connection-drop signature. Reading the last result object alone keeps an
+      # intermediate tool_result is_error:true (a failed grep, a missing file mid
+      # task) from failing an otherwise successful run.
       failed=1
     fi
 
@@ -290,9 +362,13 @@ sprintbias_provider_exec() {
     # DENYLIST, not an allowlist: retry unless the error is one a retry cannot
     # repair. An allowlist here is what let a novel string (error_during_execution)
     # fall through to "surface silently, never retry" and cost a whole task run.
+    # Every regex scans $errtext (the terminal result's own error text) and $errf
+    # (the CLI's own stderr) — never the raw $out stream, whose task content would
+    # misclassify a genuine failure (a task naming "credit balance" reads as fatal;
+    # one naming "API Error" reads as transient).
     local transient=0 timed_out=0
     if [ "$failed" -eq 1 ]; then
-      if grep -qiE "$_SPRINTBIAS_FATAL_RE" "$out" "$errf" 2>/dev/null; then
+      if grep -qiE "$_SPRINTBIAS_FATAL_RE" "$errtext" "$errf" 2>/dev/null; then
         # Re-auth / expired-token / exhausted-balance: a human must act.
         # Checked FIRST so an "API Error: 401 …" prefix can't be mistaken for
         # a transient blip and silently retried. Leave transient=0 → surface.
@@ -302,11 +378,11 @@ sprintbias_provider_exec() {
         # a wedged/stalled request. Always retryable, and note it explicitly
         # since the killed CLI may have printed nothing to match the regex.
         transient=1; timed_out=1
-      elif grep -qiE "$_SPRINTBIAS_TRANSIENT_RE" "$out" "$errf" 2>/dev/null; then
+      elif grep -qiE "$_SPRINTBIAS_TRANSIENT_RE" "$errtext" "$errf" 2>/dev/null; then
         # A known-transient string — resume clears it. Checked before the
         # denylist so a clear transient always wins over an incidental word.
         transient=1
-      elif grep -qE "$_SPRINTBIAS_NONRETRY_RE" "$out" "$errf" 2>/dev/null; then
+      elif grep -qE "$_SPRINTBIAS_NONRETRY_RE" "$errtext" "$errf" 2>/dev/null; then
         # Deterministic caps (turn/budget) and malformed flags: the next attempt
         # hits the identical wall, so retrying is pure waste. Leave transient=0.
         :
@@ -314,7 +390,8 @@ sprintbias_provider_exec() {
         # Every OTHER observed failure — an is_error result under a 0 exit, a
         # novel crash string, an unclassified error — defaults to transient and
         # is resumed once. A crash must fall toward "try again", never toward a
-        # silently-surfaced dead end.
+        # silently-surfaced dead end. This resumability probe keeps $out: any
+        # captured stream means the session likely started and can be resumed.
         transient=1
       fi
       # Empty out AND empty errf (silent startup death) stays transient=0:
@@ -333,7 +410,7 @@ sprintbias_provider_exec() {
       fi
       cat "$out"
       [ -s "$errf" ] && cat "$errf" >&2
-      rm -f "$out" "$errf"
+      rm -f "$out" "$errf" "$errtext"
       return "$rc"
     fi
 

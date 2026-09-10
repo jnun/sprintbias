@@ -42,16 +42,41 @@ NEXT_DIR="docs/tasks/next"
 BLOCKED_DIR="docs/tasks/blocked"
 REVIEW_DIR="docs/tasks/review"
 
-# ── Args: plan id (any position) + optional --commit-only ────────────
+# ── Args: plan id (any position) + optional --commit-only / --model ──
+# --model <id> pins the gate model for THIS run only via the resolver's
+# per-run lever (SPRINTBIAS_MODEL_DEFAULT) — same contract as gate/work/chat.
+# Must be parsed before gate_init resolves MODEL_GATE. See ./sprint.sh model.
 COMMIT_ONLY=0
 PLAN_ID=""
+_next_is_model=0
 for _arg in "$@"; do
+  if [ "$_next_is_model" -eq 1 ]; then
+    [ -n "$_arg" ] || { echo "✗ --model needs a model id" >&2; exit 1; }
+    export SPRINTBIAS_MODEL_DEFAULT="$_arg"
+    _next_is_model=0
+    continue
+  fi
   case "$_arg" in
     --commit-only) COMMIT_ONLY=1 ;;
-    *) [ -z "$PLAN_ID" ] && PLAN_ID="$_arg" ;;
+    --model) _next_is_model=1 ;;
+    -*)
+      echo "✗ Unknown flag: $_arg" >&2
+      echo "Usage: ./sprint.sh plan start [id] [--commit-only] [--model <id>]" >&2
+      exit 1
+      ;;
+    *)
+      if [ -z "$PLAN_ID" ]; then
+        PLAN_ID="$_arg"
+      else
+        echo "✗ Unexpected argument: $_arg" >&2
+        echo "Usage: ./sprint.sh plan start [id] [--commit-only] [--model <id>]" >&2
+        exit 1
+      fi
+      ;;
   esac
 done
-unset _arg
+[ "$_next_is_model" -eq 1 ] && { echo "✗ --model needs a model id" >&2; exit 1; }
+unset _arg _next_is_model
 
 # ── Plan helpers ─────────────────────────────────────────────────────
 
@@ -495,6 +520,12 @@ elif [ ${#MOVE_PATHS[@]} -gt 0 ]; then
   # READY_DIR = next/: only what grades READY is promoted into the sprint;
   # BLOCKED → blocked/, COMPLETE → review/ (handled inside the shared gate).
   sprintbias_gate_init plan "$NEXT_DIR" "$NEXT_DIR"
+  # Surface the resolved gate model before the CLI session starts so a pin
+  # (config MODEL_GATE / MODEL_DEFAULT, --model, or tier default) is visible
+  # — not only the provider's later "session started (…)" line.
+  if [ -n "${SPRINTBIAS_GATE_MODEL:-}" ]; then
+    echo "  Model: $SPRINTBIAS_GATE_MODEL (gate)"
+  fi
 
   # Orchestration-capable emit fast path: one subagent per member, in parallel.
   # The agent runs each review and promote/move per folded-in instructions.

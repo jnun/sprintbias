@@ -119,7 +119,7 @@ show_help() {
     echo "  SPRINTBIAS_PROVIDER also override. Examples: ./sprint.sh -g work"
     echo ""
     echo -e "${BLUE}Model (this run only — does not rewrite config):${NC}"
-    echo "  work|chat|gate|polish --model <id>   pin this run (e.g. claude-opus-4-8)"
+    echo "  work|chat|gate|polish|plan --model <id>   pin this run (e.g. claude-opus-4-8)"
     echo "  Persist: ./sprint.sh model set default <id>   (see help model)"
     echo ""
     echo -e "${BLUE}Create:${NC}"

@@ -32,8 +32,8 @@ What it does:
 Model layering (highest precedence first):
   1. env  SPRINTBIAS_MODEL_<ROLE>   this-shell override, never written to disk
   2. --model <id> flag            per-run lever (exports SPRINTBIAS_MODEL_DEFAULT
-                                  for that one invocation) — the spine commands
-                                  work, chat, gate, and polish accept it
+                                  for that one invocation) — work, chat, gate,
+                                  polish, and plan (think / start / polish) accept it
   3. config.local MODEL_<ROLE> / MODEL_DEFAULT   personal overlay: wins over
                                   config per key, gitignored, never shipped
   4. config MODEL_<ROLE>          per-role pin
@@ -45,8 +45,11 @@ Per-run override (no config edit): pass --model <id> to a spine command to
 pin the model for that single invocation, e.g.
   ./sprint.sh work --model opus
   ./sprint.sh chat 42 --model sonnet
+  ./sprint.sh plan start 23 --model claude-opus-4-8
 It wins over config pins but yields to an explicit per-role
 SPRINTBIAS_MODEL_<ROLE> already exported in your shell.
+On Claude Code, the short alias `opus` follows the CLI's latest Opus; pin a
+full id (e.g. claude-opus-4-8) when you want a specific generation.
 
 Examples:
   ./sprint.sh model show

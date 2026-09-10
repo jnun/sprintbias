@@ -197,9 +197,9 @@ Help groups: **create · chat · plan · work · look · keep**.
 ./sprint.sh chat plan [id]            # 2. Author it in conversation — reads backlog/ read-only,
                                       #    records member IDs + goal, flips DRAFT → READY on confirm.
                                       #    (chat backlog mutates task files; chat plan only records IDs.)
-./sprint.sh plan think [id]           # 3. Optional: improve the plan + align its member tasks to it
-./sprint.sh plan start [id]           # 4. Commit the plan's members into next/ — latches Status: STARTED
-./sprint.sh plan polish [id]          # 5. Optional: excellence-judge the plan's finished work (review/ + done/)
+./sprint.sh plan think [id] [--model] # 3. Optional: improve the plan + align its member tasks to it
+./sprint.sh plan start [id] [--model] # 4. Commit the plan's members into next/ — latches Status: STARTED
+./sprint.sh plan polish [id] [--model]# 5. Optional: excellence-judge the plan's finished work (review/ + done/)
 ./sprint.sh plan done [id]            # 6. Retire: when every member is in done/, delete the plan file
 
 # Chat & Work (AI-powered — emit inside Claude/Grok/Cursor sessions, or exec via CLI)
@@ -235,7 +235,7 @@ Help groups: **create · chat · plan · work · look · keep**.
 ./sprint.sh cleanup [--force]         # Clean stale files from docs/tmp/ (prompts; --force skips it)
 ./sprint.sh config                    # Interactive: set AI provider + default model (no AI)
 ./sprint.sh model show/list/set [k v] # See/list/set the AI model per role (no AI)
-                                      #   pin one run: work/chat/gate/polish --model <id>
+                                      #   pin one run: work/chat/gate/polish/plan --model <id>
 ./sprint.sh help                      # Show all commands
 ```
 

@@ -17,7 +17,39 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
 
 PLANS_DIR="docs/plans"
-PLAN_ID="${1:-}"
+# ── Args: plan id + optional --model <id> ────────────────────────────
+# --model pins PLAN_THINK for this run (SPRINTBIAS_MODEL_DEFAULT). Parse
+# before sprintbias_tier_model so the pin wins. See ./sprint.sh model.
+PLAN_ID=""
+_next_is_model=0
+for _arg in "$@"; do
+  if [ "$_next_is_model" -eq 1 ]; then
+    [ -n "$_arg" ] || { echo "✗ --model needs a model id" >&2; exit 1; }
+    export SPRINTBIAS_MODEL_DEFAULT="$_arg"
+    _next_is_model=0
+    continue
+  fi
+  case "$_arg" in
+    --model) _next_is_model=1 ;;
+    -*)
+      echo "✗ Unknown flag: $_arg" >&2
+      echo "Usage: ./sprint.sh plan think [id] [--model <id>]" >&2
+      exit 1
+      ;;
+    *)
+      if [ -z "$PLAN_ID" ]; then
+        PLAN_ID="$_arg"
+      else
+        echo "✗ Unexpected argument: $_arg" >&2
+        echo "Usage: ./sprint.sh plan think [id] [--model <id>]" >&2
+        exit 1
+      fi
+      ;;
+  esac
+done
+[ "$_next_is_model" -eq 1 ] && { echo "✗ --model needs a model id" >&2; exit 1; }
+unset _arg _next_is_model
+
 # REVIEW_FILE is keyed per plan below, once PLAN_ID is resolved — a fixed shared
 # path let one plan's stale analysis survive and satisfy another plan's run.
 REVIEW_FILE=""
@@ -65,7 +97,7 @@ fi
 
 if ! [[ "$PLAN_ID" =~ ^[0-9]+$ ]]; then
   echo "Error: '$PLAN_ID' is not a plan id."
-  echo "Usage: ./sprint.sh plan think [id]   # plan id, not a task id"
+  echo "Usage: ./sprint.sh plan think [id] [--model <id>]   # plan id, not a task id"
   exit 1
 fi
 
@@ -183,6 +215,7 @@ PLAN THINK COMPLETE — plan $PLAN_ID, <N> members aligned
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "▸ plan think (improve plan + align its tasks)..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+[ -n "$MODEL" ] && echo "  Model: $MODEL (plan_think)"
 
 _model_args=()
 [ -n "$MODEL" ] && _model_args=(--model "$MODEL")
