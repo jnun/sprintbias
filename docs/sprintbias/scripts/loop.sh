@@ -31,6 +31,15 @@ _require_int() {  # _require_int FLAG VALUE
 }
 while [ $# -gt 0 ]; do
   case "$1" in
+    --model)
+      # Pin the model for this whole loop via the resolver's per-run lever
+      # (SPRINTBIAS_MODEL_DEFAULT). Parsed here — not left in PASSTHROUGH — so it
+      # reaches every AI leg uniformly: the refill gate (plan-start), the retry
+      # gate (sprintbias_promote_to_sprint, in-process), and the work drain all
+      # inherit it. Forwarding to work alone would pin the drain but silently run
+      # the gates at the default. See ./sprint.sh model.
+      [ $# -ge 2 ] && [ -n "$2" ] || { echo "✗ --model needs a model id" >&2; exit 1; }
+      export SPRINTBIAS_MODEL_DEFAULT="$2"; shift 2 ;;
     --hours)     _require_int --hours "${2:-}";    MAX_HOURS="$2"; shift 2 ;;
     --max)       _require_int --max "${2:-}";       MAX_ATTEMPTS="$2"; shift 2 ;;
     --cooldown)  _require_int --cooldown "${2:-}";  COOLDOWN="$2"; shift 2 ;;

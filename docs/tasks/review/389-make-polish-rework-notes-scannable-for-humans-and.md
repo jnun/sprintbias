@@ -24,28 +24,46 @@ runs again.
 
 ## Success criteria
 
-- [ ] A human can skim a REOPEN kickback's `## Rework` in about a minute and
+- [x] A human can skim a REOPEN kickback's `## Rework` in about a minute and
       list every remaining gap by short name without reading an essay.
-- [ ] Each Improve item is an outcome the next executor can verify: a short
+- [x] Each Improve item is an outcome the next executor can verify: a short
       title plus a one-line done-look (user-story or technical-spec height —
       what must be true when the item is done), not a micromanaged edit recipe.
-- [ ] Improve items do not prescribe brittle line-specific edits (no required
+- [x] Improve items do not prescribe brittle line-specific edits (no required
       `path:line` surgery, no "change field N" as the work itself). File paths
       and anchors may appear only as optional starting-point hints beneath the
       done-look, never as the definition of done.
-- [ ] Why stays a short case for spending another pass (a few sentences), not a
+- [x] Why stays a short case for spending another pass (a few sentences), not a
       second copy of the Improve list.
-- [ ] Improve is the single remaining-work list on the task — no parallel
+- [x] Improve is the single remaining-work list on the task — no parallel
       duplicate checklist under Questions or elsewhere that restates the same
       items.
-- [ ] Titles may use the shared excellence dimension names when naming a gap
+- [x] Titles may use the shared excellence dimension names when naming a gap
       (efficiency, antifragility, …) so vocabulary stays one language with #387
       — without inventing a second tag scheme that fights skim.
-- [ ] Reopen discipline unchanged: vital few, substantive, bounded, mechanical
+- [x] Reopen discipline unchanged: vital few, substantive, bounded, mechanical
       to re-run; clearer organization does not invite more items.
-- [ ] Primary deliverable is the `## Rework` contract in `refine.md` (this task
+- [x] Primary deliverable is the `## Rework` contract in `refine.md` (this task
       owns that section's shape). Excellence report coverage stays #387's;
       runtime teaching of this kickback shape lands in #388.
+
+## Completed
+
+Rewrote the `## When you reopen` contract in `docs/sprintbias/ai/refine.md`.
+The Improve-item template now mandates a two-part shape — a **bold short
+title** (scannable name of the gap) plus a **one-line done-look** (verifiable
+outcome at user-story / technical-spec height) — with an optional indented
+`Hint:` line for file paths, anchors, and search terms as starting points only.
+Added explicit rules that outlaw brittle `path:line`/"change field N" edits as
+the definition of done, keep **Why** as a short case for another pass (not a
+re-listing of Improve), name Improve as the single remaining-work list (no
+duplicate checklist under Questions or elsewhere), and allow shared excellence
+dimension names in titles without a second tag scheme. Reopen discipline is
+restated as unchanged — clearer organization is not a license for more items.
+
+### Files changed
+
+- docs/sprintbias/ai/refine.md
 
 ## Notes
 
@@ -141,3 +159,29 @@ antifragility (no brittle path:line specs).
 ### Questions for the developer
 
 None — task is fully defined.
+
+## Excellence
+
+- **Date**: 2026-09-10
+- **Verdict**: EXCELLENT
+- **Correctness**: unverified
+- **Tasks filed**: 0
+- **Routing**: —
+- **Files reviewed**: 1
+- **Context source**: task ## Completed section
+- **Code state**: 19d75169b1b64608
+
+Task 389 rewrites the `## When you reopen` contract in `refine.md` so a REOPEN's `## Rework` section is scannable: each Improve item is a bold short title plus a one-line verifiable done-look, with optional Hints that never define done, brittle line-surgery outlawed, and Improve named as the single remaining-work list. The work meets its bar — every Success criterion is satisfied, and the shape is consistently reinforced in the runtime prompt (`polish.sh`) and help (`polish.md`) that #388 owns. The most notable altitude observation is a minor context-cost one: the teaching section triple-states a couple of rules ("hint never defines done," "outcomes not edit recipes") — but repetition in an LLM-guidance file is a deliberate adherence technique here, so it stays a nit, not a filing.
+
+### Considered
+- Effectiveness — clear (all Success criteria met; judge has contract + runtime + help all teaching the shape)
+- Efficiency — clear (1 nit below; hot-path context cost, but intentional prompt repetition)
+- Design fit — clear (contract/runtime/help in sync; reuses shared dimension vocabulary; defers to #387/#388 cleanly)
+- Operability — clear
+- Robustness — clear (`## Refine` vs `## Rework` and `Status: READY`/`Reworked` counter boundaries preserved)
+- Antifragility — clear (done-looks survive re-execution where line recipes rot — the explicit goal, delivered)
+
+### Findings
+- [NIT][Efficiency] `refine.md:100-132` — "hint never defines done" and "outcomes not edit recipes" each appear across the template, the parts bullets, and the rules bullets; a prune could tighten the loaded-every-run section, but the repetition plausibly aids model adherence, so not filed.
+
+No tasks filed — the work clears the bar and the only observation is a sentence-worthy nit.

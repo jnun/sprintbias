@@ -12,7 +12,10 @@ Usage:
   ./sprint.sh loop --refill              # plan start next READY plan, then work, when next/ empties
   ./sprint.sh loop --retry               # retry tasks that landed in blocked/ this run (once)
   ./sprint.sh loop --refill --retry      # full autopilot
+  ./sprint.sh loop --model <id>          # pin the model for the whole run (see ./sprint.sh model)
 
+--model pins every AI leg of the loop — the refill gate, the retry gate, and
+the work drain — for this run only (it does not rewrite config).
 Other flags (--audit, --drift, --fast, etc.) are forwarded to work.
 
 How it improves on a single `work` pass:

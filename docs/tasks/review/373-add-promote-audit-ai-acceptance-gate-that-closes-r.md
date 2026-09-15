@@ -81,6 +81,51 @@ closes the ones that pass — without hand-moving files one at a time.
      Keep the wording exact — `## Completed` and `### Files changed` — the tasks
      runner and lib.sh key off them verbatim. Do not fill this before work. -->
 
+## Questions
+
+**Status: COMPLETE**
+
+### Already complete
+
+All five success criteria are implemented, validated, and already mirrored to
+`src/` (both `promote.sh` and `accept.md` diff byte-clean against their `src/`
+counterparts).
+
+- `promote --audit` mode: `docs/sprintbias/scripts/promote.sh:149-365`. Sweeps
+  every `review/` task (or a single `[id]` via the same gather loop as the
+  default mode, lines 67-85), judges each independently — headless one judge per
+  task at lines 298-353, or handed to the surrounding agent in emit mode at
+  220-281 with a fresh subagent context per task. Prints a per-task
+  `DONE / NOT-DONE — reason` verdict (321-352) and a closing tally (355-363).
+- Report-first: `--move` gates the actual `git mv`. Without it, DONE tasks print
+  "would move to done/ (re-run with --move)" and nothing moves (331-338); the
+  summary points at the exact `--audit --move` re-run (361). `--move` outside
+  `--audit` is rejected with guidance (58-62).
+- Default test-gated mode is untouched (367-508) and remains a distinct branch.
+  The **Depends on** close-gate (`task_held_by`, 110-125) applies in audit mode
+  too: a DONE task with an open prerequisite is held, not moved (322-330).
+- Protocol `docs/sprintbias/ai/accept.md` exists (72 lines) and frames the bar
+  as acceptance — explicitly separated from correctness and excellence. The mode
+  honors the emit/headless dual structure and model/provider resolution:
+  `sprintbias_ai_mode`, `sprintbias_tier_model ACCEPT` (config key `MODEL_ACCEPT`,
+  `config:58`), and budget wiring `SPRINTBIAS_BUDGET_AUDIT` (`lib.sh:2419`,
+  `config:72`).
+- Surfaces all reflect the mode: `help/promote.md` (Acceptance audit section),
+  `_registry:40`, `docs/guides/command-matrix.md:132-133`, and
+  `DOCUMENTATION.md:111,220`. `./sprint.sh validate --commands` and `--docs` both
+  pass clean.
+
+Implementation looks correct and clean, including the NOT-DONE-contains-DONE
+substring guard (317-319) and the multibyte em-dash reason strip (342).
+
+### Remaining work
+
+None — the work is fully landed and shipped.
+
+### Questions for the developer
+
+None — task is fully defined.
+
 <!--
 AI: Full task-writing guidance is in docs/sprintbias/ai/task-creation.md
 Keep it plain text — no emoji, color, or ASCII art. See docs/sprintbias/guides/doc-style.md

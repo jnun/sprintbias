@@ -199,6 +199,7 @@ Help groups: **create · chat · plan · work · look · keep**.
                                       #    (chat backlog mutates task files; chat plan only records IDs.)
 ./sprint.sh plan think [id] [--model] # 3. Optional: improve the plan + align its member tasks to it
 ./sprint.sh plan start [id] [--model] # 4. Commit the plan's members into next/ — latches Status: STARTED
+./sprint.sh plan check [id]           #    Anytime: read-only health report (plan state / lifecycle / definition; no AI, no moves)
 ./sprint.sh plan polish [id] [--model]# 5. Optional: excellence-judge the plan's finished work (review/ + done/)
 ./sprint.sh plan done [id]            # 6. Retire: when every member is in done/, delete the plan file
 

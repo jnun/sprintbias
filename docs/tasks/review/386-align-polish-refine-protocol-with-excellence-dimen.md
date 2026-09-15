@@ -22,24 +22,24 @@ so false assurance is worse than a visible BLOCKER.
 
 ## Success criteria
 
-- [ ] A developer (or agent) running the review/ sweep judges finished work
+- [x] A developer (or agent) running the review/ sweep judges finished work
       against the same altitude dimension set as excellence, including the
       upgraded Efficiency and Antifragility meaning — preferably by depending on
       the excellence protocol as the source of truth rather than maintaining a
       second rotting copy.
-- [ ] Correctness honesty matches excellence: presume correct only when a
+- [x] Correctness honesty matches excellence: presume correct only when a
       passing code-audit record is on the task; otherwise a stumbled-on defect
       cannot be waved through as PASS (BLOCKER, or an explicit path that sends
       the developer to `polish --code`). Mirror excellence's audited /
       unverified / failed posture language where it fits the sweep.
-- [ ] Reopen discipline unchanged in spirit: reopen only for substantive,
+- [x] Reopen discipline unchanged in spirit: reopen only for substantive,
       concrete, bounded, mechanically re-runnable gaps. Product/design forks
       stay BLOCKER for a human, not REOPEN.
-- [ ] Zero reopens across a sweep remains a legitimate, common outcome.
-- [ ] This task aligns dimension vocabulary and correctness honesty only — it
+- [x] Zero reopens across a sweep remains a legitimate, common outcome.
+- [x] This task aligns dimension vocabulary and correctness honesty only — it
       does not redesign the `## Rework` kickback shape (owned by #389) and does
       not change excellence report coverage (owned by #387).
-- [ ] Deliverable surface is `refine.md` (protocol). The known `polish.sh`
+- [x] Deliverable surface is `refine.md` (protocol). The known `polish.sh`
       runner string that still always "presumes correct" is closed in #388 so
       protocol and runtime do not race.
 
@@ -109,3 +109,52 @@ partition: this task owns dimensions + honesty; #389 owns kickback scannability.
 ### Questions for the developer
 
 None — task is fully defined.
+
+## Completed
+
+Aligned `refine.md` (the review/ sweep protocol) with the excellence audit on
+the two axes this task owns:
+
+- **Dimensions (Method step 4)** now point to
+  `docs/sprintbias/ai/audit-excellence.md` → Dimensions as the single source of
+  truth (Effectiveness; Efficiency with its scale-gated probe set; Design fit;
+  Operability; Robustness; Antifragility), replacing the hardcoded five-name
+  list that would rot as excellence's set moves.
+- **Posture correctness honesty** now mirrors excellence's `audited` /
+  `unverified` / `failed` states off the task's `## Audit` marker. Presume
+  correct only when a `## Audit` records PASS/FIXED; when `unverified` or
+  `failed`, a stumbled-on defect cannot be waved through as PASS — the verdict
+  falls to BLOCKER with a reason routing the developer to
+  `./sprint.sh polish --code`. The BLOCKER routing line reflects the same path.
+
+Reopen discipline, the sweep's never-edit-product-code boundary, the `## Rework`
+shape (#389), excellence report coverage (#387), and the `polish.sh`/help runner
+strings (#388) were left untouched, per the scope partition.
+
+### Files changed
+
+docs/sprintbias/ai/refine.md
+
+## Excellence
+
+- **Date**: 2026-09-10
+- **Verdict**: EXCELLENT
+- **Correctness**: unverified
+- **Tasks filed**: 0
+- **Routing**: —
+- **Files reviewed**: 1
+- **Context source**: task ## Completed section
+- **Code state**: 19d75169b1b64608
+
+Task 386 aligns the review/ sweep protocol (`refine.md`) with the excellence audit on the two axes it owns: correctness honesty and dimension vocabulary. The Posture now mirrors excellence's `audited`/`unverified`/`failed` states read off the task's `## Audit` marker (a stumbled defect on unverified/failed work falls to BLOCKER routing to `polish --code`, never a silent PASS), and Method step 4 drops the hardcoded five-name dimension list to defer to `audit-excellence.md` → Dimensions as the single source of truth. The work meets its bar cleanly: the runner (`polish.sh` `_refine_prompt`, lines 950-956) already builds the matching Audit-gated `correctness_rule`, so protocol and runtime do not race, and the same-diff `## Rework`-shape rewrite belongs to sibling task 389 (both edit `refine.md`; all of plan 25 is uncommitted together), not a scope violation by 386. Correctness is unverified — I found no defect.
+
+### Considered
+- Effectiveness — clear (both owned axes met; dimensions + honesty aligned end-to-end with the runner)
+- Efficiency — clear (per-judge extra read of `audit-excellence.md` is the deliberate DRY tradeoff the task chartered; bounded, not real-load waste)
+- Design fit — clear (reuses `sprintbias_correctness_state` + `## Audit` marker; SSOT pointer matches the polish family's protocol-embed pattern)
+- Operability — clear (verdict + reason surface the correctness state; runner logs it)
+- Robustness — clear (three documented Audit states covered; edge classification lives in `lib.sh`, unchanged)
+- Antifragility — clear (this is the antifragile win: removes false-assurance sweep PASS on unverified work; kills the second rotting dimension copy)
+
+### Findings
+- None filed. One NIT (not filed, not on 386's surface): the sweep inlines only `refine.md`, so its judge must chase a cross-file pointer to `audit-excellence.md` for the Dimensions, whereas the deep-judge gets them inline. Re-inlining would reintroduce the rotting-copy problem 386 was chartered to remove, and 388 added stub coverage asserting the sweep prompt teaches the contracts — so this is a `polish.sh` runner consideration, speculative, and correctly left alone.

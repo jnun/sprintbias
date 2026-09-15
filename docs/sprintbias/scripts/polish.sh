@@ -944,6 +944,17 @@ _refine_prompt() {
   local ctx="$SPRINTBIAS_CONTEXT_SOURCE"
   local profile_line; profile_line="$(sprintbias_profile_line)"
 
+  # Audit-gated correctness posture, mirroring polish-judge.sh / refine.md:
+  # presume correct ONLY when a passing '## Audit' is on file. Otherwise a defect
+  # stumbled on cannot PASS — it falls to BLOCKER pointing at polish --code.
+  local correctness; correctness="$(sprintbias_correctness_state "$task_file")"
+  local correctness_rule
+  if [ "$correctness" = "audited" ]; then
+    correctness_rule="- Correctness IS established — a code audit (polish --code) passed on this work; judge altitude, not syntax."
+  else
+    correctness_rule="- Correctness is NOT established (state: $correctness — no passing ## Audit marker). Do NOT presume the work correct: a genuine defect you stumble on cannot PASS — record it and let the verdict fall to BLOCKER pointing the developer at './sprint.sh polish --code'. Never fix it."
+  fi
+
   local changed_block
   if [ -n "$changed" ]; then
     changed_block="CHANGED FILES (source: $ctx):
@@ -958,7 +969,7 @@ Refine pass on ONE finished task. CLAUDE.md is auto-loaded.${profile_line}
 
 Follow this protocol exactly. The hard rules:
 - You NEVER edit product code — your only write is this task file.
-- The work is presumed correct — you judge altitude, not syntax.
+$correctness_rule
 - Reopen only when a second execution pass would close a real, bounded gap.
 - If you reopen, title the appended section exactly: ## Rework (round $next_round)
 
@@ -981,7 +992,9 @@ Steps:
 2. Trace the end-to-end path; judge the excellence dimensions.
 3. Decide: PASS, REOPEN, or BLOCKER per the protocol's reopen test.
 4. If REOPEN: use Edit to APPEND a '## Rework (round $next_round)' section to
-   $task_file with a Why and an unchecked '- [ ]' improvement checklist.
+   $task_file per the protocol — a short Why plus an '**Improve:**' list where
+   each unchecked '- [ ]' item is a bold short title + one-line done-look (the
+   only remaining-work list; scannable outcomes, not line-specific edit recipes).
    Do not alter the task's existing Success criteria, ## Completed section, or
    its '**Status: READY**' stamp.
 5. Output the report per the protocol. Your VERY LAST line must be the verdict
@@ -1002,12 +1015,16 @@ if [ "$AI_MODE" = "emit" ]; then
   done
 
   _RULES="Follow docs/sprintbias/ai/refine.md exactly. You never edit product
-code — your only write is the task file. Reopen only when a second execution
-pass would close a real, bounded gap; otherwise PASS. If you reopen, APPEND a
-'## Rework (round N)' section (use the next-round number shown for that task)
-with a Why and an unchecked '- [ ]' checklist, and leave the task's existing
-Success criteria, ## Completed, and '**Status: READY**' stamp untouched. End
-with: VERDICT: PASS | REOPEN — <n> | BLOCKER — <reason>."
+code — your only write is the task file. Presume correctness ONLY when a passing
+'## Audit' is on file; otherwise a genuine defect you stumble on cannot PASS —
+it falls to BLOCKER pointing at './sprint.sh polish --code'. Reopen only when a
+second execution pass would close a real, bounded gap; otherwise PASS. If you
+reopen, APPEND a '## Rework (round N)' section (use the next-round number shown
+for that task) with a short Why plus an '**Improve:**' list — each unchecked
+'- [ ]' item a bold short title + one-line done-look (scannable outcomes, not
+edit recipes; the only remaining-work list). Leave the task's existing Success
+criteria, ## Completed, and '**Status: READY**' stamp untouched. End with:
+VERDICT: PASS | REOPEN — <n> | BLOCKER — <reason>."
 
   if sprintbias_orchestration_capable; then
     # --parallel/--fast only flips the dispatch wording from sequential

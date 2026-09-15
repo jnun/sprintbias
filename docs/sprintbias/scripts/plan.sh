@@ -5,6 +5,7 @@
 # This entry is the namespace for:
 #   plan think  [id]  — dual-persona critique (plan-think.sh)
 #   plan start  [id]  — commit members into next/ (plan-start.sh)
+#   plan check  [id]  — read-only health report; changes nothing (plan-check.sh)
 #   plan polish [id]  — excellence-judge the plan's finished work (plan-polish.sh)
 #   plan done   [id]  — retire a plan whose every member is in done/ (plan-done.sh)
 #
@@ -32,6 +33,7 @@ plan — decisive plan verbs (authoring is chat plan)
 Usage:
   ./sprint.sh plan think  [id] [--model <id>]   dual-persona critique of a plan
   ./sprint.sh plan start  [id] [--commit-only] [--model <id>]   commit plan members into next/ (the sprint)
+  ./sprint.sh plan check  [id]   read-only health report (plan state, lifecycle, definition); changes nothing
   ./sprint.sh plan polish [id] [--force] [--model <id>]   excellence-judge finished work (review/ + done/)
   ./sprint.sh plan done   [id]   retire a plan once every member is in done/
 
@@ -46,6 +48,7 @@ EOF
 case "${1:-}" in
   think)  shift; run_sub plan-think.sh "$@" ;;
   start)  shift; run_sub plan-start.sh "$@" ;;
+  check)  shift; run_sub plan-check.sh "$@" ;;
   polish) shift; run_sub plan-polish.sh "$@" ;;
   done)   shift; run_sub plan-done.sh "$@" ;;
   -h|--help|help) usage; exit 0 ;;

@@ -18,9 +18,18 @@ when a *second execution pass* would close the gap.
 
 ## Posture
 
-- **The work is presumed correct.** A prior code audit checked syntax, style,
-  and conventions. Do not re-litigate them. If you find a genuine defect,
-  record it in the report and let the verdict fall to BLOCKER — do not fix it.
+- **Presume correctness ONLY when a code audit passed.** Read the task's
+  `## Audit` marker (`polish --code` writes it), exactly as excellence does:
+  `audited` when a plain `## Audit` section records a PASS or FIXED **Final
+  verdict**; `unverified` when there is no such section; `failed` when a
+  `## Audit` records FAIL/BLOCKED/UNCLEAR (worse than unverified — an audit ran
+  and did not clear the work). When `audited`, do not re-litigate syntax, style,
+  or conventions — that audit already ran; judge altitude only. When
+  `unverified` or `failed`, do NOT presume correctness: a defect you stumble on
+  **cannot be waved through as PASS**. Record it and let the verdict fall to
+  BLOCKER, with a reason that sends the developer to `./sprint.sh polish --code`
+  to establish correctness before this work can clear. Either way you never fix
+  it — your only write is the task file.
 - **You never edit product code. Not one line.** Your only permitted write is
   the audited task file itself: appending a `## Rework (round N)` section. You
   do NOT touch the `**Reworked**:` header — the runner owns that counter and
@@ -41,8 +50,11 @@ when a *second execution pass* would close the gap.
    entry point → the change → outcome. The highest-value gaps live where the
    path breaks: a capability that exists but cannot be invoked, a config with
    no way to set it, a state you can enter but not leave.
-4. **Judge each dimension**: effectiveness, efficiency, design fit,
-   operability, robustness (as in the excellence protocol).
+4. **Judge each dimension exactly as the excellence protocol defines them** —
+   follow `docs/sprintbias/ai/audit-excellence.md` → Dimensions as the single
+   source of truth (Effectiveness; Efficiency with its scale-gated probe set;
+   Design fit; Operability; Robustness; Antifragility). Judge the same set
+   excellence judges — do not keep a second, hardcoded copy here that drifts.
 5. **Decide the verdict** using the routing rules below.
 
 ## The one decision: reopen or not
@@ -67,26 +79,61 @@ needless reopen costs real money and churns the queue.
 
 ## When you reopen
 
-Append this section to the END of the task file, verbatim in shape:
+The `## Rework` section is the brief — for the human skimming the kickback and
+for the next executor picking the task up cold. Write it so a reader can skim
+the titles in about a minute and name every remaining gap, then drop into any
+one item and know what "done" looks like. Append this section to the END of the
+task file, in this shape:
 
     ## Rework (round N)
 
-    **Why:** 1–3 sentences — what falls short of the bar, with file
-    references. This is the case for spending another pass.
+    **Why:** A few sentences — the case for spending another pass. What still
+    falls short of the bar and why it is worth another cycle. This is an
+    argument, not a second copy of the Improve list.
 
     **Improve:**
-    - [ ] One concrete, verifiable action item
-    - [ ] Another — each scoped so a fresh executor can complete it
+    - [ ] **Short title** — one-line done-look: what must be true when this item
+          is done, at user-story or technical-spec height.
+          Hint: optional starting points — files, anchors, search terms.
+    - [ ] **Another title** — its own one-line done-look, verifiable on its own.
+
+Each Improve item has two required parts and one optional part:
+- A **bold short title** — the scannable name of the gap. A reader skimming
+  only the titles should be able to list every remaining gap.
+- A **one-line done-look** — the outcome the next executor can verify: what is
+  true when the item is done, written at user-story or technical-spec height,
+  not a step-by-step edit recipe.
+- An optional indented **Hint:** line — file paths, anchors, or search terms as
+  starting points only. Hints help the executor find evidence faster; they
+  never define done.
 
 Rules for the reopen section:
 - Use the exact round number N given to you in the prompt. This heading is
   polish's alone — keep it distinct from any pre-work `## Refine` section, so
   the round counter never conflates the two operations.
 - Every improvement is an **unchecked** `- [ ]` item — this is the new work.
+- Define outcomes, not brittle edits. Do NOT prescribe line-specific surgery
+  (`path:line`) or "change field N" as the work itself — those assumptions
+  usually rot before `work` re-runs. File paths and anchors belong under an
+  optional `Hint:`, never as the definition of done.
+- **Improve is the single remaining-work list on the task.** Do not add a
+  parallel checklist under Questions or anywhere else that restates the same
+  items — one list, no duplicate essay.
+- Keep **Why** short. It is the case for another pass, not a re-listing of the
+  gaps already named in Improve.
+- A title may use a shared excellence dimension name when it sharpens the gap
+  (Effectiveness, Efficiency, Design fit, Operability, Robustness,
+  Antifragility — the Dimensions set you already judged against). One shared
+  vocabulary across both surfaces; do not coin a second private tag scheme, and
+  do not let a dimension prefix bloat a title past a skim.
 - Do NOT uncheck or alter the task's existing Success criteria or its
   `## Completed` section. The executor needs that history intact.
 - Do NOT remove the task's `**Status: READY**` stamp if present — it must
   survive so `work` picks the task up without a re-gate.
+
+Reopen discipline is unchanged (see § The one decision): the vital few,
+substantive, bounded, mechanically re-runnable. Clearer organization is not a
+license for more items — a scannable list of five is still five.
 
 ## Report Format
 
@@ -104,7 +151,10 @@ End with exactly this structure:
   the `**Reworked**:` counter and moves the task to `next/` for another pass
   (`git mv SRC DEST || mv SRC DEST`). (exit 0)
 - **BLOCKER** — the work fails its own goal and the fix needs a human, not a
-  re-run. The task stays in `review/` for attention. (exit 1)
+  re-run; or you stumbled on a genuine defect while correctness was `unverified`
+  or `failed` — that cannot PASS, and the reason points the developer to
+  `./sprint.sh polish --code`. The task stays in `review/` for attention.
+  (exit 1)
 
 The `VERDICT:` line must be the last line of your output, one uppercase token
 after the colon, nothing after it but an optional short reason.

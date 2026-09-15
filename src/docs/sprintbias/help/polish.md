@@ -39,6 +39,12 @@ Verdicts (last line of each task's report):
              only via the shared workability gate (READY → next/, else kickback)
   BLOCKER  — work fails its own goal and needs a human; stays in review/
 
+A REOPEN's '## Rework' section is a scannable brief: an **Improve:** list whose
+items are a short title + one-line done-look (the outcome to verify), not
+line-specific edit recipes — one remaining-work list a reader skims in a minute.
+Correctness is presumed only when a `polish --code` has passed; otherwise a
+defect the judge stumbles on falls to BLOCKER, never a silent PASS.
+
 Round cap: keyed on the '**Reworked**:' header counter, which ONLY polish
 increments — one bump per confirmed reopen. Once a task's Reworked count
 reaches --rounds (default 1) it is capped and skipped. The cap ignores '##
@@ -68,10 +74,13 @@ single-target: they work within one task file, so the flags are ignored there.
 
 ── Deep-judge ─────────────────────────────────────────────────────────
 
-Judges engineering quality (effectiveness, efficiency, design fit,
-operability, robustness). Correctness is presumed only when a `polish --code`
-has passed on this work; otherwise the run flags it and the judge does not wave
-defects by (see the `correctness:` field below). Verdicts:
+Judges engineering quality against a "could this be better?" bar — every
+dimension in the excellence protocol (effectiveness, efficiency, design fit,
+operability, robustness, antifragility), where Efficiency carries a scale-gated
+probe set and Antifragility asks whether the change gets stronger under stress,
+not merely survives its edges. Correctness is presumed only when a `polish
+--code` has passed on this work; otherwise the run flags it and the judge does
+not wave defects by (see the `correctness:` field below). Verdicts:
   EXCELLENT  — meets the bar, nothing filed            (exit 0)
   FILED — n (x → next/, y → backlog/) — n enhancement tasks filed, split by
            where they landed                           (exit 0)

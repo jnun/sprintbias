@@ -75,6 +75,30 @@ The run ends with a summary — ready → next/, blocked, done counts — and th
 step is `./sprint.sh work`. Lifecycle moves use `git mv SRC DEST || mv SRC DEST`
 (git mv first; plain mv finishes when untracked). The developer owns commits.
 
+**plan check [id]** — read-only plan health report. Pure shell, **no AI, no
+moves** — the inverse of `plan start` (gates + moves) and `plan done` (deletes).
+It reads the plan and its members and prints one glance at where the plan stands,
+changing nothing:
+
+  - **Plan state** — `not started` (DRAFT/READY, no commit yet) · `started`
+    (STARTED, no member past `next/` yet) · `in process` (at least one member in
+    `doing/review/done`, but not all done) · `completed` (every member in
+    `done/` — the point `plan done` would retire it).
+  - **Lifecycle** — which folder each member sits in
+    (`backlog/next/doing/blocked/review/done`), plus a count rollup so the
+    spread is visible at a glance. A member listed in the plan with no task file
+    is reported `missing`, not silently dropped.
+  - **Definition** — how well-formed each member is: `undefined` (not fully
+    defined — placeholder success criteria, open `### Questions for the
+    developer`, or sitting in `blocked/`) · `defined` (real success criteria, no
+    open questions — and every worked member in `review/`/`done/`, which was
+    necessarily defined enough to run) · `in process` (a live `doing/` claim) ·
+    `abandoned` (a stale `doing/` claim left with a failure stamp — the state
+    `work` reclaims).
+
+Bare `plan check` reports the sole plan, or lists plans to choose from. Use it
+any time to see a plan's standing without spending AI budget or moving a file.
+
 **plan polish [id] [--force] [--model <id>]** — excellence-judge the plan's
 finished work. Runs the same deep-judge as `polish <id>` (one shared unit) over
 every member that has reached `review/` or `done/` — the plan-scoped equivalent
@@ -96,6 +120,7 @@ and does nothing. Bare `plan done` picks a plan.
 Usage:
   ./sprint.sh plan think  [id] [--model <id>]
   ./sprint.sh plan start  [id] [--commit-only] [--model <id>]
+  ./sprint.sh plan check  [id]              # read-only health report (no AI, no moves)
   ./sprint.sh plan polish [id] [--force] [--model <id>]
   ./sprint.sh plan done   [id]
   ./sprint.sh plan              # prints this usage (no auto-planner)
@@ -122,6 +147,8 @@ Family order:
   5. ./sprint.sh work · loop
   6. ./sprint.sh plan polish [id]    # optional: excellence-judge finished members (review/ + done/)
   7. ./sprint.sh plan done [id]      # all members in done/ → delete the plan file
+
+  Anytime: ./sprint.sh plan check [id]   # read-only "where does this stand?" — no AI, no moves
 
 Use default `plan start` when members need the workability gate. Use
 `--commit-only` when members are already READY-stamped, for tests, or when AI

@@ -104,6 +104,7 @@ artifact, never only in the chat.
 Command		Does
 plan think [id] [--model]	Automated dual-persona critique of a plan
 plan start [id] [--model]	Gate every workable member and commit into `next/` (deps must be in sprint or co-promoted; no hard size cap; warn over 10; latches STARTED; `--model` pins the gate model)
+plan check [id]	Read-only health report — plan state (not started / started / in process / completed), member lifecycle rollup, and per-member definition state (undefined / defined / in process / abandoned). No AI, no moves (`plan-check.sh`)
 plan polish [id] [--model]	Excellence-judge the plan's finished members (`review/` + `done/`) — routes each through the shared deep-judge (`polish-judge.sh`), files enhancements to `backlog/`, skips already-judged members unless `--force`
 plan done [id]	Retire — delete the plan once every member is in `done/`
 
@@ -122,8 +123,8 @@ Command		Does
 work			Execute all READY tasks in next/ → review/
 work \<id\>		Work ONE task by number; auto-gate into next/ if out of frame, else re-run
 work count N	Execute at most N READY tasks (replaces the old bare-number cap)
-work --model \<id\>	Pin the model for this run only (also chat / gate / polish / plan think|start|polish)
-loop			Autopilot: plan start refill + work drain
+work --model \<id\>	Pin the model for this run only (also chat / gate / polish / plan think|start|polish / loop)
+loop [--model \<id\>]	Autopilot: plan start refill + work drain (`--model` pins every AI leg — refill gate, retry gate, work drain)
 gate [folder]	READY-gate next/ (default), or quality report on another folder
 settle [id]	Accept (Suggestion: …) open questions; demote READY+openQ out of next/
 split \<path\>	One-shot: one large task → atomic children (no conversation)

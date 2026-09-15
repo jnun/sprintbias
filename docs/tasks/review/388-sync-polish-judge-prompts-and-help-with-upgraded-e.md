@@ -25,27 +25,27 @@ stacked protocol work.
 
 ## Success criteria
 
-- [ ] Every polish altitude run (deep-judge, plan-scoped excellence, and
+- [x] Every polish altitude run (deep-judge, plan-scoped excellence, and
       review/ sweep) teaches the same dimension vocabulary, correctness honesty,
       report coverage expectations, and Rework kickback shape as the live
       protocols — a reader comparing prompt-to-protocol finds no contradictory
       bar.
-- [ ] Runtime prefers "follow the protocol" over maintaining a second full copy
+- [x] Runtime prefers "follow the protocol" over maintaining a second full copy
       of probes/dimensions that will rot; any remaining inline restatement
       matches the protocol or is removed. Prefer reference so the next dimension
       change does not need another sync task.
-- [ ] A developer reading polish help understands, without a long essay, that
+- [x] A developer reading polish help understands, without a long essay, that
       altitude asks "could this be better?" (including Efficiency and
       Antifragility) and that a REOPEN's Improve items are scannable outcomes
       (title + done-look), not edit recipes.
-- [ ] Maintainer command catalog language, if it describes polish's quality bar,
+- [x] Maintainer command catalog language, if it describes polish's quality bar,
       stays consistent with that upgrade — no unrelated guide churn.
-- [ ] Code-audit mode (`polish --code`) remains a correctness/conventions/safety
+- [x] Code-audit mode (`polish --code`) remains a correctness/conventions/safety
       fixer-verifier — altitude guidance does not leak into it.
-- [ ] After the sync, a dry read of excellence and refine emit/headless prompts
+- [x] After the sync, a dry read of excellence and refine emit/headless prompts
       shows one shared vocabulary and one Audit-gated correctness posture —
       including closure of the two known on-disk drifts named in Problem.
-- [ ] **Behavior acceptance (not markdown-only):** polish demonstrably teaches
+- [x] **Behavior acceptance (not markdown-only):** polish demonstrably teaches
       the new bar. At minimum, emit-mode (or an equivalent stub-CLI run) for
       deep-judge and for a review/ sweep REOPEN path shows in the prompt or
       written task artifact:
@@ -157,3 +157,74 @@ antifragility (close known runner drift in one place).
 
 ### Questions for the developer
 None — task is fully defined.
+
+## Completed
+
+Synced the polish runtime to the upgraded excellence/refine protocols so no
+prompt or help teaches the old bar. All three altitude surfaces now defer to the
+protocol as the single source of truth, and the two known on-disk drifts are
+closed.
+
+- **Deep-judge (`polish-judge.sh`):** step 3 no longer enumerates the stale
+  five-name dimension list. It now references the protocol's Dimensions section
+  ("could this be better?", Efficiency's scale-gated probes, Antifragility),
+  requires per-finding dimension tags, and expects full Considered coverage —
+  so a new dimension in the protocol needs no runner edit. Correctness stayed
+  Audit-gated (already correct via `CORRECTNESS_RULE`). Plan polish inherits
+  this fix — `plan-polish.sh` routes every member through this one judge.
+- **Refine sweep (`polish.sh` `_refine_prompt`):** replaced the unconditional
+  "The work is presumed correct" with an Audit-gated `correctness_rule` derived
+  from `sprintbias_correctness_state` — presume correct only on a passing
+  `## Audit`; otherwise a stumbled-on defect falls to BLOCKER pointing at
+  `polish --code`. Step 4 and the emit-mode `_RULES` now teach the scannable
+  Improve shape (bold short title + one-line done-look; the only remaining-work
+  list; outcomes, not edit recipes).
+- **Help (`help/polish.md`):** deep-judge section names the "could this be
+  better?" bar with all six dimensions (Antifragility included) and the stronger
+  Efficiency probe framing; the sweep section adds a short paragraph on the
+  scannable `## Rework`/Improve brief and Audit-gated sweep honesty.
+- **`polish --code` untouched** — no altitude guidance leaked in; its test still
+  passes (10/10).
+- **Behavior acceptance:** extended `docs/tests/test-audit-excellence.sh` with
+  two stub-CLI tests (no live provider). Test 5 asserts the deep-judge emit
+  prompt teaches Antifragility, "could this be better?", per-finding dimension
+  tags, and Considered coverage. Test 6 captures the exec `_refine_prompt` for a
+  review/ task with no `## Audit` and asserts it dropped "presumed correct", is
+  Audit-gated ("Correctness is NOT established"), and teaches the Improve list /
+  one-line done-look / no-edit-recipes contract. Suite: 21/21.
+
+Verified: `validate --commands` (27 commands, all surfaced) and `validate
+--docs` (no flag drift) both clean.
+
+### Files changed
+docs/sprintbias/scripts/polish-judge.sh
+docs/sprintbias/scripts/polish.sh
+docs/sprintbias/help/polish.md
+docs/tests/test-audit-excellence.sh
+docs/guides/running-tests.md
+
+## Excellence
+
+- **Date**: 2026-09-10
+- **Verdict**: EXCELLENT
+- **Correctness**: unverified
+- **Tasks filed**: 0
+- **Routing**: —
+- **Files reviewed**: 5
+- **Context source**: task ## Completed section
+- **Code state**: e2448469a5bc3840
+
+Task 388 syncs the polish runtime (prompts + help) to the upgraded excellence/refine protocols so no loaded text teaches the old bar. Both known on-disk drifts are closed: `polish-judge.sh` step 3 replaces the stale five-name enumeration with a reference to the protocol's Dimensions section (Efficiency probes + Antifragility, per-finding tags, full Considered coverage), and `polish.sh` `_refine_prompt` replaces the unconditional "The work is presumed correct" with an Audit-gated `correctness_rule` derived from the shared `sprintbias_correctness_state` helper. Help gains plain-language coverage of the "could this be better?" bar and the scannable `## Rework`/Improve shape; the change adds two stub-CLI tests (suite now 21/21) that assert the new contract without a live provider. The work meets the bar — it extends the existing protocol-embed pattern rather than duplicating probe lists, closes the drift in one place, and keeps `polish --code` free of altitude guidance.
+
+### Considered
+- Effectiveness — clear (both drifts closed; every success criterion demonstrably met via tests 5 & 6; plan-polish inherits the fix by routing through `polish-judge.sh`)
+- Efficiency — clear (prompt/help text with no hot path; the DRY protocol-reference choice is itself the maintenance-efficiency win)
+- Design fit — clear (reuses the `$(<"$PROTOCOL")` embed pattern and the shared `sprintbias_correctness_state` helper; deep-judge/refine emit asymmetry is justified by single-target vs. many-task cardinality, not drift)
+- Operability — clear (behavior is observable through the two added stub tests; `running-tests.md` catalog row updated)
+- Robustness — clear (`_refine_prompt` always has a resolved `task_file`; the correctness helper handles audited/unverified/failed states already in production use)
+- Antifragility — clear (the core win: step 3 now references the protocol's Dimensions instead of hardcoding them, so the next dimension change needs no further sync task — drift closed at the source)
+
+### Findings
+- [NIT][Operability] `docs/tests/test-audit-excellence.sh:2,54` — the file header comment and run banner still say "deep-judge mode" only, though the file now also exercises the refine sweep (test 6); `running-tests.md` was updated to say "deep-judge + refine sweep" but the file's own labels lag. One sentence; not worth filing.
+
+No ENHANCEMENT or BLOCKER findings. No DEFECT stumbled on (correctness state was `unverified`; the added tests pass and the logic is sound). Nothing filed.

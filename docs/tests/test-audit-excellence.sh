@@ -95,6 +95,63 @@ output=$(cd "$TMPDIR" && SPRINTBIAS_MODE=exec SPRINTBIAS_CLI="$STUB" \
 assert_exit_code "Exits 1" "1" "$rc"
 assert_contains "Reports missing protocol" "$output" "Protocol file missing"
 
+# Test 5: deep-judge emit prompt teaches the UPGRADED altitude bar — the dimension
+# vocabulary now references the protocol's full set (Antifragility included), tags
+# every finding by dimension, and expects full Considered coverage. Guards the
+# closed drift: the old hardcoded five-name step-3 list must not reappear.
+echo "Test 5: deep-judge emit teaches the upgraded bar (Antifragility, coverage, tags)"
+setup
+rc=0
+output=$(cd "$TMPDIR" && SPRINTBIAS_MODE=emit SPRINTBIAS_CLI="$STUB" \
+    bash "$SCRIPT_UNDER_TEST" sample.py 2>&1) || rc=$?
+assert_exit_code "Exits 0" "0" "$rc"
+assert_contains "Prompt names Antifragility" "$output" "Antifragility"
+assert_contains "Prompt asks 'could this be better?'" "$output" "could this be better?"
+assert_contains "Prompt tags findings by dimension" "$output" "Tag each finding with the dimension"
+assert_contains "Prompt expects Considered coverage" "$output" "Considered block"
+
+# Test 6: refine sweep prompt is Audit-gated and teaches the scannable Improve
+# shape. A capturing stub records the exec prompt built by _refine_prompt for a
+# review/ task with NO passing '## Audit' — so correctness is unverified and the
+# old unconditional "presumed correct" must be gone. PASS verdict keeps routing
+# trivial (task stays in review/).
+echo "Test 6: refine sweep prompt is Audit-gated and teaches scannable Improve"
+setup
+mkdir -p "$TMPDIR/docs/tasks/review" "$TMPDIR/docs/tasks/next" "$TMPDIR/docs/tasks/blocked"
+printf 'Refine protocol stub.\n' > "$TMPDIR/docs/sprintbias/ai/refine.md"
+cat > "$TMPDIR/docs/tasks/review/900-demo.md" <<'TASK'
+# Task 900: Demo
+
+**Reworked**: 0
+
+## Completed
+
+### Files changed
+sample.py
+TASK
+CAP="$TMPDIR/captured-prompt.txt"
+CAPSTUB="$TMPDIR/capture-cli"
+cat > "$CAPSTUB" <<'STUBEOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$CAPTURE"
+cat <<'JSON'
+{"result": "## Summary\nMeets the bar.\n\nVERDICT: PASS"}
+JSON
+STUBEOF
+chmod +x "$CAPSTUB"
+rc=0
+output=$(cd "$TMPDIR" && SPRINTBIAS_MODE=exec SPRINTBIAS_CLI="$CAPSTUB" CAPTURE="$CAP" \
+    bash "$SCRIPT_UNDER_TEST" 2>&1) || rc=$?
+assert_exit_code "Exits 0" "0" "$rc"
+captured="$(cat "$CAP" 2>/dev/null || true)"
+assert_contains "Sweep prompt drops unconditional 'presumed correct'" \
+    "$(printf '%s' "$captured" | grep -c 'The work is presumed correct' || true)" "0"
+assert_contains "Sweep prompt is Audit-gated (correctness not established)" \
+    "$captured" "Correctness is NOT established"
+assert_contains "Sweep prompt teaches the Improve list" "$captured" "**Improve:**"
+assert_contains "Sweep prompt teaches one-line done-look" "$captured" "one-line done-look"
+assert_contains "Sweep prompt rejects edit recipes" "$captured" "not line-specific edit recipes"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1

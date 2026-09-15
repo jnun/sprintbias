@@ -67,9 +67,26 @@ minimum, not the standard. You are auditing for the second kind.
 - **Effectiveness** — Does it fully solve the stated problem? Can every
   actor in the story complete their path end to end? Partial solutions that
   demo well but dead-end in real use are the #1 thing to catch.
-- **Efficiency** — Wasted work, N+1 patterns, redundant passes, data
-  structures fighting the access pattern. Flag only what matters at the
-  scale this project actually runs at.
+- **Efficiency** — Ask whether the landed change wastes work at the scale
+  this project actually runs at. Walk the change and its blast radius against
+  a short probe set, scale-gating each one — a real cost at real load, never a
+  speculative micro-optimization:
+    - **Hot path stays lean.** The per-request / per-item path does only the
+      work that request needs; setup, lookups, and allocation that repeat every
+      call have a reason to be there rather than hoisted, cached, or memoized.
+    - **Growth is capped.** Anything that accumulates — a list, a cache, a log,
+      a fan-out — has a bound that holds as input and history grow, not just on
+      today's small inputs.
+    - **Shared work is reused.** New code leans on the existing shared path for
+      work already done once, instead of recomputing or re-fetching what a
+      helper, index, or prior pass already produced.
+    - **I/O and fan-out stay sub-linear where they can.** Reads, writes, and
+      calls that scale with input size are batched, streamed, or bounded rather
+      than multiplying — one query per row, one call per item, a pass per pass
+      is the shape to catch.
+  These probes surface meaningful waste; they do not manufacture it. An
+  Efficiency nit stays a nit, and zero filings remains a valid outcome (see
+  Severity and Routing).
 - **Design fit** — Does the change extend the architecture or bolt onto it?
   Logic duplicated where a shared helper exists? A concept the codebase
   already names, reinvented under a new name? Cross-check **References**:
@@ -82,6 +99,16 @@ minimum, not the standard. You are auditing for the second kind.
 - **Robustness** — Behavior at the edges: empty input, concurrent use,
   partial failure, retry. Realistic edges for this project — not
   hypothetical hardening.
+- **Antifragility** — the same lens `plan think` / `chat` applied before the
+  work: the change should make the system STRONGER under stress, load, and
+  change, not merely survive its edges. Robustness asks "does it hold at the
+  edge?"; Antifragility asks "does it get better — or at least fail softer —
+  under pressure?" In scope for this dimension: graceful degradation under
+  load, early visibility of failure (signals that surface before a silent
+  collapse), and removal of single points of fragility the change introduced
+  or left in place. This is altitude above Robustness, not a replacement for
+  it — edge survival still gets audited on its own. A green excellence pass
+  should have asked the stress question the plan did.
 
 ## Severity and Routing
 
@@ -143,12 +170,34 @@ End with exactly this structure:
     2–5 sentences: what the work is, whether it meets the bar, and the most
     important finding.
 
+    ### Considered
+    One line per dimension in Dimensions above — EVERY dimension appears, even
+    the ones with no finding, so "checked, nothing to file" reads distinct from
+    "never looked." Mark each `— clear` (considered, nothing to file) or with
+    the count it produced (`— 1 finding`). Follow the live Dimensions section;
+    do not hardcode this list — if Dimensions gains or loses one, this list
+    tracks it.
+    - Effectiveness — clear
+    - Efficiency — 1 finding
+    - Design fit — clear
+    - Operability — clear
+    - Robustness — clear
+    - Antifragility — clear
+
     ### Findings
-    - [SEVERITY] one line each, with file references
+    - [SEVERITY][Dimension] one line each, with file references — the dimension
+      tag names which altitude lens produced it (Efficiency, Antifragility, …).
     - FILED → next/:    docs/tasks/next/<id>-<slug>.md    (warm-routed)
     - FILED → backlog/: docs/tasks/backlog/<id>-<slug>.md (default)
 
     VERDICT: EXCELLENT | FILED — <n> (<x> → next/, <y> → backlog/) | BLOCKER — <reason>
+
+Every finding line carries both a severity and a dimension tag —
+`[ENHANCEMENT][Efficiency] …` — so severity alone can never hide which lens
+found it. The **Considered** block makes the judge observable: a full list with
+zero findings is a real EXCELLENT (checked, nothing to file), and a missing
+dimension is a visible gap, not a green pass. Coverage means *considered*, not
+must-file — do not manufacture a finding just to fill a row.
 
 List one FILED line per task filed, marking its destination. The `VERDICT:` line
 must be the last line of your output; on a FILED verdict it carries the routing

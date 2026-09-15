@@ -215,7 +215,11 @@ $CHANGED_FILES
 1. Read the task, the changed files, and their blast radius (grep for
    imports/references to the changed files).
 2. Trace the end-to-end path as the person who will actually use this work.
-3. Judge: effectiveness, efficiency, design fit, operability, robustness.
+3. Judge every dimension in the protocol's Dimensions section — the full
+   altitude bar, \"could this be better?\", including Efficiency (its scale-gated
+   probe set) and Antifragility (does the change get stronger under stress?).
+   Tag each finding with the dimension that produced it, and cover every
+   dimension in the report's Considered block (do not hardcode a shorter list).
 4. For each ENHANCEMENT finding (the vital few, not the trivial many), run:
    ./sprint.sh newtask \"<description>\" then append Why and Scope to the created
    file in docs/tasks/backlog/. Default every filed task to backlog/. A finding

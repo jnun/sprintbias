@@ -154,7 +154,7 @@ bash docs/tests/test-no-stale-refs.sh
 | `test-no-stale-refs.sh` | rename guards | retired names must not linger in shipped surfaces |
 | `test-grok-provider.sh` | `lib.sh` + grok profile | tier, emit detect, tool map — **not** live TUI |
 | `test-audit-code.sh` | `polish.sh --code` | stub CLI |
-| `test-audit-excellence.sh` | `polish.sh` deep-judge | stub CLI |
+| `test-audit-excellence.sh` | `polish.sh` deep-judge + refine sweep | stub CLI; asserts the upgraded altitude bar (Antifragility, dimension coverage/tags, Audit-gated sweep honesty, scannable Improve) |
 | `test-tasks-excellence.sh` | `work.sh --excellence` | stub CLI; queue does not re-pick enhancements |
 | `test-command-matrix-smoke.sh` | full command surface in emit | offline matrix walk; see tier 2 notes |
 
