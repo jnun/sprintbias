@@ -24,20 +24,20 @@ match can creep back.
 
 ## Success criteria
 
-- [ ] `sprintbias_run_error` and `sprintbias_extract_summary` are removed from
+- [x] `sprintbias_run_error` and `sprintbias_extract_summary` are removed from
       lib.sh (their work is folded into the interpreter's single pass — summary
       now comes off the normalized record).
-- [ ] Every call site (polish.sh --code + deep-judge, polish-judge.sh, deps.sh,
+- [x] Every call site (polish.sh --code + deep-judge, polish-judge.sh, deps.sh,
       and the promote.sh audit path) reads the run exactly once via the
       interpreter: it switches on `outcome`, uses the record's `summary`, and
       parses its own verdict tokens on `finished`. No site parses the log JSON a
       second time.
-- [ ] No call site re-derives a failure kind by prose-matching a run's error
+- [x] No call site re-derives a failure kind by prose-matching a run's error
       text — the shared honest-message builder from #367 (`sprintbias_run_hint`)
       remains the only thing that renders a user-facing outcome line. (Dep #367
       already centralized this; the criterion is here to keep it that way once
       the old helpers are gone.)
-- [ ] All four audits behave identically to before for finished/max_turns/
+- [x] All four audits behave identically to before for finished/max_turns/
       no_start/error runs — verified on captured logs for each provider — with no
       remaining reference to the removed helpers anywhere in docs/sprintbias/.
 
@@ -111,24 +111,34 @@ The retirement is not done — both helpers still exist and have live callers:
 
 None — task is fully defined.
 
-<!-- After work only — audit trail of what was touched. Helps committers,
-     later audits, and "what broke?" recovery. List the product files you
-     edited to complete the task — one repo-relative path per line. Leave this
-     task file out: its folder location and git history already track it. Copy
-     the two headings below to column 0
-     (UNINDENTED — they are indented here only so a fresh, unworked task is not
-     mistaken for a finished one), then list the paths under "Files changed":
+## Completed
 
-       ## Completed
+Both redundant helpers are gone; the interpreter is the single reader.
 
-       ### Files changed
-       docs/sprintbias/scripts/example.sh
-       docs/sprintbias/help/example.md
+- Deleted `sprintbias_extract_summary` and `sprintbias_run_error` from lib.sh
+  (and their header-index entry). The fallback interpreter now derives the
+  summary inline in its single pass, kept in `_SPRINTBIAS_FALLBACK_INTERPRET_PY`
+  so the here-string never has to nest a heredoc inside `<(…)`. On a finished
+  run it emits three NUL-terminated fields (outcome, verdict text, summary); the
+  finished verdict text is now the `result` field, aligning the bridge with the
+  shipped profiles.
+- `promote.sh` audit path now reads the run once via `sprintbias_interpret_run`,
+  switches on `SPRINTBIAS_RUN_OUTCOME` (abort → one `sprintbias_run_hint` line,
+  counted as unclear, `continue`), and parses DONE/NOT-DONE and the NOT-DONE
+  reason off `$SPRINTBIAS_RUN_VERDICT_TEXT` — no second read of the log JSON.
+- `polish.sh` (PREV_SUMMARY) and `polish-judge.sh` (SUMMARY) now take the
+  summary from `$SPRINTBIAS_RUN_SUMMARY` on the already-interpreted record
+  instead of a second read.
+- Grep of `docs/sprintbias/` for both helper names: zero references (code,
+  help, comments). Remaining hits live only in dev-internal `docs/tasks/`
+  plan records, which are not distributed.
+- Verified on captured logs (bash): the claude profile and the fallback both
+  return finished/max_turns/no_start/error identically, summary comes off the
+  record, and a non-JSON plain log still yields a greppable verdict.
 
-     Keep the wording exact — `## Completed` and `### Files changed` — the tasks
-     runner and lib.sh key off them verbatim. Do not fill this before work. -->
+### Files changed
 
-<!--
-AI: Full task-writing guidance is in docs/sprintbias/ai/task-creation.md
-Keep it plain text — no emoji, color, or ASCII art. See docs/sprintbias/guides/doc-style.md
--->
+docs/sprintbias/lib.sh
+docs/sprintbias/scripts/promote.sh
+docs/sprintbias/scripts/polish.sh
+docs/sprintbias/scripts/polish-judge.sh
