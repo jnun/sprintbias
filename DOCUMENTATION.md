@@ -1,454 +1,239 @@
 <!-- SprintBias v0.0.77 -->
 # SprintBias
 
-Project management in markdown files. Folders and plain text.
+Project management as plain markdown files in folders. No database, no app — the
+filesystem *is* the state, so an AI agent reads `ls` and knows everything.
 
-> If this file is named `SPRINTDOCUMENTATION.md` in your project, it is still
-> the SprintBias manual — the installer used that name because you already had
-> a `DOCUMENTATION.md` of your own. Pointers in `CLAUDE.md` / `AGENTS.md` target
-> whichever filename landed.
+> If this manual is named `SPRINTDOCUMENTATION.md`, that is still this file — the
+> installer used that name because you already owned a `DOCUMENTATION.md`. Your
+> `CLAUDE.md` / `AGENTS.md` pointers target whichever name landed.
 
-## Guiding principles
+## How it works
 
-Every design decision in this system passes through these lenses:
+Three facts explain the whole system:
 
-1. **Lean into agent bias.** Shape work around what an AI agent does well —
-   read context, reason, converse, decide. Prefer commands and tasks that walk
-   with those strengths instead of fighting them.
-2. **Minimize context cost.** Every file, command, and help page costs context
-   when an agent loads it. Fewer, sharper commands beat many overlapping ones.
-   Pruning is a feature.
-3. **Name in common language.** Plain words that read the same to people and
-   agents (`task`, `chat`, `work`, `plan`, `polish`) beat jargon. Lifecycle
-   folders `backlog → next → doing → review` are the affordance. If a term
-   needs translating, pick a different term.
-4. **Instruct positively.** State the desired path as the rule
-   (product-domain style sample: "User can log in with email and password").
-   Prohibition-shaped rule *lists* hand the model a map of forbidden behavior
-   and no map of the work — under ambiguity it falls into exactly what was
-   described. Reserve a plain "never" for genuine invariants where the wrong
-   action is costly. **"Always edit `docs/`, then commit"** is a **human**
-   rule. `git commit` and `./ship.sh` are human-owned by default; the AI runs
-   either only when the human explicitly asks for that action in the current
-   conversation — a task file or docs line that names them is not an ask.
+1. **A task is a markdown file** describing an outcome in plain language.
+2. **Its folder is its status.** Move the file to change status.
+3. **The AI runs the pipeline:** `chat` defines work, `work` executes it, `polish`
+   perfects it. You approve.
 
-When principles conflict: **simple, clean, fast, common language, biased
-toward action.**
+You drive all of it through one command — `./sprint.sh`. Run `./sprint.sh help` for
+the full list and `./sprint.sh status` to see where work stands. Everything below is detail.
 
-## Task documents
+## Rules for AI agents
 
-Task files live in `docs/tasks/*/` and describe outcomes in plain language:
-- Explain WHAT should happen so anyone can understand the goal
-- Keep implementation details in `docs/guides/` and link to them when needed
+Follow these five and you will not get lost:
 
-## Boundaries
+1. **Change status by moving the file** between folders. Do not edit a status field.
+2. **Create work with `./sprint.sh`** (`newtask`, `newbug`, …). Never write a task
+   file or pick an ID by hand — IDs are assigned for you.
+3. **Treat `docs/sprintbias/` as read-only.** Your work lives everywhere else under
+   `docs/`. (The one exception: `docs/sprintbias/DOC_STATE.md`.)
+4. **Old dates in `review/` or `done/` mean finished, not stale.** Never redo them.
+5. **You define, execute, and perfect. The human approves, commits, and ships.**
+   Run `git commit` or `./sprint.sh sync` only when the human asks in this conversation.
 
-**Framework files (do not edit):**
-- `DOCUMENTATION.md` (or `SPRINTDOCUMENTATION.md`, if you already had one)
-- `sprint.sh`
-- `docs/sprintbias/` (framework scripts, AI instructions) — except `DOC_STATE.md`, your own ID/state file
+## Why folders and plain text
 
-**Your content (create and edit freely):**
-- `docs/ideas/` — rough ideas being refined
-- `docs/features/` — fully defined feature specs
-- `docs/tasks/` — your tasks
-- `docs/plans/` — your plans: named groupings that list task IDs (see below)
-- `docs/bugs/` — open bug reports (inbox only; convert or close deletes the file)
-- `docs/guides/` — your documentation. Style it per `docs/sprintbias/guides/doc-style.md`; run `docs/sprintbias/scripts/prettydoc.py <file>` to align tables
-- `docs/tests/` — your test plans
-- `docs/designs/` — design system, files, and references for the project
-- `docs/examples/` — code standards and worked examples to follow or mimic
-- `docs/data/` — data to manage, store, or build (e.g. scaffolding to preload a database)
-- `docs/sprintbias/DOC_STATE.md` — your ID and state tracking (the one file you own inside the framework folder)
+An agent reads context, reasons, converses, and decides. Encoding state as folder
+location and work as markdown plays straight to those strengths — no schema to parse,
+no jargon to translate, minimal tokens burned. That bias is the name.
 
-## AI Agents
+## Principles
 
-This file governs `docs/`. Read it before modifying any task, bug, or feature.
+1. **Lean into agent bias** — build around what AI does well: read, reason, decide.
+2. **Minimize context cost** — fewer, sharper commands. Pruning is a feature.
+3. **Name in common language** — `task`, `chat`, `work`, `plan`; if a word needs
+   translating, pick another.
+4. **Instruct positively** — state the desired path; reserve "never" for real invariants.
 
-**Rules:**
-1. `docs/` is the active project management system — not source code, not stale
-2. Tasks in `review/` and `done/` are completed work — old dates mean done, not abandoned
-3. Always read `docs/sprintbias/DOC_STATE.md` before creating tasks (get next ID)
-4. Use `./sprint.sh` commands when available — don't create task files manually
-5. Move tasks by changing folders — folder location = status.
-   Always: `git mv SRC DEST || mv SRC DEST` (see Moving Tasks)
-
-**Folder meanings:**
-| Folder | Status |
-|--------|--------|
-| `backlog/` | Planned, not started |
-| `next/` | Queued for current sprint |
-| `doing/` | Actively being worked on |
-| `blocked/` | Needs a decision or clarification before work can start — not merely waiting on another task |
-| `review/` | Done, awaiting approval |
-| `done/` | Shipped/complete |
-
-**Lexicon — blocked vs. dependent (do not conflate them):**
-
-| | **Blocked** / `**Status: BLOCKED**` | **Dependent / on hold** |
-|---|---|---|
-| **Means** | A **decision or clarification** must be made about *this* task before anyone can work it | Fully clear and workable; sequentially waiting on another task |
-| **Cause** | Unresolved choice, open question, contradiction, or missing clarification *on this task* | A prerequisite task has not finished yet |
-| **Where it lives** | `blocked/` folder | Stays in `next/` (or wherever it was); no folder move |
-| **How `work` treats it** | Never runs it (it is not READY in the queue) | Holds it until every `**Depends on**` prerequisite reaches `review/` or `done/`, then releases it |
-| **How you fix it** | Answer each open question (`chat <id>`), write the answer as instruction in the task body, delete the question, then re-enter through the gate | Finish the prerequisite — or record the edge if it was missing |
-
-The software analogy: you would not say an app is *blocked by* a Python module. You would say it **depends on** that module and **requires** it to be installed. Same here — a task that lists `**Depends on**: 42` is **dependent** (on hold until 42 lands), not blocked. A whole chain of dependent tasks has *zero* blocked tasks even when only one can start right now.
-
-**Task dependency fields** (graph edges, not lifecycle status):
-- **`Depends on`** — prerequisite task IDs that must finish before this one can start.
-- **`Dependents`** — the reverse edge: task IDs that wait on *this* one. Graph metadata only — it does **not** put those tasks in `blocked/`, and it does not mean this task is blocked. (Older files may say **Blocks**; readers still accept that alias.)
-- **`Plan`** — which `docs/plans/N-…` this task belongs to (`none` or the plan id). Reverse index; the plan file remains the membership list.
-- **`Tests`** — suite scripts under `docs/tests/` that prove the success criteria. `./sprint.sh promote` runs them and, all green, moves `review/ → done/`. `none` means a human signs off. Product test loops (`newtest`) are not this field. (Legacy alias: **Proven by**.)
-
-Reserve **blocked** / **BLOCKED** for “a decision or clarification is needed.” For sequencing, say **depends on**, **dependent**, **on hold**, or **waiting on**.
-
-**COMPLETE vs. `done/` — don't conflate them either:**
-- **COMPLETE** is a *workability verdict* (gate, plan start, folder sweep, drift check): the work is already present in the codebase. The stamp is `**Status: COMPLETE**` under `## Questions` (or a sweep status line). Routing is to **`review/`** for human approval — never a silent leap into `done/`.
-- **Open questions** live under `### Questions for the developer`. Flow: ask → answer → convert the answer into instruction in Problem / Success criteria / Notes → delete the question. READY and promotion into `next/` need a clear list (`None — task is fully defined.`).
-- **`docs/tasks/done/`** is a *lifecycle folder*: you (or an explicit move) put the task there after approving review. Folder location is status; COMPLETE is not a folder name and is not written as a plan status.
-- The one **automated** `review/ → done/` move is `./sprint.sh promote`: a task with **Tests** naming suite scripts that all run green closes itself; work with `none` stays in `review/` for a human. That is how a plan whose tasks are all suite-backed reaches "every member in `done/`" without hand-moves, ready for `./sprint.sh plan done <id>`.
-- For work **without** an automated suite, `./sprint.sh promote --audit` offers an AI *acceptance* judge instead: it reads each `review/` task's **Success criteria** and rules `DONE` / `NOT-DONE`. It reports and moves nothing by default; `--audit --move` closes the DONE ones. Opt-in on purpose — it crosses the default's "never guess" line by trusting an AI sign-off, and the **Depends on** hold still applies. This is a distinct question from `polish` (excellence — worth another pass?) and from default `promote` (correctness — do the Tests pass?).
-- **Dependency edge, one lifecycle.** The same **Depends on** edge gates entry, run, and close: **`Depends on` gates `plan start`** (a member does not enter `next/` until every prerequisite is already in the sprint (`next/`/`doing/`), finished (`review/`/`done/`), or co-promoted in that start — a dep still in `backlog/` or `blocked/` makes the dependent unworkable), **`Depends on` gates `work`** (a task does not *run* until every prerequisite reaches `review/`/`done/`), and **`Tests` gates `promote`** (a task does not *close* until its suite scripts pass **and** its prerequisites are already closed). So `promote` closes in dependency order — a `review/` task whose prerequisite is still open is *held* (not moved), named with its stage, and released automatically on a later run once that prerequisite closes. A dependent never lands in `done/` ahead of the work it needs. `./sprint.sh validate` mirrors this on the close side with a report-only **Tests**-field check, so a **Tests** path that is a typo, missing, or outside `docs/tests/` is named loudly instead of stranding a task in `review/` forever.
-
-**Plans vs. the folders above — don't conflate them either:**
-- The six folders above are **lifecycle status**: a task lives in exactly one, and moving it *is* how status changes.
-- A **plan** (`docs/plans/N-name.md`) is a **relational index, not a status.** It is one file that names a clump of related tasks and lists their IDs. The member tasks are **never moved into it** — each stays in its own lifecycle folder and flows through `backlog → next → …` on its own. A plan is never a lifecycle stage and is never counted or moved as a task; it carries a `**Status:** DRAFT | READY | STARTED` for its own life: `DRAFT` while authoring, `READY` once authored and safe for `plan start` / `loop --refill`, and `STARTED` — a one-way switch set by `plan start` — once its members have been committed to `next/`. Retirement is deletion: when every member sits in `docs/tasks/done/`, `./sprint.sh plan done <id>` removes the file. There is no stored `DONE` and no `NEXT` plan status. Two disambiguations: a plan `**Status:**` is **not** a task folder (`next/` is a lifecycle stage; `STARTED` is a plan field), and plan-level `READY` is **not** the task-level `**Status: READY**` the gate stamps on each member. `docs/plans/` is a sibling of `docs/tasks/`, not a stage inside it.
-- Member IDs are references only: moving or working a member task needs no edit to the plan file. Author with `./sprint.sh newplan` / `./sprint.sh chat plan <id>`; optionally improve + align with `./sprint.sh plan think <id>` (edits the plan and its member tasks in place); commit into the sprint with `./sprint.sh plan start <id>` (gates every **workable** listed member — deps must be in the sprint or co-promoted; no hard size cap; soft warning over 10 members; READY → `next/`). Single-task promote uses the same gate: `bash docs/sprintbias/scripts/promote-to-sprint.sh <task-file>`. The plan file itself never moves. `./sprint.sh status` rolls up each plan by resolving its members' current folders.
-
-**Do not assume** old file dates mean abandoned. A task from months ago in `done/` is completed history.
-
----
+Tie-breaker: **simple, clean, fast, common language, biased toward action.**
 
 ## Structure
 
 ```
 docs/
-├── sprintbias/             # FRAMEWORK (do not edit)
-│   ├── scripts/        # sprint.sh, create-task.sh, etc.
-│   ├── ai/             # AI instructions
-│   └── DOC_STATE.md    # Project state (ID tracking)
-├── ideas/              # Rough ideas being refined
-├── features/           # Fully defined feature specs
-├── tasks/              # Your work items
-│   ├── backlog/        # Planned
-│   ├── next/           # Sprint queue
-│   ├── doing/          # In progress
-│   ├── blocked/        # Needs decision or clarification (not a dependency wait)
-│   ├── review/         # Awaiting approval
-│   └── done/           # Complete
-├── plans/              # Named groupings that LIST task IDs (relational index, not a stage)
-├── bugs/               # Open bug reports (inbox; handled reports are deleted)
-├── guides/             # Your documentation
-├── tests/              # Your test plans
-├── designs/            # Design system, files, references
-├── examples/           # Code standards & worked examples to mimic
-├── data/               # Data to manage, store, or preload
-└── tmp/                # Scratch workspace (gitignored)
+├── sprintbias/          # FRAMEWORK — do not edit (except DOC_STATE.md)
+│   ├── scripts/         # the commands
+│   ├── ai/              # AI instructions
+│   ├── guides/          # framework guides (doc-style, sprint alias, chat)
+│   ├── help/            # per-command help pages
+│   └── DOC_STATE.md     # ID counters + state (the one framework file you own)
+├── ideas/               # rough concepts being refined
+├── features/            # fully defined specs
+├── tasks/{backlog,next,doing,blocked,review,done}/   # work — folder = status
+├── plans/               # named lists of task IDs (an index, not a stage)
+├── bugs/                # open bug reports (inbox; handled reports are deleted)
+├── guides/  tests/  designs/  examples/  data/       # your content
+└── tmp/                 # scratch (gitignored)
 ```
 
-## Creating Work
+**Yours to edit freely:** everything under `docs/` except `docs/sprintbias/`
+(and `DOCUMENTATION.md` / `sprint.sh`). **Framework, do not edit:** those.
 
-| What | When | Command |
-|------|------|---------|
-| **Idea** | Rough concept, needs refinement | `./sprint.sh newidea "User notifications"` or `./sprint.sh newidea` (AI Q&A) |
-| **Feature** | Defined capability to build | `./sprint.sh newfeature "User auth"` or `./sprint.sh newfeature` (AI Q&A) |
-| **Task** | Specific work item | `./sprint.sh newtask "Add login button"` |
-| **Plan** | Group related tasks under one goal | `./sprint.sh newplan "Checkout revamp" 12 13 14` |
-| **Bug** | Something broken | `./sprint.sh newbug "Login fails on mobile"` |
-| **Test** | Validate a deployed thing, then route what you learn into new work | `./sprint.sh newtest "Signup converts visitors"` |
+## Folders = status
 
-Each command creates a file with inline guidance. Fill in the sections, then commit.
+| Folder | Meaning |
+|--------|---------|
+| `backlog/` | planned, not started |
+| `next/` | queued for the current sprint |
+| `doing/` | actively worked |
+| `blocked/` | a **decision or question** must be answered *on this task* first |
+| `review/` | done, awaiting your approval |
+| `done/` | complete |
 
-**IDs are assigned for you.** `newtask` (and `newbug`, `newidea`, `newfeature`,
-`newplan`) takes the next sequential number from `DOC_STATE.md`, names the file,
-and advances the counter — you never pick or edit a task number by hand. That is
-also why the ID is not something to track inside a task's body: the filename
-carries it, its lifecycle folder carries status, and git history carries the
-rest. Always mint work with these commands rather than creating files manually,
-so the numbering stays consistent.
+## Distinctions that trip up agents
+
+- **blocked ≠ dependent.** *Blocked* = an open question about *this* task (lives in
+  `blocked/`; fix by answering, then re-gate). *Dependent* = clear but waiting on
+  another task via `Depends on` (stays where it is — no move). A chain of dependent
+  tasks has zero blocked tasks.
+- **plan ≠ folder.** A plan (`docs/plans/N-name.md`) is one file listing related
+  task IDs. Members never move into it — each flows through its own lifecycle folder.
+  A plan carries `DRAFT → READY → STARTED`; delete it (`plan done`) once every member
+  is in `done/`.
+- **COMPLETE ≠ done/.** COMPLETE is a verdict ("already built in the code") and routes
+  to `review/` for your sign-off — never a silent jump to `done/`. `done/` is where
+  *you* (or `promote`) move an approved task.
+
+**Task fields** (metadata, not status):
+
+- `Depends on` — prerequisite IDs. Gates `plan start` (entry), `work` (run), and
+  `promote` (close), so work happens and closes in dependency order.
+- `Dependents` — reverse edge; graph info only, does not block anything.
+- `Plan` — which plan this belongs to (`none` or an id).
+- `Tests` — suite scripts under `docs/tests/` that prove success. `promote` runs them;
+  all green → `done/`. `none` means a human signs off.
+
+## The pipeline
+
+Work flows one direction: **backlog → next → doing → review → done**. Follow one
+task the whole way:
+
+```bash
+./sprint.sh newtask "Add a login button"   # → backlog/12-add-login.md
+./sprint.sh chat 12                         # define it, then commit it to the sprint → next/
+./sprint.sh work                            # the AI builds it → review/
+./sprint.sh promote                         # Tests pass → done/ (no Tests: you approve the move)
+```
+
+Tasks enter `next/` **only through the gate** — `chat`'s commit-to-sprint, `plan
+start`, or `gate` — never a raw `mv`. That gate is what keeps `next/` trustworthy.
+
+For grouped work, use the spine **`chat → plan start → work → polish`**: gather tasks
+into a plan, `plan start` commits them all at once, `loop` runs it on autopilot.
 
 ## Commands
 
-Happy path (spine): **`chat → plan start → work → polish`**. `loop` runs that spine on autopilot. `gate` and `split` are off-spine; `polish` is after work. The task *noun* (`docs/tasks/`, `newtask`) stays; the execute *verb* is `work`.
-
-Help groups: **create · chat · plan · work · look · keep**.
-
-> Tired of typing `./sprint.sh`? Add `alias sprint='./sprint.sh'` to your shell
-> rc to use `sprint <command>` from a project root (`sprint -g work`,
-> `sprint -c chat 12`). `setup.sh` offers this on install; see
-> `docs/sprintbias/guides/sprint_command.md` for details and a subdirectory-aware
-> variant. Run `./sprint.sh` or `bash sprint.sh` — do not force `sh`/`zsh` on
-> the script (any interactive shell is fine as the launcher).
+One line each. For flags and detail: `./sprint.sh help <cmd>` (or `<cmd> --help`).
+Groups: **create · chat · plan · work · look · keep**.
 
 ```bash
-# Creating work
-./sprint.sh newidea "My rough idea"   # Create idea (quick template)
-./sprint.sh newidea                   # Create idea (AI Q&A — eight phases)
-./sprint.sh newfeature "Name"         # Create feature (quick)
-./sprint.sh newfeature                # Create feature (AI Q&A)
-./sprint.sh newtask "Description"     # Create task
-./sprint.sh newplan "Name" [ids]      # Create a plan — a named list of task IDs
-./sprint.sh newbug "Description"      # Report a bug
-./sprint.sh newtest "Name"            # Create a test loop to validate a deployed thing
+# create — IDs are assigned for you; never make task files by hand
+./sprint.sh newidea "..."       # idea (no name = AI Q&A)
+./sprint.sh newfeature "..."    # feature (no name = AI Q&A)
+./sprint.sh newtask "..."       # task
+./sprint.sh newplan "Name" [ids]# plan — a named list of task IDs
+./sprint.sh newbug "..."        # bug report
+./sprint.sh newtest "Name"      # test loop for a deployed thing
 
-# Create a plan (author intent — group related tasks under one goal)
-./sprint.sh newplan "Name" [ids]      # 1. Scaffold the plan file (Status: DRAFT)
-./sprint.sh chat plan [id]            # 2. Author it in conversation — reads backlog/ read-only,
-                                      #    records member IDs + goal, flips DRAFT → READY on confirm.
-                                      #    (chat backlog mutates task files; chat plan only records IDs.)
-./sprint.sh plan think [id] [--model] # 3. Optional: improve the plan + align its member tasks to it
-./sprint.sh plan start [id] [--model] # 4. Commit the plan's members into next/ — latches Status: STARTED
-./sprint.sh plan check [id]           #    Anytime: read-only health report (plan state / lifecycle / definition; no AI, no moves)
-./sprint.sh plan polish [id] [--model]# 5. Optional: excellence-judge the plan's finished work (review/ + done/)
-./sprint.sh plan done [id]            # 6. Retire: when every member is in done/, delete the plan file
+# chat — the conversational engine
+./sprint.sh chat [target]       # id: one task · folder: sweep · plan [id]: author · bugs: inbox · none: sprint health
 
-# Chat & Work (AI-powered — emit inside Claude/Grok/Cursor sessions, or exec via CLI)
-# Per-run provider (leading flags; does not rewrite docs/sprintbias/config):
-./sprint.sh -g work                   # This run: Grok Build  (-c / --claude for Claude Code)
-./sprint.sh --claude chat 12          # This run: Claude Code (same as -c)
-./sprint.sh profile [show]            # Create/update project profile (show: print only, no AI)
-./sprint.sh chat [target] [--model]   # id: task · folder: sweep · plan [id]: author a plan · bugs: inbox · nothing: sprint health
-./sprint.sh work [N] [count N] [--fast] [--model] # Execute READY tasks from next/ — `work N` works one task by id; `count N` caps how many run (--force skips the gate; --audit --excellence chain quality audits)
-./sprint.sh loop [--refill] [--retry] # Autopilot — plan start (gates as it commits) then work, drain the queue
-./sprint.sh gate [folder] [limit] [--model] # Off-spine quality gate: re-gate next/ (--force) or report on backlog/doing/blocked
-./sprint.sh settle [id] [--dry-run]   # Accept (Suggestion: …) open questions — fold into Notes, clear list; demote next/ that still need a human
-./sprint.sh split <path>              # Split a large task into subtasks
-./sprint.sh polish [limit] [--rounds N] [--model] # Sweep review/: reopen tasks worth another pass
-./sprint.sh polish <id|file>          # Deep-judge one finished task (by id or path); files enhancements to backlog/ (warm-routes the vital-few act-now findings to next/ via the gate, capped 1–2), verdict FILED — n (x → next/, y → backlog/); stamps correctness: (audited/unverified/failed) + code state: (content hash of the audited files) — a re-run skips while that hash still matches, else re-judges automatically and replaces the section in place; --force always re-judges
-./sprint.sh polish --code <id|file>   # Code-diff audit (fixer/verifier); may fix issues inline
-./sprint.sh promote [id] [--dry-run]  # Test-gated close: run each review/ task's **Tests**, all green → done/
-./sprint.sh promote --audit [--move]  # AI acceptance judge: rule DONE/NOT-DONE on Success criteria; --move closes DONE → done/
-./sprint.sh deps                      # File a backlog task auditing outdated/vulnerable deps
+# plan — group and commit related tasks
+./sprint.sh plan think 5        # improve the plan + align its member tasks
+./sprint.sh plan start 5        # gate + commit members into next/ (latches STARTED)
+./sprint.sh plan check 5        # read-only health report (no AI, no moves)
+./sprint.sh plan polish 5       # excellence-judge the plan's finished work
+./sprint.sh plan done 5         # retire the plan once every member is in done/
 
-# Look (read-only — surface state, no mutation)
-./sprint.sh status                    # View project status
-./sprint.sh align                     # Analyze feature alignment
-./sprint.sh context                   # Generate AI context summary
-./sprint.sh search <keyword>          # Search tasks by keyword
-./sprint.sh learn [demo]              # Watch the flow run (no name lists them; example = 20 seconds)
+# work — execute and finish
+./sprint.sh work [N]            # run READY tasks (work N = one by id; count N caps how many)
+./sprint.sh loop                # autopilot: plan start refill, then drain next/
+./sprint.sh gate [folder]       # off-spine quality gate: re-gate next/ or report elsewhere
+./sprint.sh settle [id]         # accept "Suggestion:" answers; demote next/ still needing a human
+./sprint.sh split <path>        # split a large task into subtasks
+./sprint.sh polish [id]         # sweep review/, deep-judge a task, or --code audit
+./sprint.sh promote [id]        # close review/ → done/ (runs Tests; --audit = AI acceptance judge)
 
-# Keep — sync
-./sprint.sh sync [--all]              # Push task changes to GitHub
+# look — read-only
+./sprint.sh status              # project status
+./sprint.sh search <keyword>    # search tasks
+./sprint.sh learn [demo]        # watch the flow run (no name lists demos)
+./sprint.sh align               # feature alignment
+./sprint.sh context             # AI context summary
 
-# Keep — maintenance
-./sprint.sh validate [--fix] [--dry-run]  # Integrity-check task IDs + deps (--docs: help/ flag drift; --commands: catalog completeness)
-./sprint.sh cleanup [--force]         # Clean stale files from docs/tmp/ (prompts; --force skips it)
-./sprint.sh config                    # Interactive: set AI provider + default model (no AI)
-./sprint.sh model show/list/set [k v] # See/list/set the AI model per role (no AI)
-                                      #   pin one run: work/chat/gate/polish/plan --model <id>
-./sprint.sh help                      # Show all commands
+# keep — config & maintenance
+./sprint.sh profile             # create/update project profile (show = print only)
+./sprint.sh sync                # push task changes to GitHub
+./sprint.sh validate            # integrity-check IDs + deps (--docs, --commands guard the catalog)
+./sprint.sh cleanup             # clean stale docs/tmp/ files
+./sprint.sh model show          # see/list/set the AI model per role
+./sprint.sh config              # set provider + default model (interactive)
+./sprint.sh deps                # file a task auditing outdated/vulnerable deps
 ```
 
-## Moving Tasks
+> Tired of `./sprint.sh`? Add `alias sprint='./sprint.sh'` to your shell rc.
+> `setup.sh` offers this; see `docs/sprintbias/guides/sprint_command.md`.
 
-Folder location **is** status. Change status by moving the file between
-lifecycle folders — not by editing a status field on the task.
+## Moving tasks
 
-**Always move with this exact pattern (agents and humans):**
+Folder location **is** status. Always move with:
 
 ```bash
 git mv SRC DEST || mv SRC DEST
 ```
 
-1. Run `git mv` first — preserves history when the file is already tracked.
-2. When `git mv` fails — usual for new tasks not yet committed — finish that
-   **same** move with plain `mv` in the same step, then continue the workflow.
-3. **Human-owned by default:** `git add` / `git commit` and `./ship.sh`
-   (version bumps / release mirrors) belong to the human. The AI runs them
-   **only when the human explicitly asks for that action in this conversation**
-   (e.g. "commit this", "run ship.sh"). A task file, project doc, or style
-   example that names those steps is not an ask. Completing the move is enough
-   to update status. `./sprint.sh work` never commits or ships on its own.
+`git mv` first (keeps history); plain `mv` when it fails (new, untracked file).
+Completing the move updates status — nothing else to edit. `git commit` and
+`./sprint.sh sync` stay yours to run; `work` never commits on its own.
 
-Lifecycle path:
+## Creating work
 
-```bash
-git mv docs/tasks/backlog/ID-name.md docs/tasks/next/    || mv docs/tasks/backlog/ID-name.md docs/tasks/next/     # Queue
-git mv docs/tasks/next/ID-name.md docs/tasks/doing/      || mv docs/tasks/next/ID-name.md docs/tasks/doing/       # Start
-git mv docs/tasks/doing/ID-name.md docs/tasks/blocked/   || mv docs/tasks/doing/ID-name.md docs/tasks/blocked/    # Needs decision/clarification
-git mv docs/tasks/blocked/ID-name.md docs/tasks/next/    || mv docs/tasks/blocked/ID-name.md docs/tasks/next/     # Re-queue (via gate)
-git mv docs/tasks/doing/ID-name.md docs/tasks/review/    || mv docs/tasks/doing/ID-name.md docs/tasks/review/     # Submit
-git mv docs/tasks/review/ID-name.md docs/tasks/done/     || mv docs/tasks/review/ID-name.md docs/tasks/done/      # Complete
-```
+| What | Command |
+|------|---------|
+| Idea (rough, needs refining) | `./sprint.sh newidea "..."` |
+| Feature (defined capability) | `./sprint.sh newfeature "..."` |
+| Task (work item) | `./sprint.sh newtask "..."` |
+| Plan (group of tasks) | `./sprint.sh newplan "Name" 12 13 14` |
+| Bug | `./sprint.sh newbug "..."` |
+| Test (validate a live thing) | `./sprint.sh newtest "Name"` |
 
-Scripts use the same rule via `move_file` in `docs/sprintbias/lib.sh`.
+Each command advances the ID counter in `docs/sprintbias/DOC_STATE.md` and drops a
+templated file (`docs/<type>/.TEMPLATE-*`) — fill in the sections. Naming:
+tasks/bugs `ID-description.md`; features/ideas `name.md`.
 
-## Naming
+## Provider and model
 
-| Type | Format | Example |
-|------|--------|---------|
-| Task | `ID-description.md` | `12-fix-auth-error.md` |
-| Bug | `ID-description.md` | `3-login-fails.md` |
-| Feature/Idea | `name.md` | `user-authentication.md` |
-
-IDs come from `docs/sprintbias/DOC_STATE.md` (sprint_TASK_ID for tasks, sprint_BUG_ID for bugs).
-
-## Key Concepts
-
-**Ideas** = Rough concepts being refined. Start here when unclear.
-**Features** = Fully defined specs. What capabilities exist.
-**Tasks** = Work items. Move through folders as status changes.
-**Plans** = Named groupings that list task IDs. A relational index over tasks, not a status or container — the tasks stay in their own folders.
-**DOC_STATE.md** = Source of truth for IDs (`docs/sprintbias/DOC_STATE.md`: `sprint_TASK_ID`, `sprint_BUG_ID`, `sprint_PLAN_ID`).
-
-## Ideas Workflow
-
-When you have a rough idea but haven't thought it through:
+Your CLI, provider, and per-role models live in `docs/sprintbias/config`.
 
 ```bash
-./sprint.sh newidea "User notifications"
+./sprint.sh config              # pick provider (Claude Code / Grok Build) + default model
+./sprint.sh model set work claude-opus-4-8   # pin a model for one role
+./sprint.sh -g work             # one run on Grok (-c / --claude for Claude Code)
 ```
 
-This creates `docs/ideas/user-notifications.md` with a guided refinement process:
-1. **Phase 1:** Define the problem (who has it, why it matters)
-2. **Phase 2:** Write in plain English (no jargon)
-3. **Phase 3:** List what it does (concrete capabilities)
-4. **Phase 4:** Surface open questions
+For a personal override that never ships or commits, put the same `KEY=VALUE` lines
+in `docs/sprintbias/config.local` (gitignored). Precedence, highest first:
+env var → per-run flag → `config.local` → `config` → tier default.
 
-Work through it manually, or ask an AI agent to guide you.
-
-## Templates
-
-Use templates in each folder:
-- `docs/ideas/.TEMPLATE-idea.md`
-- `docs/tasks/.TEMPLATE-task.md`
-- `docs/plans/.TEMPLATE-plan.md`
-- `docs/features/.TEMPLATE-feature.md`
-- `docs/bugs/.TEMPLATE-bug.md`
-- `docs/tests/.TEMPLATE-test.md`
-
-## Choosing your AI provider and model
-
-Your provider and per-command models live in `docs/sprintbias/config`
-(`CLI=`, `PROVIDER=`, `MODEL_DEFAULT=`, `MODEL_<ROLE>=`). The quickest way to
-set them is the interactive wizard:
-
-```bash
-./sprint.sh config     # pick provider (Claude Code / Grok Build) + default model
-```
-
-You can also edit the file directly or use `./sprint.sh model set <role>
-<model>` for a single command. These choices are semi-permanent: they persist
-across updates until you change them.
-
-**Pin a specific model** (e.g. an older, steadier release) instead of the
-floating tier default. On Claude Code the empty default resolves to the `opus`
-alias, which the CLI expands to the *latest* Opus; set an explicit id to hold a
-version:
-
-```bash
-./sprint.sh model set default claude-opus-4-8   # every command
-./sprint.sh model set work claude-opus-4-8       # just `work`
-./sprint.sh model show                           # see the effective model per role
-```
-
-### Local config overlay (`config.local`)
-
-For a personal, semi-permanent override that **never ships and is never
-committed**, create `docs/sprintbias/config.local` — same `KEY=VALUE` format as
-`config`. Any key there wins over `config`; setting a key empty (`KEY=`) clears
-`config`'s value locally. It is gitignored, so your pin never lands in the repo
-or (in the SprintBias source tree) in the distribution.
-
-```bash
-# docs/sprintbias/config.local
-CLI=grok                       # use Grok for your runs
-MODEL_DEFAULT=claude-opus-4-8  # pin a steadier model for yourself
-```
-
-Precedence, highest first: environment variable
-(`SPRINTBIAS_MODEL_<ROLE>` / `SPRINTBIAS_CLI` …) → per-run flag
-(`--model <id>`, `-c` / `-g`) → `config.local` → `config` → tier default. Use
-env vars or per-run flags for a single shell or invocation; use `config.local`
-for a machine-local default that sticks.
-
-## Installing SprintBias
+## Installing
 
 Website: [sprintbias.com](https://sprintbias.com) · Source: [github.com/jnun/sprintbias](https://github.com/jnun/sprintbias)
 
-From a clone of this repo (or the one-liner installer), `./setup.sh` installs
-SprintBias **into your project** — not into this repository.
+From a clone (or the curl one-liner), `./setup.sh` installs SprintBias **into your
+project**. One question — Claude Code `[Enter]` or Grok Build `[g]` — then the same
+scaffold either way: `GETSTARTED.md`, short `CLAUDE.md`/`AGENTS.md` pointers, this
+manual, `.gitignore` entries, a `README.md` pointer, and empty starter folders.
 
-### Two doors
+**Your files stay yours.** Files SprintBias owns carry a version marker and are only
+overwritten when ours is present and older. Files without our marker are yours — we
+prepend a small pointer block or skip; `More options?` offers Prepend/Overwrite plus
+GitHub sync and Cursor/Windsurf/Copilot dotfiles.
 
-One question at the start:
-
-| Choice | Runtime |
-|--------|---------|
-| **[Enter]** | Claude Code (`CLI=claude`, `PROVIDER=claude-code`) |
-| **[g]** | Grok Build (`CLI=grok`, `PROVIDER=grok-build`) |
-
-Both doors run the **same** file scaffold. The only difference is the AI CLI
-written into `docs/sprintbias/config`. Change it later by editing that file or
-using `./sprint.sh -c` / `-g` for a single run.
-
-### Silent scaffold (Easy Button)
-
-On the default path (accept defaults after the door), setup asks **no**
-AI-file questions. It ensures, in order:
-
-1. `GETSTARTED.md` (this quick start)
-2. `CLAUDE.md` and `AGENTS.md` (short pointers at this manual)
-3. This manual as `DOCUMENTATION.md` — or as **`SPRINTDOCUMENTATION.md`** if
-   you already own a non-SprintBias `DOCUMENTATION.md`
-4. `.gitignore` entries SprintBias needs
-5. `README.md` — created with a one-line pointer at this manual when you have
-   no README; when you already own one, our small block is prepended above your
-   text
-
-Missing files are created. Files we already installed are upgraded when our
-version marker is older. A re-run at the **same** version is a no-op on those
-files.
-
-### Your files stay yours
-
-Scaffold files we fully own carry a version stamp
-(`<!-- SprintBias vX.Y.Z -->` in Markdown, `# SprintBias vX.Y.Z` in
-`.gitignore`). **We only overwrite whole files we can prove are ours** (marker
-present and older). If a file exists without our marker, it is yours: we
-prepend our small block or skip — never blind-clobber on the default path.
-Under `More options?`, conflicted pointer files offer **Prepend** (Enter) or
-**Overwrite** (`o`); Overwrite is the only deliberate path that replaces a
-user-owned file.
-
-A `README.md` you already own is deferred the same way `CLAUDE.md` and
-`AGENTS.md` are: the default path silently prepends our pointer block above
-your text, and `More options?` offers **Prepend** or **Overwrite** for it.
-
-### More options?
-
-After the batch: `More options? [y/N]` (Enter = No). Yes can include:
-
-- Per-file Prepend / Overwrite for user-owned scaffold files (when any)
-- **GitHub Issues sync** (workflows + issue/PR templates)
-- **Add all AI instructions** (Cursor / Windsurf / Copilot dotfiles)
-
-Those stay opt-in so the first run stays one or two keystrokes.
-
-### Updating an install
-
-Re-run setup from the SprintBias repo (or the curl installer). Same path is
-how you upgrade framework files **and** how you turn on anything still behind
-`More options?`.
-
-```bash
-cd /path/to/sprintbias
-git pull
-./setup.sh
-# Enter your project path when prompted
-```
-
-Or from your project:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jnun/sprintbias/main/install.sh | bash
-```
-
-Your `DOC_STATE.md` counters (task IDs, bug IDs, plan IDs) are preserved, and
-lifted if files on disk already use a higher ID. Retired framework files from
-an earlier docs system (old launcher, old framework folder, undotted templates)
-are removed; your tasks, features, bugs, and ideas stay.
+**Update** by re-running `./setup.sh` (or `curl -fsSL
+https://raw.githubusercontent.com/jnun/sprintbias/main/install.sh | bash`). Your ID
+counters are preserved; retired framework files are cleaned; your work is untouched.
 
 ---
 

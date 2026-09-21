@@ -311,10 +311,21 @@ When every task is judged, report a one-line summary: how many $_summary_tail."
       --max-turns "$MAX_TURNS" \
       --output-format json > "$LOG_FILE" 2>/dev/null || true
 
-    VERDICT=$(sprintbias_parse_verdict 'DONE|NOT-DONE' < "$LOG_FILE")
+    # One read of the run: outcome + the text to grep a verdict from. A judge
+    # that aborted (max-turns / never started) produced no verdict for a very
+    # different reason than one that answered oddly — say which, and leave the
+    # task in review/ rather than blaming the verdict parse.
+    sprintbias_interpret_run "$LOG_FILE"
+    if [ "$SPRINTBIAS_RUN_OUTCOME" != "finished" ]; then
+      A_UNCLEAR=$((A_UNCLEAR + 1))
+      echo "  ⚠ #$id  judge did not finish — $(sprintbias_run_hint "$SPRINTBIAS_RUN_OUTCOME"). Left in review/. See $LOG_FILE"
+      continue
+    fi
+
+    VERDICT=$(printf '%s' "$SPRINTBIAS_RUN_VERDICT_TEXT" | sprintbias_parse_verdict 'DONE|NOT-DONE')
     # NOT-DONE contains DONE as a substring — parse_verdict returns the first
     # token it matched, so guard the order explicitly.
-    if grep -qiE 'VERDICT:[[:space:]]*NOT-DONE' "$LOG_FILE" 2>/dev/null; then
+    if printf '%s' "$SPRINTBIAS_RUN_VERDICT_TEXT" | grep -qiE 'VERDICT:[[:space:]]*NOT-DONE'; then
       VERDICT="NOT-DONE"
     fi
 
@@ -339,16 +350,12 @@ EOF
     elif [ "$VERDICT" = "NOT-DONE" ]; then
       # Strip through "NOT-DONE" then any leading punctuation/space (an em-dash is
       # multibyte, so drop non-alphanumeric leading bytes rather than match it).
-      reason=$(grep -iE 'VERDICT:[[:space:]]*NOT-DONE' "$LOG_FILE" 2>/dev/null | head -1 | sed 's/.*NOT-DONE//; s/^[^[:alnum:]]*//')
+      reason=$(printf '%s' "$SPRINTBIAS_RUN_VERDICT_TEXT" | grep -iE 'VERDICT:[[:space:]]*NOT-DONE' | head -1 | sed 's/.*NOT-DONE//; s/^[^[:alnum:]]*//')
       echo "  ○ #$id  NOT-DONE — stays in review/${reason:+: $reason}"
       A_NOTDONE=$((A_NOTDONE + 1))
     else
       A_UNCLEAR=$((A_UNCLEAR + 1))
-      if _re=$(sprintbias_run_error "$LOG_FILE"); then
-        echo "  ⚠ #$id  judge did not finish — $_re. Left in review/. See $LOG_FILE"
-      else
-        echo "  ? #$id  judge finished with no VERDICT token — left in review/. See $LOG_FILE"
-      fi
+      echo "  ? #$id  judge finished with no VERDICT token — left in review/. See $LOG_FILE"
     fi
   done
 

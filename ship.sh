@@ -206,6 +206,42 @@ bump_version() {
     printf '%s.%s.%s' "$major" "$minor" "$patch"
 }
 
+# ── Changelog helper ─────────────────────────────────────────────────
+# CHANGELOG.md is repo-only (never mirrored into src/). On a real bump we roll
+# its top "## Unreleased" section into "## <new-version> — <date>" and open a
+# fresh empty Unreleased above it — the Keep-a-Changelog flow. An empty
+# Unreleased is a warning, not a failure: ship stays biased toward action.
+# awk-only, so ship.sh gains no new dependency.
+changelog_has_unreleased() { grep -qE '^## +Unreleased[[:space:]]*$' "$1"; }
+
+roll_changelog() {
+    local new_ver="$1" changelog="CHANGELOG.md" date_str body tmp
+    [ -f "$changelog" ] || { echo -e "  ${YELLOW}(no CHANGELOG.md — skipping notes roll)${NC}"; return 0; }
+    if ! changelog_has_unreleased "$changelog"; then
+        echo -e "  ${YELLOW}CHANGELOG: no '## Unreleased' section — leaving CHANGELOG.md untouched.${NC}"
+        return 0
+    fi
+    date_str="$(date +%Y-%m-%d)"
+    # Body of the Unreleased section = lines between its heading and the next '## '.
+    body="$(awk '
+        /^## +Unreleased[[:space:]]*$/ {inu=1; next}
+        inu && /^## / {inu=0}
+        inu {print}
+    ' "$changelog")"
+    # "Real" content is any non-blank line that is not an HTML comment marker.
+    if ! printf '%s\n' "$body" | grep -qvE '^[[:space:]]*($|<!--|-->)'; then
+        echo -e "  ${YELLOW}CHANGELOG: '## Unreleased' has no entries — v$new_ver ships with an empty changelog section. Add notes before committing.${NC}"
+    fi
+    tmp="$(mktemp)"
+    awk -v ver="$new_ver" -v d="$date_str" '
+        /^## +Unreleased[[:space:]]*$/ && !done {
+            print "## Unreleased"; print ""; print "## " ver " — " d; done=1; next
+        }
+        {print}
+    ' "$changelog" > "$tmp" && mv "$tmp" "$changelog"
+    echo -e "  ${BLUE}▸ CHANGELOG:${NC} rolled ## Unreleased -> ## $new_ver — $date_str"
+}
+
 # ── Preflight: must be the SprintBias dev root ─────────────────────────
 for required in "setup.sh" "src" "docs/sprintbias" "src/VERSION"; do
     if [ ! -e "$required" ]; then
@@ -301,6 +337,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
     CUR="$(cat src/VERSION)"
     if [ "$NO_BUMP" -eq 0 ]; then
         echo -e "${BLUE}▸ Version:${NC} $CUR -> $(bump_version "$CUR" "$BUMP" 2>/dev/null || echo '?')"
+        if [ -f CHANGELOG.md ] && changelog_has_unreleased CHANGELOG.md; then
+            echo -e "${BLUE}▸ CHANGELOG:${NC} would roll ## Unreleased -> ## $(bump_version "$CUR" "$BUMP" 2>/dev/null || echo '?') — $(date +%Y-%m-%d)"
+        else
+            echo -e "${YELLOW}▸ CHANGELOG:${NC} no '## Unreleased' section — would leave CHANGELOG.md untouched"
+        fi
     fi
     echo -e "${YELLOW}Dry run complete. Re-run without --dry-run to apply.${NC}"
     exit 0
@@ -426,6 +467,7 @@ else
     NEW_VERSION="$(bump_version "$CUR_VERSION" "$BUMP")"
     printf '%s' "$NEW_VERSION" > src/VERSION
     echo -e "${BLUE}▸ Version:${NC} $CUR_VERSION -> ${GREEN}$NEW_VERSION${NC} ($BUMP)"
+    roll_changelog "$NEW_VERSION"
 fi
 echo ""
 

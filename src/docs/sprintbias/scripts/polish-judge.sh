@@ -336,7 +336,7 @@ fi
 VERDICT=$(printf '%s' "$SPRINTBIAS_RUN_VERDICT_TEXT" | sprintbias_parse_verdict 'EXCELLENT|FILED|BLOCKER')
 [ -z "$VERDICT" ] && VERDICT="UNCLEAR"
 
-SUMMARY=$(sprintbias_extract_summary "$LOG_FILE")
+SUMMARY="$SPRINTBIAS_RUN_SUMMARY"
 
 if [ -n "$TASK_FILE" ]; then
   # Replace, not stack: a re-judge (forced, or auto-triggered by a code move)

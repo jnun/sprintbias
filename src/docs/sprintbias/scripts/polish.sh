@@ -673,7 +673,7 @@ VERDICT: PASS    (landed edits hold up)   or   VERDICT: FAIL   (issues remain)"
       fi
     fi
 
-    PREV_SUMMARY=$(sprintbias_extract_summary "$LOG_FILE")
+    PREV_SUMMARY="$SPRINTBIAS_RUN_SUMMARY"
 
     case "$STEP_VERDICT" in
       PASS)

@@ -64,7 +64,6 @@
 #   sprintbias_change_manifest TASK_FILE [FILE…] — build audit change manifest;
 #       sets SPRINTBIAS_CHANGED_FILES and SPRINTBIAS_CONTEXT_SOURCE
 #   sprintbias_parse_verdict TOKENS — (stdin) last VERDICT token, case/format tolerant
-#   sprintbias_extract_summary JSON — print the summary text from a CLI JSON log
 #   Dependency-graph helpers (pure, unit-testable — no AI):
 #     SPRINTBIAS_OPEN_STAGES        — stages still holding incomplete work
 #     sprintbias_stage_is_open STAGE — 0 when STAGE is an open (incomplete) stage
@@ -2236,82 +2235,6 @@ sprintbias_parse_verdict() {
         || true
 }
 
-# sprintbias_extract_summary JSON_LOG_FILE -> print the audit summary text.
-# Prefers a "## Summary" section; else the 30 lines before a VERDICT: line
-# (a strict superset that only fires when ## Summary is absent — the normal
-# path is byte-identical for both audits); else the tail of the result.
-# Always prints something so callers under set -e never trip.
-sprintbias_extract_summary() {
-    local json_file="$1"
-    python3 -c "
-import json, sys, re
-try:
-    data = json.load(open(sys.argv[1]))
-    text = data.get('result', '')
-    # Try ## Summary section first
-    m = re.search(r'## Summary\n(.*?)(?=\nVERDICT:|\Z)', text, re.DOTALL)
-    if m:
-        print(m.group(1).strip())
-    else:
-        lines = text.strip().split('\n')
-        verdict_idx = None
-        for i, l in enumerate(lines):
-            if 'VERDICT:' in l:
-                verdict_idx = i
-        if verdict_idx is not None and verdict_idx > 0:
-            start = max(0, verdict_idx - 30)
-            print('\n'.join(lines[start:verdict_idx]).strip())
-        elif text:
-            print(text[-2000:] if len(text) > 2000 else text)
-        else:
-            print('(no output captured)')
-except Exception as e:
-    print(f'(Could not extract summary: {e})')
-" "$json_file" 2>/dev/null || echo "(Could not extract summary)"
-}
-
-# sprintbias_run_error JSON_LOG_FILE -> did the AI CLI fail to finish this run?
-# The audit scripts run the CLI with --output-format json; that result object
-# carries is_error/subtype/errors even when no verdict text was produced (a
-# max-turns abort has no 'result' field at all). Callers used to ignore those
-# fields and mis-report every non-finish as "could not parse a verdict".
-#
-# On a run that did NOT finish normally, print a one-line plain-language
-# diagnosis to stdout and return 0 (so `if MSG=$(sprintbias_run_error log)` is
-# the "did not finish" branch). On a clean/success result, print nothing and
-# return 1 (proceed to parse the verdict). An empty/absent log means the CLI
-# never started; a non-JSON log is treated as "finished" so the caller can still
-# grep a verdict from raw text.
-sprintbias_run_error() {
-    local json_file="$1"
-    if [ ! -s "$json_file" ]; then
-        printf "the AI CLI produced no output — it likely failed to start (check '%s' install/auth)\n" "$SPRINTBIAS_CLI"
-        return 0
-    fi
-    python3 - "$json_file" <<'PY'
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    sys.exit(1)          # non-JSON log: let the caller try a raw verdict grep
-if not d.get("is_error"):
-    sys.exit(1)          # clean result: proceed to parse the verdict
-subtype = d.get("subtype") or "error"
-errs = d.get("errors") or []
-turns = d.get("num_turns", "?")
-secs = int((d.get("duration_ms") or 0) / 1000)
-cost = d.get("total_cost_usd") or 0
-reason = {
-    "error_max_turns": "hit its turn limit before finishing",
-    "error_during_execution": "errored partway through",
-}.get(subtype, "did not finish (%s)" % subtype)
-detail = ("; " + errs[0]) if errs else ""
-print("the audit %s (%s turns, %dm %02ds, $%.2f)%s" % (
-    reason, turns, secs // 60, secs % 60, cost, detail))
-sys.exit(0)
-PY
-}
-
 # sprintbias_interpret_run LOG [rc] -> read a run's result exactly once.
 # Answers "what happened to this run?" in one place, so every audit stops
 # reading the same log three times (grep for a verdict, parse is_error, parse a
@@ -2353,26 +2276,57 @@ _sprintbias_interpret_run_fallback() {
         SPRINTBIAS_RUN_OUTCOME="no_start"
         return 0
     fi
-    SPRINTBIAS_RUN_OUTCOME=$(python3 - "$log" <<'PY'
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    print("finished"); sys.exit(0)   # non-JSON log: caller greps raw text
-if not d.get("is_error"):
-    print("finished"); sys.exit(0)
-subtype = d.get("subtype") or "error"
-print({"error_max_turns": "max_turns",
-       "error_during_execution": "error"}.get(subtype, "error"))
-PY
-    )
+    # One pass: outcome + the verdict text + the summary. The summary is derived
+    # inline here so no site reads the log a second time — the profiles already
+    # do their own summary, and this bridge is the only other reader.
+    {
+        IFS= read -r -d '' SPRINTBIAS_RUN_OUTCOME
+        IFS= read -r -d '' SPRINTBIAS_RUN_VERDICT_TEXT
+        IFS= read -r -d '' SPRINTBIAS_RUN_SUMMARY
+    } < <(python3 -c "$_SPRINTBIAS_FALLBACK_INTERPRET_PY" "$log")
     : "${SPRINTBIAS_RUN_OUTCOME:=finished}"
-    if [ "$SPRINTBIAS_RUN_OUTCOME" = "finished" ]; then
-        SPRINTBIAS_RUN_VERDICT_TEXT="$(cat "$log")"
-        SPRINTBIAS_RUN_SUMMARY="$(sprintbias_extract_summary "$log")"
-    fi
     return 0
 }
+
+# The fallback interpreter's single-pass reader (see above). Kept in a variable
+# so the here-string parser never has to nest a heredoc inside <(…). Emits three
+# NUL-terminated fields: outcome, verdict text, summary.
+_SPRINTBIAS_FALLBACK_INTERPRET_PY="$(cat <<'PY'
+import json, sys, re
+def summarize(text):
+    m = re.search(r'## Summary\n(.*?)(?=\nVERDICT:|\Z)', text, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    lines = text.strip().split('\n')
+    vi = None
+    for i, l in enumerate(lines):
+        if 'VERDICT:' in l:
+            vi = i
+    if vi is not None and vi > 0:
+        return '\n'.join(lines[max(0, vi - 30):vi]).strip()
+    if text:
+        return text[-2000:] if len(text) > 2000 else text
+    return '(no output captured)'
+def emit(outcome, verdict_text, summary):
+    sys.stdout.write('\0'.join([outcome, verdict_text, summary]) + '\0')
+try:
+    raw = open(sys.argv[1]).read()
+except Exception:
+    raw = ''
+try:
+    d = json.loads(raw)
+except Exception:
+    # non-JSON log: caller greps the raw text for a verdict
+    emit('finished', raw, summarize(raw)); sys.exit(0)
+if not d.get('is_error'):
+    result = d.get('result', '')
+    emit('finished', result, summarize(result)); sys.exit(0)
+subtype = d.get('subtype') or 'error'
+outcome = {'error_max_turns': 'max_turns',
+           'error_during_execution': 'error'}.get(subtype, 'error')
+emit(outcome, '', '')
+PY
+)"
 
 # sprintbias_run_hint OUTCOME [lever] -> one honest, actionable line for a run
 # that did not produce a usable verdict. Shared so every audit speaks the same
