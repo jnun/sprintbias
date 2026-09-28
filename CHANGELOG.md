@@ -13,10 +13,10 @@ renames that section to the new version and date on each bump.
 
 - Reviews raise issues one at a time. When a `chat` walk (or any agent
   reviewing a plan) finds two or more things that need your call, it lists them
-  in `docs/tmp/<subject>_discuss.md`, then raises one issue per message and waits
-  for your decision before the next. Decisions are recorded in the file and
-  applied to the plan, tasks, and docs only once everything is decided. An
-  interrupted session resumes from the file.
+  in `docs/tmp/<subject>_discuss.md`, then raises one issue per message with
+  numbered options (the best-practice pick marked suggested), carries out your
+  pick right away, and moves to the next. An interrupted session resumes from
+  the file.
 
 ### Changed
 
