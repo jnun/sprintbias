@@ -3,7 +3,10 @@
 #
 # Invoked as: ./sprint.sh plan think [id]
 # Automated (not conversational) — chat plan authors; plan think improves the
-# plan AND aligns its member tasks to it; plan start commits. Two collaborating
+# plan AND aligns its member tasks to it; plan start commits. It applies every
+# change it can settle on its own, holds calls that belong to the human in
+# docs/tmp/plan-<id>_discuss.md, and when it finishes lifts those into
+# `chat plan <id>`, which raises them one at a time. Two collaborating
 # leaders (Platform Architect + Experience Officer) evaluate through three
 # lenses — best practice, elegant design / coding standards, antifragility —
 # then apply the improved plan to the plan file and rewrite each unstarted
@@ -111,6 +114,7 @@ fi
 # Key the review file to THIS plan so a prior plan's analysis can never be
 # mistaken for — or satisfy the completion gate of — this run.
 REVIEW_FILE="docs/tmp/plan-think-${PLAN_ID}.md"
+DISCUSS_FILE="$(sprintbias_plan_discuss_file "$PLAN_ID")"
 
 # Member IDs from the plan file (- #N or - [ ] #N lines)
 MEMBER_IDS=$(grep -oE '^- (\[[ xX]\] )?#[0-9]+' "$PLAN_FILE" 2>/dev/null | grep -oE '[0-9]+' | sort -un || true)
@@ -158,6 +162,8 @@ Both of you evaluate every decision through three lenses:
 
 **Shared goal:** produce an IMPROVED plan AND ALIGNED member tasks, where backend reliability and user experience reinforce each other rather than compete. This is AUTOMATED — apply your changes directly to the files; do not wait for the user mid-pass.
 
+**Act vs hold.** Apply every change that best practice, the project's conventions, or the plan's own goal settles — ordering, dependency edges, sharper wording, missing criteria, a clear design fix. HOLD a finding for the human only when it is genuinely their call: a product or policy choice, a trade-off with no clear best practice, a number or period only the owner can set, or a cut/scope change they might reasonably contest. A held finding is not applied anywhere; it goes to the discuss file (Pass 3). When unsure, act on the sensible default and say so in the review — hold only what truly needs the owner.
+
 PROJECT CONTEXT:
 CLAUDE.md is auto-loaded with project overview, tech stack, and conventions.
 For task workflow details, see DOCUMENTATION.md.
@@ -178,22 +184,45 @@ Critique the plan as a unit through both personas and the three lenses: coherenc
 **Pass 2 — Align each surviving member to the improved plan.**
 Work members in the improved order, finishing each fully before the next. Each member's line above is tagged with its current lifecycle folder in parentheses — **let that folder decide how far you edit**:
 
-- Member in **(backlog/)** or **(next/)** — not yet worked, still malleable. REWRITE its **Problem** and **Success criteria** so they fit the improved plan's Goal and order and satisfy the three lenses — sharp Problem, testable Success, execute-ready. Sharpen and align; stay truthful to the task's intent and do not invent scope.
+- Member in **(backlog/)** or **(next/)** — not yet worked, still malleable. First, REALITY-CHECK it against the code as it stands today: open the files, functions, and behavior the task names or implies and confirm the problem is real. Then give it one verdict:
+  - **KEEP** — the problem exists in the code and solving it serves the plan's Goal.
+  - **TRIM** — the core is real, but the task has grown work the Goal does not need or problems the code does not have. Cut the excess from Problem / Success criteria (act — this is settled by the evidence).
+  - **DONE ALREADY** — the code already does what Success criteria asks. Hold it for discussion with the evidence (file:line), recommending it leave the plan.
+  - **NOT REAL** — the problem it describes does not exist in the code, or it rests on a wrong assumption about how the code works. Hold it, with the evidence.
+  - **OFF GOAL** — real work, but it does not serve this plan's Goal. Hold it, recommending it leave the plan (the task stays in backlog/ for another day).
+  Base every verdict on what you read in the code, and cite it; a task's own description is a claim to check, not a fact. For KEEP and TRIM, then REWRITE its **Problem** and **Success criteria** so they fit the improved plan's Goal and order and satisfy the three lenses — sharp Problem, testable Success, execute-ready. Sharpen and align; stay truthful to the task's intent and do not invent scope.
 - Member in **(doing/)**, **(review/)**, or **(done/)** — trust it as completed exactly as it was originally defined; its code already exists on disk. Do NOT rewrite its Problem/Success — changing the acceptance bar after the code was built against it is a regression. Two sub-cases:
   - The improved plan needs nothing more from it → leave it untouched (just annotate below).
   - The improved plan genuinely needs MORE from it — a real blocker, not cosmetic drift → do NOT reopen the finished task. Instead file a NEW delta task with:
         ./sprint.sh newtask \"<short description of the delta the plan now needs>\"
     then append **Problem**, **Success criteria**, and a **Why** to the created file in docs/tasks/backlog/. Write it to START FROM THE CURRENT CODE/FILESYSTEM STATE (the finished member already landed) and add ONLY the new fix — do not re-describe work that already exists. Reference the completed member by id (\"builds on #<member id>\"). Then add the new task's id to $PLAN_FILE's member list so it becomes part of the plan and plan start will gate it. Record the filing in the member's annotation and in the review.
 
-For every member whose file exists, in either case, leave Notes and any Depends on / Dependents lines intact and append a lean ## Plan Think section recording: how each persona views this task, the key tension and how it resolved, which lens drove any change, and — for a worked member — whether you left it as-is or filed a delta task (name its id). If a member has no file on disk, note that in the review instead of inventing a file.
+For every member whose file exists, in either case, leave Notes and any Depends on / Dependents lines intact and append a lean ## Plan Think section recording: its reality-check verdict and evidence (unstarted members), how each persona views this task, the key tension and how it resolved, which lens drove any change, and — for a worked member — whether you left it as-is or filed a delta task (name its id). If a member has no file on disk, note that in the review instead of inventing a file.
 
 **Pass 3 — Record.**
+Held findings go to $DISCUSS_FILE. If it already exists from an earlier session, read it first: apply any item that has a filled \`Decision:\` line as part of this pass and drop it from the file; carry still-open items forward unless this pass settles them. Write the file in this shape (omit it entirely when nothing is held):
+
+    # Plan $PLAN_ID — discussion
+    Source: plan think. Raise one item at a time; act on each decision before the next.
+
+    ## 1. <short title>
+    Verdict: <DONE ALREADY | NOT REAL | OFF GOAL | DECISION>
+    Problem: <what is wrong or undecided, one or two sentences>
+    Evidence: <task ids, files, lines>
+    Recommendation: <your pick and why>
+    Decision:
+
+Verdict carries the reality-check result for a member task (with its #id in the title), or DECISION for any other owner call. Evidence per verdict: DONE ALREADY — where the code already meets each Success criterion, and any criterion it does not; NOT REAL — what you checked and what the code actually does; OFF GOAL — why the work sits outside the plan's Goal.
+
+Number items most-blocking first. Leave every \`Decision:\` line empty — the human fills them in chat.
+
 Write the plan-level analysis to $REVIEW_FILE with:
-1. **What changed** — the edits you applied to the plan and to each member, and why (name the lens).
-2. **Final order** — the committed execution sequence, one-line rationale per position.
-3. **Cut / deferred** — any members removed from the plan and why.
-4. **Delta tasks filed** — any new tasks you created for a finished member that the plan now needs more from (id + one line + which member it builds on), or \"none\".
-5. **Open risks** — dependency gaps or fragility that remain for a human to weigh.
+1. **Reality check** — one line per member: #id — verdict (KEEP / TRIM / DONE ALREADY / NOT REAL / OFF GOAL, or FINISHED for doing/review/done) — the code evidence (file:line) behind it.
+2. **What changed** — the edits you applied to the plan and to each member, and why (name the lens).
+3. **Final order** — the committed execution sequence, one-line rationale per position.
+4. **Cut / deferred** — any members removed from the plan and why.
+5. **Delta tasks filed** — any new tasks you created for a finished member that the plan now needs more from (id + one line + which member it builds on), or \"none\".
+6. **Held for discussion** — the count of items in $DISCUSS_FILE with one-line titles, or \"none\".
 Also append a short ## Plan Think summary block to $PLAN_FILE (before any HTML comments) pointing at $REVIEW_FILE and listing the top 3 findings.
 
 If the plan and its tasks are already strong and aligned, make minimal edits and say so plainly.
@@ -223,6 +252,9 @@ _model_args=()
 # Emit mode: hand the prompt to the surrounding agent. No log file — the run
 # happens in this session, and the early exit below mirrors the old behavior.
 if [ "$AI_MODE" = "emit" ]; then
+  PROMPT="$PROMPT
+
+**After the completion marker:** if $DISCUSS_FILE holds items, you are also the chat session. Raise them with the user one at a time as set out in docs/sprintbias/ai/conversation.md (Many decisions: one issue at a time): one issue per message with numbered options and a (suggested) pick where best practice gives one; act on each pick right away (plan, member tasks, docs), record it on its Decision: line, then raise the next. Delete $DISCUSS_FILE when all are decided."
   sprintbias_run -p "$PROMPT" \
     ${_model_args[@]+"${_model_args[@]}"} \
     --tools "$TOOLS" \
@@ -231,7 +263,8 @@ if [ "$AI_MODE" = "emit" ]; then
   echo ""
   echo "▸ Prompt emitted — the plan-think pass runs in this agent session."
   echo "  When it finishes: plan file + backlog/next members edited in place,"
-  echo "  ## Plan Think on each member, analysis in $REVIEW_FILE."
+  echo "  ## Plan Think on each member, analysis in $REVIEW_FILE,"
+  echo "  then any held decisions are raised one at a time from $DISCUSS_FILE."
   exit 0
 fi
 
@@ -267,9 +300,24 @@ if sprintbias_run -p "$PROMPT" \
   echo "  Member tasks:  backlog/next aligned; finished members annotated (never reopened)"
   echo "  Plan analysis: $REVIEW_FILE  (see 'Delta tasks filed')"
   echo ""
+
+  _open="$(sprintbias_discuss_open_count "$DISCUSS_FILE")"
+  if [ "$_open" -gt 0 ]; then
+    echo "▸ $_open decision(s) held for you: $DISCUSS_FILE"
+    if sprintbias_interactive_ok; then
+      echo "  Opening chat plan $PLAN_ID to raise them one at a time..."
+      echo ""
+      _CHAT_PLAN="$(dirname "${BASH_SOURCE[0]}")/chat-plan.sh"
+      if [ -x "$_CHAT_PLAN" ]; then exec "$_CHAT_PLAN" "$PLAN_ID"; else exec bash "$_CHAT_PLAN" "$PLAN_ID"; fi
+    fi
+    echo "  Walk them one at a time: ./sprint.sh chat plan $PLAN_ID"
+    echo ""
+  fi
+
   echo "Next steps:"
   echo "  1. Review edits — git diff $PLAN_FILE and members; git status for any new delta tasks"
-  echo "  2. Refine with ./sprint.sh chat plan $PLAN_ID if needed"
+  [ "$_open" -gt 0 ] && echo "  2. Decide the held items with ./sprint.sh chat plan $PLAN_ID" \
+                     || echo "  2. Refine with ./sprint.sh chat plan $PLAN_ID if needed"
   echo "  3. Commit with ./sprint.sh plan start $PLAN_ID when READY"
 else
   echo ""

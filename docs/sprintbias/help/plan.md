@@ -3,14 +3,24 @@ Decisive plan verbs — critique, commit, and retire. Authoring is `chat plan`.
 **plan think [id] [--model <id>]** — think a plan into alignment. Two
 collaborating leaders (Platform Architect + Experience Officer) evaluate the
 plan through three lenses — best practice, elegant design / coding standards,
-antifragility — then **apply** the improved plan to the plan file (Goal, Why,
-members, order) and **rewrite the Problem/Success of each unstarted member**
+antifragility. Before rewriting anything it **reality-checks each unstarted
+member against the code**: is the problem real, is it already solved, and does
+the work serve the plan's Goal? Each gets a verdict — KEEP, TRIM (scope creep cut
+in place), or DONE ALREADY / NOT REAL / OFF GOAL (held for you, with file:line
+evidence, recommending it leave the plan). It then **applies** the improved plan to the plan file (Goal, Why,
+members, order) and **rewrites the Problem/Success of each unstarted member**
 (backlog/next) to fit it, appending a ## Plan Think note per member. A finished
 member (doing/review/done) is trusted as completed-as-defined and never
 reopened; if the plan needs more from it, a new delta task is filed with
 `newtask` (starting from the current code state) and added to the plan.
-Plan-level analysis lands in docs/tmp/plan-think-<id>.md. It never runs
-`plan start` and never moves task files — commitment stays with `plan start`.
+Plan-level analysis lands in docs/tmp/plan-think-<id>.md. It applies every
+change it can settle on its own. Calls that are genuinely yours (a product or
+policy choice, a number only you can set, a cut you might contest) are held,
+not applied, in docs/tmp/plan-<id>_discuss.md. When the pass finishes it opens
+`chat plan <id>` (on a terminal; otherwise it prints that command), which raises
+those items one at a time with a suggested option and acts on each pick. It
+never runs `plan start` and never moves task files — commitment stays with
+`plan start`.
 Bare `plan think` picks a plan.
 
 **plan start [id] [--commit-only] [--model <id>]** — gate, then commit that

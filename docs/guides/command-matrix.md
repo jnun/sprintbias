@@ -102,7 +102,7 @@ artifact, never only in the chat.
 ### plan — compose the sprint
 
 Command		Does
-plan think [id] [--model]	Automated dual-persona critique of a plan
+plan think [id] [--model]	Automated dual-persona critique of a plan; applies what it can settle, holds owner calls in docs/tmp/plan-<id>_discuss.md and hands off to chat plan <id>
 plan start [id] [--model]	Gate every workable member and commit into `next/` (deps must be in sprint or co-promoted; no hard size cap; warn over 10; latches STARTED; `--model` pins the gate model)
 plan check [id]	Read-only health report — plan state (not started / started / in process / completed), member lifecycle rollup, and per-member definition state (undefined / defined / in process / abandoned). No AI, no moves (`plan-check.sh`)
 plan polish [id] [--model]	Excellence-judge the plan's finished members (`review/` + `done/`) — routes each through the shared deep-judge (`polish-judge.sh`), files enhancements to `backlog/`, skips already-judged members unless `--force`

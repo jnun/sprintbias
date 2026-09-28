@@ -13,6 +13,10 @@
 # Authoring writes only the first two of the plan's three statuses: DRAFT while
 # authoring → READY when the user confirms (the signal plan start / loop
 # --refill gate on). STARTED is latched later by plan start, never here.
+#
+# Discuss mode: when docs/tmp/plan-<id>_discuss.md exists (plan think held
+# decisions for the human), the walk raises those items one at a time first,
+# acts on each pick before the next, and deletes the file when all are done. plan think hands off here automatically when it holds anything.
 
 set -euo pipefail
 
@@ -66,9 +70,14 @@ if ! PLAN_FILE="$(find_plan "$PLAN_ID")"; then
 fi
 
 PLAN_NAME=$(basename "$PLAN_FILE")
+DISCUSS_FILE="$(sprintbias_plan_discuss_file "$PLAN_ID")"
 echo "▸ Authoring plan: $PLAN_NAME"
 echo "  File: $PLAN_FILE"
-echo "  (read-only over backlog/ — only this plan file will be written)"
+if [ -f "$DISCUSS_FILE" ]; then
+  echo "  Discuss: $DISCUSS_FILE ($(sprintbias_discuss_open_count "$DISCUSS_FILE") open) — raised one at a time"
+else
+  echo "  (read-only over backlog/ — only this plan file will be written)"
+fi
 echo ""
 
 # ── Model + method ──────────────────────────────────────────────────
@@ -142,6 +151,27 @@ RULES
 - Do not run plan start, do not mv task files, do not edit task bodies (the shell
   refreshes **Plan** reverse-index fields after this session)."
 
+# Discuss mode — held decisions come first and widen the write boundary to the
+# member tasks and docs those decisions name (still no moves).
+_OPENING="Read the plan at $PLAN_FILE and the backlog, size it up, and start authoring — one detail at a time. Write only the plan file."
+if [ -f "$DISCUSS_FILE" ]; then
+  APPEND_PROMPT="$APPEND_PROMPT
+
+DISCUSS FIRST — $DISCUSS_FILE
+plan think already applied everything it could settle and held these items for the user. Walk them before any other authoring, following 'Many decisions: one issue at a time' above:
+- Open by saying how many items are open, with one short title each, then raise the first item with an empty Decision: line.
+- One issue per message: what it is, why it matters, then numbered options. Mark the option best practice supports '(suggested)' with a one-line why; when nothing clearly wins, just ask. End with the question and wait.
+- Frame each item by its Verdict line:
+  - DONE ALREADY — show where the code already does what the task asks (file:line per Success criterion) and any gap left. Options: close it (move the task to review/ so promote verifies it), trim it to just the gap and keep it, or remove it from the plan and delete it.
+  - NOT REAL — walk through what was investigated and the evidence that the problem the task describes is not actually a problem in the code. Options: delete the task, or keep it if the user knows something the code does not show — then rewrite its Problem around that fact.
+  - OFF GOAL — list why the work is off topic for this plan's Goal. Options: delete it, or put it off (remove it from the plan; the task stays in backlog/ for later).
+  - DECISION — the problem and the options.
+- Act on each pick right away, before raising the next item: edit the plan file, the Problem / Success criteria / Notes of member tasks in backlog/ or next/, or any doc the item names; move a closed task to review/ with 'git mv SRC DEST || mv SRC DEST'; delete a task the user chose to delete; drop removed or deferred ids from the plan's member list. \"Your call\" means the suggested option. Record the outcome on the item's Decision: line and confirm in one line what changed. This widens the write boundary above for decided items only — no other task moves, no plan start, no edits to doing/review/done members (file a delta with './sprint.sh newtask' for those and add it to the plan).
+- When every item is decided, recap what changed in a few lines and delete $DISCUSS_FILE.
+- If the session ends early, leave the file — the next chat plan resumes at the first empty Decision:."
+  _OPENING="Read $DISCUSS_FILE and the plan at $PLAN_FILE. Raise the held decisions with me one at a time, each with numbered options and a suggestion where best practice gives one, and act on each pick before the next."
+fi
+
 # ── Interactive contract (same as chat.sh) ───────────────────────────
 if [ "$(sprintbias_ai_mode)" = "exec" ] && ! sprintbias_interactive_ok; then
   echo -e "${YELLOW}Note: a live plan-authoring walk needs an interactive-capable AI CLI (claude or grok) in a real terminal.${NC}"
@@ -156,7 +186,7 @@ sprintbias_run_interactive \
   --tools "Read,Edit,Write,Bash,Grep,Glob" \
   --permissions "auto" \
   --name "chat-plan-${PLAN_ID}" \
-  "Read the plan at $PLAN_FILE and the backlog, size it up, and start authoring — one detail at a time. Write only the plan file."
+  "$_OPENING"
 
 # Refresh **Plan** reverse index for every member this plan now lists (and any
 # open task that drifted). Plan file remains the membership authority.

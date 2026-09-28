@@ -9,6 +9,31 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+### Added
+
+- Reviews raise issues one at a time. When a `chat` walk (or any agent
+  reviewing a plan) finds two or more things that need your call, it lists them
+  in `docs/tmp/<subject>_discuss.md`, then raises one issue per message and waits
+  for your decision before the next. Decisions are recorded in the file and
+  applied to the plan, tasks, and docs only once everything is decided. An
+  interrupted session resumes from the file.
+
+### Changed
+
+- `plan think` now acts on everything it can settle itself and holds only your
+  calls (a product or policy choice, a number only you can set, a cut you might
+  contest) in `docs/tmp/plan-<id>_discuss.md`. When it finishes it opens
+  `chat plan <id>`, which raises those items one at a time and acts on each
+  decision as you make it.
+- `plan think` checks every unstarted task against the code before touching it:
+  is the problem real, already solved, and needed for the plan's goal? Scope
+  creep is trimmed on the spot; tasks that are already done, describe a problem
+  the code doesn't have, or don't serve the goal come to you (with file:line
+  evidence) as discussion items. The review opens with a per-task verdict list.
+  In `chat plan`, each is raised with options fitted to its verdict: close,
+  trim, or delete a done-already task; delete or keep a not-real one; delete or
+  put off an off-goal one — and the pick is carried out immediately.
+
 ## 0.0.127 — 2026-09-21
 
 ## 0.0.126 — 2026-09-21
