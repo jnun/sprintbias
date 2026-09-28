@@ -9,6 +9,8 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+## 0.0.128 — 2026-09-28
+
 ### Added
 
 - Reviews raise issues one at a time. When a `chat` walk (or any agent

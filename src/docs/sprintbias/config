@@ -37,7 +37,7 @@ MODE=
 # default on claude-code / grok-build via sprintbias_tier_model).
 # Use a model id your CLI understands (grok models / claude docs). Claude-only
 # names (opus, sonnet, haiku) on grok-build are auto-remapped to grok-4.5.
-MODEL_DEFAULT=claude-opus-4-8
+MODEL_DEFAULT=opus
 
 # Per-script models. Empty = fall back to MODEL_DEFAULT.
 # Interactive + spine flows (chat, gate, work, polish, …): when left empty on

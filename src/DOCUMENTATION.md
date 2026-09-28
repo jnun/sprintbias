@@ -22,7 +22,7 @@ the full list and `./sprint.sh status` to see where work stands. Everything belo
 
 ## Rules for AI agents
 
-Follow these five and you will not get lost:
+Follow these six and you will not get lost:
 
 1. **Change status by moving the file** between folders. Do not edit a status field.
 2. **Create work with `./sprint.sh`** (`newtask`, `newbug`, …). Never write a task
@@ -32,6 +32,10 @@ Follow these five and you will not get lost:
 4. **Old dates in `review/` or `done/` mean finished, not stale.** Never redo them.
 5. **You define, execute, and perfect. The human approves, commits, and ships.**
    Run `git commit` or `./sprint.sh sync` only when the human asks in this conversation.
+6. **Raise review findings one at a time.** When a review leaves the human two or
+   more calls to make, list them in `docs/tmp/<subject>_discuss.md`, then raise one
+   issue per message with numbered options (best practice marked `(suggested)`),
+   act on the pick right away, record it there, and move to the next.
 
 ## Why folders and plain text
 
@@ -141,7 +145,7 @@ Groups: **create · chat · plan · work · look · keep**.
 ./sprint.sh chat [target]       # id: one task · folder: sweep · plan [id]: author · bugs: inbox · none: sprint health
 
 # plan — group and commit related tasks
-./sprint.sh plan think 5        # improve the plan + align its member tasks
+./sprint.sh plan think 5        # improve the plan + align its tasks; your calls → chat, one at a time
 ./sprint.sh plan start 5        # gate + commit members into next/ (latches STARTED)
 ./sprint.sh plan check 5        # read-only health report (no AI, no moves)
 ./sprint.sh plan polish 5       # excellence-judge the plan's finished work

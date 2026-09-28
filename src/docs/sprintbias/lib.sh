@@ -27,6 +27,8 @@
 #       claude-code (opus) and grok-build (grok-4.5) when config is empty
 #   sprintbias_profile_line       — one-line pointer to project.md (empty if absent)
 #   sprintbias_conversation_method — contents of ai/conversation.md (loud fail if missing)
+#   sprintbias_plan_discuss_file ID — docs/tmp/plan-<id>_discuss.md (held decisions)
+#   sprintbias_discuss_open_count FILE — number of empty `Decision:` lines (0 if absent)
 #   sprintbias_next_blocked_resolution — prompt: dependent in next/ held on task in blocked/
 #       (two-path choice, demote inline for B, hand off to chat for A). Shared
 #       by chat-sprint.sh and the chat-next folder walk so the logic is written once.
@@ -526,6 +528,21 @@ sprintbias_conversation_method() {
         return 1
     fi
     cat "$f"
+}
+
+# Discuss file for a plan: decisions plan think held for the human, walked one
+# at a time by chat plan (ai/conversation.md → Many decisions). One path, named
+# once, so the writer and the walker cannot drift.
+sprintbias_plan_discuss_file() {
+    printf 'docs/tmp/plan-%s_discuss.md' "$1"
+}
+
+# Count undecided items in a discuss file: lines that are exactly `Decision:`
+# (optionally trailing space). Prints 0 when the file is absent.
+sprintbias_discuss_open_count() {
+    local f="$1" n=0
+    [ -f "$f" ] && n=$(grep -cE '^Decision:[[:space:]]*$' "$f" || true)
+    printf '%s' "${n:-0}"
 }
 
 # ── Shared walkthrough: dependent in next/ held on an undefined task in blocked/ ──

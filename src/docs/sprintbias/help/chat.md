@@ -104,6 +104,15 @@ Conversation Method and writes only the plan file: Goal, ordered member task
 IDs (from `backlog/`, read-only — no task moves or edits), parallelism notes
 (recorded, not acted on), and `**Status:** DRAFT → READY` when you confirm.
 `chat backlog` mutates task files; `chat plan` only records IDs into the plan.
+When `plan think` has held decisions for you (docs/tmp/plan-<id>_discuss.md),
+`chat plan <id>` raises those first, one issue per message with numbered
+options (the best-practice pick marked suggested), carries out your pick right
+away, records it in that file, and moves to the next (deleting the file when
+all are done). A session that ends early resumes at the first undecided item. Each held task is raised by its
+verdict: DONE ALREADY shows where the code already does it, then offers close
+(→ review/), trim to the gap, or delete; NOT REAL walks the evidence that the
+problem isn't one, then offers delete or keep-with-your-context; OFF GOAL says
+why it's off topic, then offers delete or put off (stays in backlog/).
 After authoring: optional `./sprint.sh plan think <id>` (dual-persona critique),
 then `./sprint.sh plan start <id>` to commit members into the sprint — not here.
 
