@@ -22,18 +22,21 @@ fi
 
 NAME="${1:-}"
 if [ -z "$NAME" ]; then
-    echo "Usage: $0 \"<plan name>\" [task-id | parent:N ...]"
+    echo "Usage: $0 \"<plan name>\" [task-id | parent:N | from:N | backlog ...]"
     echo ""
     echo "A plan is a named list of task IDs — a relational grouping over tasks"
     echo "that each stay in their own lifecycle folder. Pass member task IDs as"
     echo "extra arguments (numbers, N-M ranges, and parent:N to bind an open"
-    echo "parent plus its open children), or omit them to pick from backlog/"
-    echo "interactively."
+    echo "parent plus its open children), from:N for the follow-ups that came out of"
+    echo "plan N, backlog for every backlog task not yet in a plan, or omit them to"
+    echo "pick from backlog/ interactively."
     echo ""
     echo "Examples:"
     echo "  $0 \"Method accuracy audit\" 213 214 215"
     echo "  $0 \"Method accuracy audit\" 213-220"
     echo "  $0 \"Finish split of 335\" parent:335"
+    echo "  $0 \"Plan 24 follow-ups\" from:24"
+    echo "  $0 \"Clear the backlog\" backlog"
     exit 1
 fi
 shift || true
@@ -97,10 +100,26 @@ expand_parent_token() {
     fi
 }
 
+# expand_backlog_token — every backlog/ task not yet in a plan (**Plan**: none
+# or empty), lowest id first. The one-word way to organize the backlog.
+expand_backlog_token() {
+    local f id pval
+    for f in docs/tasks/backlog/*.md; do
+        [ -f "$f" ] || continue
+        id=$(task_id "$(basename "$f")")
+        [ -n "$id" ] || continue
+        pval=$(sprintbias_meta_value "$f" "Plan")
+        pval="${pval//[[:space:]]/}"
+        case "$pval" in ""|none|None) printf '%s\n' "$id" ;; esac
+    done | sort -n
+}
+
 MEMBER_IDS=()
 PREBOUND=0
 HAD_PLAIN_IDS=0
 PARENT_TOKENS=0
+BACKLOG_TOKENS=0
+FROM_TOKENS=0
 
 # collect_member_tokens TOKEN… — expand every member token to ids on stdout.
 # THE one member parser: comma splitting, N-M ranges, parent:N, and a loud
@@ -113,7 +132,16 @@ collect_member_tokens() {
     for tok in "$@"; do
         tok="${tok//,/ }"
         for tok in $tok; do
-            if [[ "$tok" =~ ^[Pp]arent:([0-9]+)$ ]]; then
+            if [[ "$tok" =~ ^[Ff]rom:([0-9]+)$ ]]; then
+                FROM_TOKENS=$((FROM_TOKENS + 1))
+                sprintbias_plan_followups "${BASH_REMATCH[1]}"
+            elif [[ "$tok" =~ ^[Ff]rom: ]]; then
+                echo -e "${RED}ERROR: invalid from token '$tok' (use from:N with a plan id).${NC}" >&2
+                return 2
+            elif [[ "$tok" =~ ^[Bb]acklog$ ]]; then
+                BACKLOG_TOKENS=$((BACKLOG_TOKENS + 1))
+                expand_backlog_token
+            elif [[ "$tok" =~ ^[Pp]arent:([0-9]+)$ ]]; then
                 PARENT_TOKENS=$((PARENT_TOKENS + 1))
                 expand_parent_token "${BASH_REMATCH[1]}" || true
             elif [[ "$tok" =~ ^([0-9]+)-([0-9]+)$ ]] || [[ "$tok" =~ ^[0-9]+$ ]]; then
@@ -124,7 +152,7 @@ collect_member_tokens() {
                 return 2
             else
                 echo -e "${RED}ERROR: unrecognized member token '$tok'.${NC}" >&2
-                echo "Use task ids, N-M ranges, or parent:N." >&2
+                echo "Use task ids, N-M ranges, parent:N, from:N, or backlog." >&2
                 return 2
             fi
         done
@@ -149,6 +177,19 @@ bind_members() {
         echo "Include the parent only if it is still open; children need **Parent**: N exactly."
         exit 1
     fi
+    # backlog / from:N with nothing to bind → fail loud too (no empty plan).
+    if [ "$HAD_PLAIN_IDS" -eq 0 ] && [ "${#MEMBER_IDS[@]}" -eq 0 ]; then
+        if [ "$FROM_TOKENS" -gt 0 ]; then
+            echo -e "${RED}ERROR: from: token(s) matched no open follow-up tasks.${NC}"
+            echo "Follow-ups carry **From plan**: N (newtask --from-plan N) and are not in another plan."
+            exit 1
+        fi
+        if [ "$BACKLOG_TOKENS" -gt 0 ]; then
+            echo -e "${RED}ERROR: backlog/ has no tasks outside a plan.${NC}"
+            echo "Every backlog task already belongs to a plan (see ./sprint.sh status)."
+            exit 1
+        fi
+    fi
 }
 
 if [ "$#" -gt 0 ]; then
@@ -167,7 +208,7 @@ elif [ -t 0 ] && [ -t 1 ]; then
     done
     [ "$_any" -eq 0 ] && echo "  (backlog is empty — you can still enter any task ID)"
     echo ""
-    printf "Enter member task IDs (space/comma separated, N-M ranges or parent:N; blank for none): "
+    printf "Enter member task IDs (space/comma separated, N-M ranges, parent:N, from:N, or backlog for all unplanned; blank for none): "
     read -r _line </dev/tty 2>/dev/null || _line=""
     if [ -n "$_line" ]; then
         # Same parser as the argv path — a typo, a comma-joined parent: token,
@@ -211,6 +252,13 @@ CREATED_DATE=$(date +%Y-%m-%d)
 sed_inplace "s/\[ID\]/$NEW_ID/g" "$DEST"
 sed_inplace "s/\[Plan Name\]/$(sed_escape "$NAME")/g" "$DEST"
 sed_inplace "s/YYYY-MM-DD/$CREATED_DATE/g" "$DEST"
+
+# Naming the members IS the approval: a plan created with members bound (ids,
+# parent:N, from:N, backlog) is READY, so plan start runs from an agent session too.
+# A plan created empty stays DRAFT until it is authored (chat plan).
+if [ "$PREBOUND" -eq 1 ] && [ "${#MEMBER_IDS[@]}" -gt 0 ]; then
+    sed_inplace 's/^\*\*Status:\*\* DRAFT$/**Status:** READY/' "$DEST"
+fi
 
 # ── Write the member list ────────────────────────────────────────────
 # Replace the template's single "- #ID — short title" placeholder with one
@@ -260,7 +308,7 @@ fi
 echo ""
 if [ "$PREBOUND" -eq 1 ] && [ "${#MEMBER_IDS[@]}" -gt 0 ]; then
     # Fast lane: members already known — skip authoring ceremony as the default next step.
-    echo "Next (fast lane — members already bound):"
+    echo "Next (fast lane — members bound, plan marked READY):"
     echo "  ./sprint.sh plan start $NEW_ID     # gate members → next/ (latches STARTED)"
     echo "  ./sprint.sh work                  # execute READY work from next/"
     echo ""

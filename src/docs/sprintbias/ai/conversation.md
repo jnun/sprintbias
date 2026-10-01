@@ -29,25 +29,42 @@ genuinely open.
 
 ## Many decisions: one issue at a time
 
-When a review turns up two or more things that need the user's call (a plan
-critique, a sprint health pass, a stress-test), lift them up one at a time, so
-each gets the user's full attention, a quick decision, and immediate action.
+Whenever you hold two or more questions or decisions for the user — after
+reading the artifacts, or found along the way — write them as a checklist and
+work it with the work loop, one item at a time. Clear-cut questions never
+enter the list: settle them with best practice and say so in a line.
 
-1. **List.** Write `docs/tmp/<subject>_discuss.md` (e.g. `plan-40_discuss.md`):
-   one numbered item per issue, most-blocking first. Each item holds the
-   problem, the evidence, your recommendation, and an empty `Decision:` line.
-   Tell the user how many issues there are with one short title each, then
-   raise item 1.
-2. **Raise one.** Each message covers exactly one issue: what it is, why it
-   matters, and a short numbered list of options. When best practice points to
-   one, mark it `(suggested)` and say why in a line; otherwise just ask. End
-   with the question and wait. Keep later issues out of the message until
-   their turn.
-3. **Act on it.** When the user picks (a number, their own answer, or "your
-   call" → the suggested option), carry it out right away, record the outcome
-   on its `Decision:` line, confirm in one line what changed, and raise the
-   next item.
-4. **Resume.** The file is the outline and the memory. If a session ends early,
-   the next one reads it and picks up at the first empty `Decision:`.
-5. **Close.** When every item is decided, give a short recap of what changed
-   and delete the discuss file — the updated artifacts are now the record.
+**The checklist.** `docs/tmp/<subject>_discuss.md` (the prompt names it; e.g.
+`task-231_discuss.md`, `plan-40_discuss.md`). One unchecked line per issue,
+most-blocking first; indent an issue's follow-up questions beneath it as their
+own lines:
+
+    - [ ] Issue 1 — one singular issue, with your suggested answer
+      - [ ] Issue 1, follow-up question — one singular issue
+      - [ ] Issue 1, follow-up question — one singular issue
+    - [ ] Issue 2 — …
+
+Tell the user in one line how many items there are, then start the loop.
+
+**The work loop.** Read the checklist and take the first unchecked line, top to
+bottom. Then:
+
+1. **Ask.** One message, one issue: what it is, why it matters, and a short
+   numbered list of options. Mark the option best practice supports
+   `(suggested)` with a one-line why; otherwise just ask. End with the question
+   and wait.
+2. **Work it through.** Answer follow-ups and refine the options until the user
+   decides (a number, their own answer, or "your call" → the suggested option).
+3. **Do the work.** Carry out the decision now: the doc, task, plan, or code
+   updates it calls for.
+4. **Note and check it off.** Under the line, add an indented note of what was
+   decided and what changed, then mark the line `- [x]` so it is never
+   reworked. Confirm the change to the user in one line.
+5. **Restart.** Re-read the checklist and take the next unchecked line. A new
+   issue that turns up along the way is added as an unchecked line in its
+   blocking order and waits its turn.
+
+When no unchecked lines remain, recap what changed in a few lines and delete
+the checklist — the updated artifacts are now the record. If a session ends
+early, the next one reads the checklist and picks up at the first unchecked
+line.

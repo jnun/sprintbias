@@ -22,8 +22,8 @@
 
 newidea       | create   | [name]              | Create a new idea (no name = AI Q&A) | newidea
 newfeature    | create   | [name]              | Create a new feature (no name = AI Q&A) | newfeature
-newtask       | create   | <description>       | Create a new task | newtask
-newplan       | create   | <name> [ids / parent:N] | Create a plan — named task-ID list; parent:N binds open parent+children (fast lane) | newplan
+newtask       | create   | <description> [--from-plan N] | Create a new task; --from-plan N marks it as a follow-up from plan N's work | newtask
+newplan       | create   | <name> [ids / parent:N / from:N / backlog] | Create a plan — named task-ID list; parent:N binds open parent+children; from:N binds plan N's follow-ups; backlog binds every unplanned backlog task (fast lane) | newplan
 newbug        | create   | <description>       | Report a new bug | bug
 newtest       | create   | <name>              | Create a test loop to validate a deployed thing | newtest
 
@@ -43,10 +43,10 @@ status        | look     |                     | Show project status | status
 search        | look     | <keyword>           | Search tasks by keyword | search
 learn         | look     | [demo]              | Watch the flow run — play a sandboxed demo (no name = list demos) | learn
 align         | look     |                     | Analyze feature alignment | align
-context       | look     |                     | Generate AI context summary | context
 
-profile       | keep     |                     | Create or update project profile (interactive) | profile
-profile       | keep     | show                | Print current project profile (no AI)
+profile       | keep     |                     | Create or update the project map — stack, code, commands, sources of truth, environments (interactive) | profile
+profile       | keep     | show                | Print the project map (no AI)
+profile       | keep     | check               | Check the project map is current — paths exist, nothing it tracks changed (no AI; work + plan start run it)
 sync          | keep     | [--all]             | Push task changes to GitHub | sync
 validate      | keep     | [--fix] [--dry-run] | Integrity-check task IDs and Depends on / Dependents | validate
 validate      | keep     | --docs              | Check help/*.md for flag drift vs scripts

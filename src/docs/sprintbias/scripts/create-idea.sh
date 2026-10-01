@@ -63,7 +63,7 @@ _MODEL="$(sprintbias_tier_model IDEA)"
 _model_args=()
 [ -n "$_MODEL" ] && _model_args=(--model "$_MODEL")
 
-_PROFILE_LINE="$(sprintbias_profile_line)"
+_ORIENT="$(sprintbias_orient)"
 
 # Live multi-turn Q&A needs an interactive-capable CLI on a real TTY. When exec
 # cannot offer one, degrade to a single pass and say so (same contract as chat).
@@ -74,7 +74,8 @@ if [ "$(sprintbias_ai_mode)" = "exec" ] && ! sprintbias_interactive_ok; then
 fi
 
 TEMPLATE_FILE="docs/ideas/.TEMPLATE-idea.md"
-APPEND_PROMPT="You are a thinking partner helping a colleague develop a raw idea into features ready to build. You guide them through eight phases — divergent first (open up), convergent second (close down).${_PROFILE_LINE}
+APPEND_PROMPT="You are a thinking partner helping a colleague develop a raw idea into features ready to build. You guide them through eight phases — divergent first (open up), convergent second (close down).
+${_ORIENT}
 
 Read docs/sprintbias/ai/feynman-method.md for the full protocol. Follow it closely.
 

@@ -60,7 +60,7 @@ _MODEL="$(sprintbias_tier_model FEATURE)"
 _model_args=()
 [ -n "$_MODEL" ] && _model_args=(--model "$_MODEL")
 
-_PROFILE_LINE="$(sprintbias_profile_line)"
+_ORIENT="$(sprintbias_orient)"
 
 # Live multi-turn Q&A needs an interactive-capable CLI on a real TTY. When exec
 # cannot offer one, degrade to a single pass and say so (same contract as chat).
@@ -71,7 +71,8 @@ if [ "$(sprintbias_ai_mode)" = "exec" ] && ! sprintbias_interactive_ok; then
 fi
 
 TEMPLATE_FILE="docs/features/.TEMPLATE-feature.md"
-APPEND_PROMPT="You are a product-minded developer helping a colleague define a new feature through conversation.${_PROFILE_LINE}
+APPEND_PROMPT="You are a product-minded developer helping a colleague define a new feature through conversation.
+${_ORIENT}
 
 YOUR GOAL: Through a focused Q&A, gather enough information to create a well-defined feature document. You will create the file when you have what you need.
 

@@ -429,11 +429,6 @@ cmd_align() {
     run_script "check-alignment.sh"
 }
 
-# context: AI context summary.
-cmd_context() {
-    run_script "context.sh"
-}
-
 # learn: play a sandboxed demo (or list them). Read-only theater — look family.
 cmd_learn() {
     run_script "learn.sh" "$@"
@@ -537,7 +532,6 @@ case "$CMD" in
     validate)      shift; cmd_validate "$@" ;;
     cleanup)       shift; cmd_cleanup "$@" ;;
     align)         cmd_align ;;
-    context)       cmd_context ;;
     help|--help|-h) shift; if [ -n "${1:-}" ]; then show_command_help "$1"; else show_help; fi ;;
     "") show_help ;;
     *)

@@ -177,8 +177,6 @@ else
 intended goal from the code and recent git history."
 fi
 
-PROFILE_LINE="$(sprintbias_profile_line)"
-
 APPEND_STEP=""
 if [ "$AI_MODE" = "emit" ] && [ -n "$TASK_FILE" ]; then
   # Render the SAME field set the headless appender writes (sprintbias_excellence_block),
@@ -196,7 +194,8 @@ $(sprintbias_excellence_block "$(date +%Y-%m-%d)" "<VERDICT>" "$CORRECTNESS" "<N
    never stack a second '## Excellence'. Do not modify any other part of the file."
 fi
 
-PROMPT="Excellence audit. CLAUDE.md is auto-loaded.${PROFILE_LINE}
+PROMPT="Excellence audit.
+$(sprintbias_orient)
 
 Follow this protocol exactly. The hard rules:
 - You NEVER edit code — enhancements become backlog tasks, not edits.
@@ -221,7 +220,8 @@ $CHANGED_FILES
    Tag each finding with the dimension that produced it, and cover every
    dimension in the report's Considered block (do not hardcode a shorter list).
 4. For each ENHANCEMENT finding (the vital few, not the trivial many), run:
-   ./sprint.sh newtask \"<description>\" then append Why and Scope to the created
+   ./sprint.sh newtask \"<description>\" (add --from-plan <id> when the audited
+   task names a **Plan**) then append Why and Scope to the created
    file in docs/tasks/backlog/. Default every filed task to backlog/. A finding
    you rate BOTH high-confidence AND high-value — the \"a senior engineer, told
    about this, would act now\" bar — you may WARM-ROUTE to next/ by promoting it

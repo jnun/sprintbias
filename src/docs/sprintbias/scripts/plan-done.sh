@@ -119,6 +119,7 @@ fi
 # Tick every member checkbox to [x] (they are all in done/). Handles a missing
 # or unticked checkbox alike; keeps the trailing title text intact.
 sed_inplace -E 's/^- (\[[ xX]\] )?#([0-9]+)/- [x] #\2/' "$PLAN_FILE"
+_title=$(grep -m1 '^# ' "$PLAN_FILE" | sed -E 's/^# *(Plan *[0-9]+: *)?//')
 
 # DONE on a plan is a delete, never a stored status. git rm keeps the removal in
 # history when tracked; plain rm covers an untracked plan. Developer owns the commit.
@@ -126,4 +127,15 @@ git rm -q "$PLAN_FILE" 2>/dev/null || rm -f "$PLAN_FILE"
 
 echo "✓ Plan $PLAN_ID complete — every member in done/. Removed $(basename "$PLAN_FILE")."
 echo "  (git rm staged the removal when tracked; commit is yours.)"
+
+# The rework this plan's review filed (**From plan**: N) is the natural next
+# plan — name the exact commands so burning through it is one step away.
+_fu=$(sprintbias_plan_followups "$PLAN_ID" | wc -l | tr -d ' ')
+if [ "$_fu" -gt 0 ]; then
+  echo ""
+  echo "▸ $_fu follow-up task(s) came out of this plan. Group and work them:"
+  echo "    ./sprint.sh newplan \"${_title:-Plan $PLAN_ID} — follow-ups\" from:$PLAN_ID"
+  echo "    ./sprint.sh plan start <new plan id>"
+  echo "    ./sprint.sh work"
+fi
 exit 0

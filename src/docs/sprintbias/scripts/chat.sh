@@ -169,7 +169,7 @@ _model_args=()
 
 # ── Launch the conversational review ─────────────────────────────────
 
-_PROFILE_LINE="$(sprintbias_profile_line)"
+_ORIENT="$(sprintbias_orient)"
 
 # When the user chooses to split, the original file is retired once its
 # children exist. In emit mode the surrounding agent performs the delete
@@ -346,10 +346,14 @@ fi
 # Shared Conversation Method (probe → ground → recommend → open floor). Loaded
 # once here so the method is stated in ai/conversation.md, not restated below.
 _METHOD="$(sprintbias_conversation_method)" || exit 1
+_CHECKLIST_LINE="$(sprintbias_checklist_line "task-$PARENT_NUM")"
+_open="$(sprintbias_discuss_open_count "$(sprintbias_discuss_file "task-$PARENT_NUM")")"
+[ "$_open" -gt 0 ] && echo -e "${CYAN}▸ $_open unchecked decision(s) from last time — resuming there first.${NC}"
 
 APPEND_PROMPT="You are a senior engineer reviewing a task with the colleague who wrote it. Talk it through one detail at a time until it is a crisp user-story brief any developer (human or AI) can pick up — the problem, what done looks like, and the technical requirements, with how to build it left to the implementer.
 
-The task file is at: $TASK_FILE — read it now, before you say anything.${_PROFILE_LINE}${_CONTEXT_BLOCK}
+The task file is at: $TASK_FILE — read it now, before you say anything.
+${_ORIENT}${_CHECKLIST_LINE}${_CONTEXT_BLOCK}
 
 $_METHOD
 
@@ -363,10 +367,11 @@ Questions become instructions:
 5. DELETE the original question — it has been answered.
 
 STEP 0 — AUDIT THE ASK FIRST (before any refining):
-Read the file, then open with a short, opinionated read that answers three things in order:
+Read the file, then open with a short, opinionated read that answers four things in order:
   1. WELL-DEFINED? Is the problem clear and success verifiable by someone else — yes, roughly, or no?
-  2. WORTH MORE DISCUSSION? Does this task deserve refinement now, or does it already read clean and ready? Say which, plainly. When it already reads clean, confirm \"this is ready\" and stop — a fast, valid outcome. Refine only where the task is genuinely thin.
-  3. BEST-PRACTICE PATH: lead with the best-practice, most efficient solution — grounded in documented standards, biased toward mature, antifragile code — offered first, as your recommendation, before any questions.
+  2. ALIGNED WITH THE CURRENT CODE? Check the task against the code as it stands today: referenced files, functions, commands, and dependencies still exist and still work the way the task assumes; the problem is still open; the approach still fits where the code is heading. Say aligned, drifted, or already done — and name each drift (a moved or renamed path, an outdated dependency, a stale assumption, a shifted direction). Drift is task work: update the brief to match the current code before anything else.
+  3. WORTH MORE DISCUSSION? Does this task deserve refinement now, or does it already read clean, aligned, and ready? Say which, plainly. When it already reads clean and aligned, confirm \"this is ready\" and stop — a fast, valid outcome. Refine only where the task is genuinely thin or has drifted.
+  4. BEST-PRACTICE PATH: lead with the best-practice, most efficient solution — grounded in documented standards, biased toward mature, antifragile code — offered first, as your recommendation, before any questions.
 Then the two-part call:
   (a) DEFINITION STATE — UNDEFINED STUB (Problem/Success empty/placeholder or \"This task is not defined yet\"), MISPLACED BRIEF (Problem/Success still empty but title, Notes, References, or ## Questions Remaining work already state the work clearly — promote that into the body), ROUGH or SEVERAL JOBS (thin, or bundles distinct work), or LOOKS DEFINED (Problem plus verifiable criteria already clear)?
   (b) MODE — FILL-IN, REFINE, SPLIT, or STRESS-TEST below.
@@ -408,7 +413,7 @@ Pressure-test before work: gaps, assumptions, sharper brief. Open with 2–3 sen
 5. RISK: failure modes, performance, security, compatibility.
 6. DEPENDENCIES: Depends on / Dependents real? Undeclared must-lands?
 7. ALTERNATIVES: simpler way? Premature lock-in?
-Stop after material findings (typically 3–7). With agreement, sharpen Problem/Success and optional Notes/References; put residual analysis in '## Think Notes' before HTML comments ('**Reviewed**: <date>', risks, alternatives, assumptions). Leave Feature/Created/Depends on/Dependents as they are unless asked. Keep Notes to hints and guidance.
+Stop after material findings (typically 3–7); when two or more need the user's call, list them as a checklist and run the work loop. With agreement, sharpen Problem/Success and optional Notes/References; put residual analysis in '## Think Notes' before HTML comments ('**Reviewed**: <date>', risks, alternatives, assumptions). Leave Feature/Created/Depends on/Dependents as they are unless asked. Keep Notes to hints and guidance.
 
 WHAT A FINISHED TASK LOOKS LIKE (FILL-IN/REFINE parent and every SPLIT child):
 - ## Problem — clear, simple, high-level: what is wrong and why it matters (2–5 short sentences).

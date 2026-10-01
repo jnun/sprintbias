@@ -102,7 +102,7 @@ if [ "$FOLDER" != "next" ]; then
     _file_list=$(printf '%s\n' "${files[@]}")
     sprintbias_run -p "You are vetting task-file quality in $FOLDER/ for the developer.
 
-CLAUDE.md is auto-loaded with project context and conventions. Read it first.
+$(sprintbias_orient)
 
 Task files to vet, in order:
 $_file_list
@@ -137,8 +137,7 @@ After all tasks, print a short summary count per verdict."
 
     _report_prompt="You are vetting a task file from $FOLDER/ for quality.
 
-CLAUDE.md is auto-loaded with project context and conventions.
-Read it first to understand the project's tech stack and structure.
+$(sprintbias_orient)
 
 Read the task file at: $file
 

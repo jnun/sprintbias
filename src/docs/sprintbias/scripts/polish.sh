@@ -254,7 +254,7 @@ if [ "$MODE" = "code" ]; then
   if [ "$AI_MODE" = "emit" ]; then
     sprintbias_run -p "You are auditing the code changes below for the developer.
 
-CLAUDE.md is auto-loaded with project context and conventions. Read it first.
+$(sprintbias_orient)
 
 ${TASK_FILE:+ORIGINAL TASK FILE: $TASK_FILE
 }CHANGED FILES (context source: $CONTEXT_SOURCE):
@@ -493,7 +493,8 @@ $PREV_SUMMARY"
       PASS_CONTEXT="You are VERIFYING fixes made by a previous auditor. You have READ-ONLY tools.
 $FEED_FORWARD"
 
-      PROMPT="Code verifier (READ-ONLY). CLAUDE.md is auto-loaded.
+      PROMPT="Code verifier (READ-ONLY).
+$(sprintbias_orient)
 
 $TASK_BLOCK
 $PASS_CONTEXT
@@ -522,7 +523,8 @@ $FEED_FORWARD
 Focus on the specific issues identified above. Fix them if you can."
       fi
 
-      PROMPT="Code auditor with FRESH EYES. CLAUDE.md is auto-loaded.
+      PROMPT="Code auditor with FRESH EYES.
+$(sprintbias_orient)
 
 $TASK_BLOCK
 $PASS_CONTEXT
@@ -600,7 +602,8 @@ FAIL: couldn't fix all · BLOCKED: needs a human."
       else
         echo "── Salvage verify ──────────────────────────────────────"
         SALVAGE_LOG="$LOG_DIR/log-polish-code-${_log_name%.md}-salvage-$TIMESTAMP_BASE.json"
-        SALVAGE_PROMPT="Code verifier (READ-ONLY). CLAUDE.md is auto-loaded.
+        SALVAGE_PROMPT="Code verifier (READ-ONLY).
+$(sprintbias_orient)
 
 A previous fixer pass was cut short mid-edit, so its changes landed on disk
 but were never verified. Verify ONLY what actually landed.
@@ -942,7 +945,7 @@ _refine_prompt() {
   sprintbias_change_manifest "$task_file"
   local changed="$SPRINTBIAS_CHANGED_FILES"
   local ctx="$SPRINTBIAS_CONTEXT_SOURCE"
-  local profile_line; profile_line="$(sprintbias_profile_line)"
+  local orient; orient="$(sprintbias_orient)"
 
   # Audit-gated correctness posture, mirroring polish-judge.sh / refine.md:
   # presume correct ONLY when a passing '## Audit' is on file. Otherwise a defect
@@ -965,7 +968,8 @@ the task's ## Completed section and recent git history."
   fi
 
   cat <<PROMPT
-Refine pass on ONE finished task. CLAUDE.md is auto-loaded.${profile_line}
+Refine pass on ONE finished task.
+${orient}
 
 Follow this protocol exactly. The hard rules:
 - You NEVER edit product code — your only write is this task file.
@@ -1004,7 +1008,7 @@ PROMPT
 }
 
 if [ "$AI_MODE" = "emit" ]; then
-  _profile_line="$(sprintbias_profile_line)"
+  _orient="$(sprintbias_orient)"
 
   _task_list=""
   for ((i=0; i<COUNT; i++)); do
@@ -1048,7 +1052,8 @@ $_RULES\"
 2. When it returns, read the task file and route by the subagent's verdict:"
     fi
     sprintbias_run -p "You are running the SprintBias polish queue: $COUNT finished
-task(s) in review/ to judge. CLAUDE.md / AGENTS.md is auto-loaded when present.${_profile_line}
+task(s) in review/ to judge.
+${_orient}
 
 Judge each task in $(sprintbias_subagent_own_fresh polish) so contexts never mix.
 You are the orchestrator — the subagents judge and rewrite; you move the files.
@@ -1069,7 +1074,8 @@ When every task is routed, report a one-line summary: how many reopened to
 next/ (gate READY) vs left in review/ (and any blockers)."
   else
     sprintbias_run -p "You are running the SprintBias polish queue: $COUNT finished
-task(s) in review/ to judge. CLAUDE.md is auto-loaded.${_profile_line}
+task(s) in review/ to judge.
+${_orient}
 
 Work the tasks ONE AT A TIME, in the listed order. You have no subagent tool,
 so you are the judge, not an orchestrator — after each task, reset your focus

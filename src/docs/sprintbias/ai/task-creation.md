@@ -230,6 +230,7 @@ The header carries the task's place in the larger body of work. Set what applies
 - **Created** — date the task was created (`YYYY-MM-DD`). Set automatically by `./sprint.sh newtask`; used for time audits.
 - **Docs** — a guide the implementer should follow, e.g. `docs/guides/script-template-sync.md`. `none` if there is none.
 - **Plan** — the plan this task belongs to, e.g. `15` for `docs/plans/15-…`. Reverse index of plan membership only. `none` if not in a plan. The plan *file* remains the membership authority.
+- **From plan** — the plan whose work produced this task (a rework, delta, put-off item, or enhancement filed while working plan N). Set by `./sprint.sh newtask "…" --from-plan N`; `none` otherwise. `newplan "…" from:N` groups these follow-ups once plan N is done.
 - **Depends on** — prerequisite task IDs that must finish before this one can start. The runner holds a READY dependent task until those land in review/ or done/ — sequencing, not a block.
 - **Dependents** — reverse edge: task IDs that wait on this one. Graph metadata only — does not put anyone in `blocked/`. Write **Dependents**; readers still accept legacy **Blocks**.
 - **Parent** — a task that groups this one with related work. Task-to-task only; not **Plan**.

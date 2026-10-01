@@ -267,9 +267,8 @@ fi
 echo "▸ Filed task: $TASK_FILE"
 
 # ── Build the analysis prompt ────────────────────────────────────────
-PROFILE_LINE="$(sprintbias_profile_line)"
-
-PROMPT="Dependency-update audit. CLAUDE.md is auto-loaded.${PROFILE_LINE}
+PROMPT="Dependency-update audit.
+$(sprintbias_orient)
 
 A backlog task has been created with raw dependency-tool output embedded under
 its '## Source data' section:

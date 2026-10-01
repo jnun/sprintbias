@@ -92,7 +92,9 @@ minimum, not the standard. You are auditing for the second kind.
   already names, reinvented under a new name? Cross-check **References**:
   code the task flagged for reuse that got reimplemented instead is a
   design-fit finding — and a **Docs** guide the implementation quietly
-  diverges from is another.
+  diverges from is another. So is a source of truth named in the task's
+  `## Grounding` that the change made wrong when the task neither updated it
+  nor listed it under `### Doc follow-ups`.
 - **Operability** — Can it be observed, debugged, and administered? Errors
   that vanish silently, states you can enter but not leave, actions with no
   trail.
@@ -119,7 +121,8 @@ minimum, not the standard. You are auditing for the second kind.
 
       ./sprint.sh newtask "Short imperative description"
 
-  Then append to the created task file (in `docs/tasks/backlog/`) a short
+  When the audited task names a **Plan**, add `--from-plan <that plan id>` so
+  the enhancement groups with that plan's follow-ups. Then append to the created task file (in `docs/tasks/backlog/`) a short
   **Why** (the finding, with file references) and **Scope** (what done looks
   like) so the task stands alone without this audit's context.
 - **DEFECT** — a correctness bug. Note it in the report, recommend
@@ -144,7 +147,7 @@ being promoted — never the reopening of the audited task, and never a raw
 `git mv`. Promote it through the same workability gate `plan start` and the
 sweep use, so it is vetted READY before it sits in `next/`:
 
-    ./sprint.sh newtask "Short imperative description"
+    ./sprint.sh newtask "Short imperative description"   # + --from-plan <id> when the task names a **Plan**
     # append Why + Scope to the created docs/tasks/backlog/<id>-<slug>.md, then:
     bash docs/sprintbias/scripts/promote-to-sprint.sh docs/tasks/backlog/<id>-<slug>.md
 

@@ -371,6 +371,10 @@ if [ -n "$TASK_ID" ]; then
   _SINGLE=1
 fi
 
+# Doc follow-ups recorded by earlier runs (including emit runs, where the
+# agent routed the files) become backlog work before this run starts.
+sprintbias_file_doc_followups
+
 if [ "$_SINGLE" -eq 0 ]; then
 TASK_FILES=()
 while IFS= read -r f; do
@@ -755,6 +759,9 @@ else
   echo "▸ up to $COUNT task(s) queued from $NEXT_DIR"
 fi
 [ "$_PREREQ_ROUTED" -gt 0 ] && echo "  ($_PREREQ_ROUTED prerequisite(s) already complete — routed to $REVIEW_DIR/)"
+# The project map is what every worker orients from — flag drift before the
+# queue runs on stale pointers (no AI; silent when current).
+sprintbias_profile_check >&2 || true
 echo ""
 unset _resume_n
 
@@ -867,6 +874,31 @@ _report_failures() {
   echo ""
 }
 
+# After the queue: every conflict a worker settled under ## Grounding, so the
+# human sees each call that was made on their behalf.
+_report_conflicts() {
+  local name rec result dir reason path c any=0
+  local paths=()
+  for name in ${TO_REVIEW[@]+"${TO_REVIEW[@]}"}; do paths+=("$REVIEW_DIR/$name"); done
+  for rec in ${TO_FAIL[@]+"${TO_FAIL[@]}"}; do
+    IFS="$FAIL_DELIM" read -r name result dir reason <<< "$rec"
+    paths+=("$dir/$name")
+  done
+  for path in ${paths[@]+"${paths[@]}"}; do
+    c="$(sprintbias_grounding_conflicts "$path")"
+    [ -z "$c" ] && continue
+    if [ "$any" -eq 0 ]; then
+      echo ""
+      echo "▸ Conflicts noted (settled before work — check you agree):"
+      any=1
+    fi
+    echo "    ${path##*/}"
+    printf '%s\n' "$c" | sed 's/^/      /'
+  done
+  [ "$any" -eq 1 ] && echo ""
+  return 0
+}
+
 _model_args=();  [ -n "$MODEL" ] && _model_args=(--model "$MODEL")
 # Budget rides only on a tier that can enforce a USD cap (today Claude Code).
 # Elsewhere the cap is omitted at source, so no provider is handed a spending
@@ -877,8 +909,14 @@ if sprintbias_budget_capable && [ -n "${SPRINTBIAS_BUDGET_WORK:-}" ]; then
 fi
 
 # Shared execution rules — exec + emit worker (one string). Action-bias:
-# conversation.md / polish — standards decide → ## Completed.
-_TASK_RULES="- Implement the Success criteria. Prefer project conventions and
+# conversation.md / polish — standards decide → ## Completed. Grounding comes
+# first: the gate normally wrote ## Grounding already; the worker fills gaps
+# (e.g. a --force run that skipped the gate) before touching code.
+_TASK_RULES="$(sprintbias_grounding_rule)
+
+$(sprintbias_doc_sync_rule)
+
+- Implement the Success criteria. Prefer project conventions and
   clear best practice; pick a sensible default and finish. Prerequisites in
   review/ or done/ are complete.
 - Prior '## Outcome': fix its Reason, then finish.
@@ -896,12 +934,11 @@ Product/scope fork that needs a human: ## Outcome, then blocked/."
 
 # Build the execution prompt for a task file at a given path (exec mode).
 _task_prompt() {
-  local path="$1" content profile_line
+  local path="$1" content
   content=$(<"$path")
-  profile_line="$(sprintbias_profile_line)"
   cat <<PROMPT
 You are executing ONE task from the project queue.
-CLAUDE.md is auto-loaded.${profile_line}
+$(sprintbias_orient)
 Task file: $path
 
 TASK:
@@ -920,7 +957,7 @@ PROMPT
 # contexts never mix. Other tiers get the honest sequential fallback. Same
 # routing rules either way so behavior can't drift.
 if [ "$AI_MODE" = "emit" ]; then
-  _profile_line="$(sprintbias_profile_line)"
+  _orient="$(sprintbias_orient)"
 
   _task_list=""
   for ((i=0; i<COUNT; i++)); do
@@ -991,11 +1028,20 @@ For each task that did NOT complete (landed in blocked/, or a hard fail left in 
       → ./sprint.sh chat <id>   # rework or redefine with AI assistance
   Not review/ — these need a redefine or fix before they can re-run.
 
+For each task whose ## Grounding lists conflicts (other than 'None found.'):
+▸ Conflicts noted (settled before work — check you agree):
+    <name>
+      - <conflict line, as written in the task file>
+
+When any task recorded '### Doc follow-ups', end with:
+▸ Doc follow-ups recorded (<N>) — filed into one backlog task on the next
+  ./sprint.sh work or promote.
+
 Use each task's numeric id for <id>."
 
   if sprintbias_orchestration_capable; then
     sprintbias_run -p "You are running the SprintBias task queue: $COUNT task(s) to execute.
-CLAUDE.md / AGENTS.md is auto-loaded when present.${_profile_line}
+${_orient}
 
 Execute each task in $(sprintbias_subagent_own_fresh work) so tasks never share
 context. Dispatch them $_jobs_hint. You are the orchestrator — the subagents
@@ -1032,7 +1078,7 @@ $_EMIT_REPORT"
   else
     # Honest sequential fallback — no subagent tool assumed.
     sprintbias_run -p "You are running the SprintBias task queue: $COUNT task(s) to execute.
-CLAUDE.md / AGENTS.md is auto-loaded when present.${_profile_line}
+${_orient}
 
 Work the tasks ONE AT A TIME, in dependency order (then lowest ID). You do not
 have a subagent tool, so you are the worker, not an orchestrator — after
@@ -1488,7 +1534,7 @@ while [ "$LAUNCHED" -lt "$COUNT" ]; do
 
     DRIFT_PROMPT="You are checking whether a task is still relevant before it gets worked.
 
-CLAUDE.md is auto-loaded with project context and conventions.
+$(sprintbias_orient)
 
 Read the task file at: $WORKING_DIR/$TASK_NAME
 
@@ -1635,6 +1681,8 @@ echo "▸ Done: $COMPLETED completed, $FAILED failed, $INCOMPLETE incomplete, $(
 unset _done_extra
 _report_human_review
 _report_failures
+_report_conflicts
+sprintbias_file_doc_followups
 # `if`, not `&&`: this is the script's last statement, and a false `[ ]` on a
 # blocker-free run would become the script's non-zero exit status.
 if [ "$BLOCKERS" -gt 0 ]; then

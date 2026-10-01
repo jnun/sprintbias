@@ -64,8 +64,7 @@ PROMPT="You are breaking a large task into small, atomic sub-tasks.
 The task file is at: $TASK_FILE
 Read this file to understand the full task content.
 
-CLAUDE.md is auto-loaded with project context and conventions.
-For task workflow details, see DOCUMENTATION.md.
+$(sprintbias_orient)
 
 RULES FOR SPLITTING:
 1. Understand the project context from CLAUDE.md (already loaded).

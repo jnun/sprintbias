@@ -64,6 +64,10 @@ fi
 [ -d "$REVIEW_DIR" ] || { echo "No $REVIEW_DIR/ — nothing to promote."; exit 0; }
 mkdir -p "$DONE_DIR"
 
+# Doc follow-ups recorded in finished work become one backlog task before
+# anything closes (a preview files nothing).
+[ "$DRY_RUN" -eq 1 ] || sprintbias_file_doc_followups
+
 # ── Gather review/ tasks (optionally a single id) ────────────────────
 declare -a TASKS=()
 while IFS= read -r f; do
@@ -181,7 +185,7 @@ if [ "$AUDIT" -eq 1 ]; then
     local task_file="$1"
     sprintbias_change_manifest "$task_file"
     local changed="$SPRINTBIAS_CHANGED_FILES" ctx="$SPRINTBIAS_CONTEXT_SOURCE"
-    local profile_line; profile_line="$(sprintbias_profile_line)"
+    local orient; orient="$(sprintbias_orient)"
     local changed_block
     if [ -n "$changed" ]; then
       changed_block="CHANGED FILES (source: $ctx):
@@ -191,7 +195,8 @@ $changed"
 ## Completed section and Success criteria, confirming against git history."
     fi
     cat <<PROMPT
-Acceptance judge on ONE finished task. CLAUDE.md is auto-loaded.${profile_line}
+Acceptance judge on ONE finished task.
+${orient}
 
 You judge ONE thing: are this task's Success criteria met by the work that
 landed? You never edit anything — your only output is the verdict.
@@ -218,7 +223,7 @@ PROMPT
 
   # ── emit: hand the sweep to the surrounding agent ──────────────────
   if [ "$AI_MODE" = "emit" ]; then
-    _profile_line="$(sprintbias_profile_line)"
+    _orient="$(sprintbias_orient)"
     _task_list=""
     for f in "${TASKS[@]}"; do _task_list="${_task_list}
 - ${f}"; done
@@ -244,8 +249,8 @@ VERDICT: DONE | VERDICT: NOT-DONE — <unmet criterion>."
 
     if sprintbias_orchestration_capable; then
       sprintbias_run -p "You are running the SprintBias promote --audit queue:
-${#TASKS[@]} finished task(s) in review/ to judge for acceptance. CLAUDE.md /
-AGENTS.md is auto-loaded when present.${_profile_line}
+${#TASKS[@]} finished task(s) in review/ to judge for acceptance.
+${_orient}
 
 Judge each task in $(sprintbias_subagent_own_fresh polish) so contexts never mix.
 You are the orchestrator — the subagents judge; you route the files.
@@ -262,8 +267,8 @@ Tasks (in order):$_task_list
 When every task is judged, report a one-line summary: how many $_summary_tail."
     else
       sprintbias_run -p "You are running the SprintBias promote --audit queue:
-${#TASKS[@]} finished task(s) in review/ to judge for acceptance. CLAUDE.md is
-auto-loaded.${_profile_line}
+${#TASKS[@]} finished task(s) in review/ to judge for acceptance.
+${_orient}
 
 Work the tasks ONE AT A TIME, in the listed order. You have no subagent tool, so
 you are the judge — after each task, reset your focus and start the next clean.

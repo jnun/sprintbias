@@ -9,6 +9,10 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+## 0.0.130 — 2026-09-30
+
+## 0.0.129 — 2026-09-30
+
 ### Added
 
 - `profile` builds the project map: `docs/sprintbias/project.md` now records

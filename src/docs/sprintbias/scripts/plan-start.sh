@@ -203,6 +203,9 @@ STATUS="$(plan_status "$PLAN_FILE")"
 
 echo "▸ Starting plan: $(basename "$PLAN_FILE")"
 echo "  Status: $STATUS"
+# The gate grounds each member in the project map — flag drift first (no AI;
+# silent when current).
+sprintbias_profile_check >&2 || true
 echo ""
 
 # Plan-file **Status:** READY is the autonomy latch for loop --refill.
