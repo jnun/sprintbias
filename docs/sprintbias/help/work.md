@@ -26,6 +26,20 @@ prerequisite first, or work the whole sprint so the chain drains in order.
 (In emit mode the backlog/blocked gate is handed to the surrounding agent to
 run; land the task READY in next/, then re-run `work N` to execute it.)
 
+Grounding first: before the queue runs, work checks the project map
+(profile check — no AI; one line when it has drifted). Each worker then makes
+sure its task file has ## Grounding — the sources it relies on, the glossary /
+lexicon / taxonomy terms it uses (copied word for word), and its conflicts, each
+settled before work. The gate normally writes it; the worker fills gaps. Every
+noted conflict is repeated in the end-of-run report under "Conflicts noted".
+
+Docs stay in step: a worker whose change alters what a source of truth
+describes updates it in the same task. Governing sources (security policy,
+decision records, CLAUDE.md / AGENTS.md) and out-of-scope gaps go under
+## Completed → ### Doc follow-ups. work files every follow-up from review/ and
+done/ into one backlog task (Bring project docs in step with landed work) at the
+start and end of each run — each line tagged "(from #id)" and filed once.
+
 Readiness gate: only tasks stamped 'Status: READY' with a clear question list
 are executed. A next/ task that hasn't been gated yet is not skipped — work
 runs the gate on it first (the same gate `gate` runs on next/), then routes by

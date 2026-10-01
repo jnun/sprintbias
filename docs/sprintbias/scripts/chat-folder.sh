@@ -106,7 +106,7 @@ if [ "$AI_MODE" = "emit" ]; then
   _file_list=$(printf '%s\n' "${all_files[@]}")
   sprintbias_run -p "You are sweeping the $STAGE/ task folder with the developer, one task at a time — a fast verdict-first sort, NOT a full conversation on every file. Rip through the queue; go deep only where asked.
 
-CLAUDE.md is auto-loaded with project context and conventions.
+$(sprintbias_orient)
 
 Tasks to sweep, in order:
 $_file_list
@@ -168,7 +168,7 @@ for i in "${!all_files[@]}"; do
   # ── Fast verdict — cheap TRIAGE model, single shot ─────────────────
   _verdict_prompt="You are sweeping a task file from $STAGE/.
 
-CLAUDE.md is auto-loaded with project context and conventions.
+$(sprintbias_orient)
 Read the task file at: $file
 
 Then do a quick check of the current codebase to assess the task's status.

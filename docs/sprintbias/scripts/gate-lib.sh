@@ -22,7 +22,7 @@
 # same READY_DIR=next/ init + review plan start uses in bulk).
 #
 # Requires from lib.sh: sprintbias_run, sprintbias_ai_mode, sprintbias_ai_tier,
-# sprintbias_tier_model, sprintbias_profile_line, sprintbias_review_verdict,
+# sprintbias_tier_model, sprintbias_orient, sprintbias_review_verdict,
 # move_file, sprintbias_log_path.
 #
 # Usage:
@@ -110,11 +110,14 @@ subsection to read: None — task is fully defined.
 - BLOCKED → git mv the task file to $SPRINTBIAS_GATE_BLOCKED_DIR/ || mv it there
 - COMPLETE → git mv the task file to $SPRINTBIAS_GATE_REVIEW_DIR/ || mv it there
   (COMPLETE = work already in the codebase; not docs/tasks/done/)
-$ready_instr"
+$ready_instr
+Then, when its ## Grounding lists conflicts, print them for the human:
+▸ Conflicts noted in <task name>:
+    - <each conflict line, as written>"
   fi
 
-  # Profile line is task-independent — resolve it once, not per task.
-  SPRINTBIAS_GATE_PROFILE_LINE="$(sprintbias_profile_line)"
+  # Orientation is task-independent — resolve it once, not per task.
+  SPRINTBIAS_GATE_ORIENT="$(sprintbias_orient)"
 
   local idx
   idx="$(_sprintbias_gate_sprint_index)"
@@ -135,8 +138,7 @@ sprintbias_gate_contract() {
   cat <<EOF
 You are a senior developer reviewing a task before it enters a sprint.
 
-CLAUDE.md is auto-loaded with project context and conventions.
-For task workflow details, see DOCUMENTATION.md.${SPRINTBIAS_GATE_PROFILE_LINE}${SPRINTBIAS_GATE_SPRINT_BLOCK}
+${SPRINTBIAS_GATE_ORIENT}${SPRINTBIAS_GATE_SPRINT_BLOCK}
 
 The task file is at: $1 — read it first.
 
@@ -167,7 +169,10 @@ Your job:
    check the next/backlog index above: if a sibling task will create that
    prerequisite, this is a DEPENDENCY, not an unclear item — keep it REMAINING
    and record the dependency (see "Dependencies on other tasks" below).
-5. Produce an overall verdict: READY, BLOCKED, or COMPLETE.
+5. Ground the task: write or complete its ## Grounding section (see "Grounding"
+   below). A conflict that changes scope or what done means goes under
+   '### Questions for the developer'; every other conflict is settled in place.
+6. Produce an overall verdict: READY, BLOCKED, or COMPLETE.
 
 Fill the brief first (before stamping READY):
 - Write the durable work in ## Problem and ## Success criteria. A later reader
@@ -183,6 +188,8 @@ Fill the brief first (before stamping READY):
   the decision under '### Questions for the developer'.
 - Notes may hold short optional hints and settled guidance from answered
   questions. Leave ## Completed / ### Files changed for after work.
+
+$(sprintbias_grounding_rule)
 
 Questions become instructions (simple loop):
 1. ASK — put each open decision under '### Questions for the developer' as
@@ -398,6 +405,7 @@ sprintbias_gate_review() {
   task_name="$(basename "$task_file")"
   SPRINTBIAS_GATE_LOG=""
   SPRINTBIAS_GATE_ERROR=""
+  SPRINTBIAS_GATE_CONFLICTS=""
 
   local prompt
   prompt="$(sprintbias_gate_contract "$task_file")${SPRINTBIAS_GATE_MOVE_INSTR}"
@@ -437,6 +445,13 @@ sprintbias_gate_review() {
       _verdict="BLOCKED"
       sprintbias_set_review_status "$task_file" "BLOCKED" || true
       echo "  ⚠ Open questions remain — overriding stamp to BLOCKED (cannot stay READY)" >&2
+    fi
+    # Surface the conflicts the review settled under ## Grounding, so the human
+    # sees them now — not only when they next open the file.
+    SPRINTBIAS_GATE_CONFLICTS="$(sprintbias_grounding_conflicts "$task_file")"
+    if [ -n "$SPRINTBIAS_GATE_CONFLICTS" ]; then
+      echo "  ▸ Conflicts noted in $task_name (## Grounding):" >&2
+      printf '%s\n' "$SPRINTBIAS_GATE_CONFLICTS" | sed 's/^/    /' >&2
     fi
     case "$_verdict" in
       BLOCKED)

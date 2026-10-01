@@ -76,7 +76,6 @@ layers that stack:
 | `search` | Find any task by keyword across the whole board | `search.py` |
 | `learn` | Browse the catalog and play a sandboxed demo | `learn.py` |
 | `align` | Spot feature gaps and orphan tasks before the next sprint | `align.py` |
-| `context` | One dump of project state for an agent (or you) | `context.py` |
 | `profile` | Capture project conventions so AI commands inherit them | `profile.py` |
 | `sync` | Push task changes so GitHub issues stay in sync (theater) | `sync.py` |
 | `validate` | Catch a broken task graph before work or promote | `validate.py` |

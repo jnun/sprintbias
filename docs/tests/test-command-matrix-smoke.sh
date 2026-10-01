@@ -343,7 +343,6 @@ expect_ai "polish <file> (deep-judge)" polish docs/tasks/review/61-review-beta.m
 echo "Look family — read-only, no AI banner:"
 expect_noai "status"          status
 expect_noai "search <kw>"     search smoke
-expect_noai "context"         context
 expect_noai "align"           align
 expect_noai "learn (catalog)" learn
 

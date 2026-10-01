@@ -22,20 +22,26 @@ the full list and `./sprint.sh status` to see where work stands. Everything belo
 
 ## Rules for AI agents
 
-Follow these six and you will not get lost:
+Follow these seven and you will not get lost:
 
 1. **Change status by moving the file** between folders. Do not edit a status field.
 2. **Create work with `./sprint.sh`** (`newtask`, `newbug`, …). Never write a task
    file or pick an ID by hand — IDs are assigned for you.
 3. **Treat `docs/sprintbias/` as read-only.** Your work lives everywhere else under
-   `docs/`. (The one exception: `docs/sprintbias/DOC_STATE.md`.)
+   `docs/`. (The exceptions: `docs/sprintbias/DOC_STATE.md`, and `project.md`,
+   which `./sprint.sh profile` writes.)
 4. **Old dates in `review/` or `done/` mean finished, not stale.** Never redo them.
 5. **You define, execute, and perfect. The human approves, commits, and ships.**
    Run `git commit` or `./sprint.sh sync` only when the human asks in this conversation.
-6. **Raise review findings one at a time.** When a review leaves the human two or
-   more calls to make, list them in `docs/tmp/<subject>_discuss.md`, then raise one
-   issue per message with numbered options (best practice marked `(suggested)`),
-   act on the pick right away, record it there, and move to the next.
+6. **Raise decisions one at a time.** Whenever the human has two or more calls
+   to make, write them as a `- [ ]` checklist in `docs/tmp/<subject>_discuss.md`.
+   Then loop: take the first unchecked line, ask with numbered options (best
+   practice marked `(suggested)`), do the updates the answer calls for, note
+   it, check it off, re-read, next. Settle clear-cut questions yourself.
+7. **Start from the project map.** `docs/sprintbias/project.md` says where the
+   project's knowledge lives. Ground a task before working it — its `## Grounding`
+   names the sources, the terms, and the conflicts. Sources of truth are the
+   authority: name a conflict instead of working around it.
 
 ## Why folders and plain text
 
@@ -165,10 +171,9 @@ Groups: **create · chat · plan · work · look · keep**.
 ./sprint.sh search <keyword>    # search tasks
 ./sprint.sh learn [demo]        # watch the flow run (no name lists demos)
 ./sprint.sh align               # feature alignment
-./sprint.sh context             # AI context summary
 
 # keep — config & maintenance
-./sprint.sh profile             # create/update project profile (show = print only)
+./sprint.sh profile             # build/refresh the project map (show = print, check = drift, no AI)
 ./sprint.sh sync                # push task changes to GitHub
 ./sprint.sh validate            # integrity-check IDs + deps (--docs, --commands guard the catalog)
 ./sprint.sh cleanup             # clean stale docs/tmp/ files
@@ -200,6 +205,8 @@ Completing the move updates status — nothing else to edit. `git commit` and
 | Feature (defined capability) | `./sprint.sh newfeature "..."` |
 | Task (work item) | `./sprint.sh newtask "..."` |
 | Plan (group of tasks) | `./sprint.sh newplan "Name" 12 13 14` |
+| Plan for a finished plan's follow-ups | `./sprint.sh newplan "Name" from:24` → `plan start <id>` → `work` |
+| Plan for the whole backlog | `./sprint.sh newplan "Name" backlog` → `plan start <id>` → `work` |
 | Bug | `./sprint.sh newbug "..."` |
 | Test (validate a live thing) | `./sprint.sh newtest "Name"` |
 
@@ -220,6 +227,38 @@ Your CLI, provider, and per-role models live in `docs/sprintbias/config`.
 For a personal override that never ships or commits, put the same `KEY=VALUE` lines
 in `docs/sprintbias/config.local` (gitignored). Precedence, highest first:
 env var → per-run flag → `config.local` → `config` → tier default.
+
+## The project map
+
+`docs/sprintbias/project.md` is the one place that answers "how do I know what I
+need to know": stack, code layout, commands, sources of truth (glossary / lexicon /
+taxonomy, architecture, decisions, API, security, instruction files), and
+environments (local, CI, deploy). It holds pointers, never copies, so agents jump
+straight to the right file instead of searching.
+
+```bash
+./sprint.sh profile             # build or refresh the map with AI; you confirm it
+./sprint.sh profile show        # print it
+./sprint.sh profile check       # no AI: listed paths exist, nothing it tracks changed
+```
+
+Every AI command orients from the map. `work` and `plan start` run `profile check`
+first and print one line when the map has drifted. Before a task is worked, the
+gate writes its **`## Grounding`**: the sources it relies on, the glossary terms it
+uses (copied word for word), and its conflicts — task vs a source, source vs
+source, task vs code, or task vs SprintBias itself — each settled before work.
+A conflict that changes scope or what done means becomes a question for you.
+`work` fills in grounding the gate did not write and lists every noted conflict
+in its end-of-run report.
+
+**Docs stay in step.** When work changes what a source of truth describes, the
+worker updates it in the same task — glossary, architecture, API, README,
+commands. Governing sources (security policy, decision records, `CLAUDE.md` /
+`AGENTS.md`) and out-of-scope gaps go under `## Completed` → `### Doc follow-ups`
+instead. `work` and `promote` collect every follow-up from `review/` and `done/`
+into one backlog task, *Bring project docs in step with landed work*, each line
+tagged with the task it came from and filed once. `polish` flags a change that
+left a source wrong with neither.
 
 ## Installing
 

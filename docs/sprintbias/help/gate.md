@@ -15,6 +15,9 @@ On **next/** (default) gate:
   - Identifies remaining work
   - Surfaces open questions under ### Questions for the developer (each with a
     suggestion)
+  - Grounds the task: writes ## Grounding — the project-map sources it relies
+    on, the glossary / lexicon / taxonomy terms it uses (word for word), and its
+    conflicts settled before work (printed as "Conflicts noted")
   - Writes a ## Questions section (stamp + findings + open questions)
 
 Verdicts on next/ (workability stamps — **not** lifecycle folders):

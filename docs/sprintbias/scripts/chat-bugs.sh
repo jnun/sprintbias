@@ -216,7 +216,8 @@ if [ "$AI_MODE" = "emit" ]; then
   _file_list=$(printf '%s\n' "${all_files[@]}")
   sprintbias_run -p "You are sweeping the bug inbox ($BUGS_DIR/) with the developer, one report at a time — a fast verdict-first sort, NOT a full conversation on every bug. Rip through the queue; go deep only where asked.
 
-CLAUDE.md is auto-loaded with project context and conventions. A bug report is NOT a task: it lives flat in $BUGS_DIR/, has no Depends-on/Status metadata. Handled reports leave the workspace: convert to a fix task then DELETE the report, or close/kill by DELETE. No archived/ folder.
+$(sprintbias_orient)
+A bug report is NOT a task: it lives flat in $BUGS_DIR/, has no Depends-on/Status metadata. Handled reports leave the workspace: convert to a fix task then DELETE the report, or close/kill by DELETE. No archived/ folder.
 
 Bug reports to sweep, in order:
 $_file_list
@@ -274,7 +275,7 @@ for i in "${!all_files[@]}"; do
   # ── Fast verdict — cheap TRIAGE model, single shot ─────────────────
   _verdict_prompt="You are sweeping a BUG REPORT (not a task) from $BUGS_DIR/.
 
-CLAUDE.md is auto-loaded with project context and conventions.
+$(sprintbias_orient)
 Read the bug file at: $file
 
 Then do a quick check of the current codebase to assess whether the defect still exists.

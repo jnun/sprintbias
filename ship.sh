@@ -78,6 +78,7 @@ TREE_EXCLUDES=(
     "DOC_STATE.md"
     "tmp"
     "config.local"   # personal CLI/model overlay — dev-local, never shipped
+    "project.md"     # the project map (./sprint.sh profile) — per-project, never shipped
     "__pycache__"    # Python bytecode: generated, and its bytes carry stale
                      # pre-rebrand paths the text-only legacy scan cannot see
     "*.pyc"

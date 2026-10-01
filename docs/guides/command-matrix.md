@@ -58,7 +58,7 @@ keep	Housekeeping			Integrity, config, sync, deps
 
 **`chat` shapes. `plan` acts. `work` does.**
 
-- A plan is scaffolded by `newplan` (optional members: ids, ranges, `parent:N`).
+- A plan is scaffolded by `newplan` (optional members: ids, ranges, `parent:N`, `from:N`, `backlog`). Work filed while reviewing plan N carries `**From plan**: N` (`newtask --from-plan N`); `plan done N` prints `newplan "…" from:N` to group it.
   When members are pre-bound, fast-lane next step is `plan start` → `work`
   without full `chat plan` ceremony. Otherwise author with **`chat plan`**, then
   decisive plan verbs: `plan think` (optional critique), `plan start` (gate +
@@ -82,7 +82,7 @@ Command		Mints
 newidea [name]	Idea to refine (no name = AI Q&A; with name = template)
 newfeature [name]	Feature spec (no name = AI Q&A; with name = template)
 newtask		Task (the unit of work)
-newplan		Plan (named list of task IDs; trailing ids / ranges / parent:N bind members)
+newplan		Plan (named list of task IDs; trailing ids / ranges / parent:N / from:N / backlog bind members)
 newbug		Bug report (inbox)
 newtest		Test loop for a deployed thing
 
@@ -91,7 +91,7 @@ newtest		Test loop for a deployed thing
 Command		Does
 chat \<id\>		Define / refine / split one task in conversation
 chat \<folder\>		Sweep backlog / next / blocked — verdict-first sort
-chat plan [id]		Author or refine a plan (plan id; bare = pick one)
+chat plan [id]		Author or refine a plan (plan id; bare = pick one); works plan think's decision checklist first, one line at a time
 chat bugs		Sweep bug inbox → convert or kill
 chat			Menu that includes newtask, newplan, chat folder, chat plan (plan id; bare = pick one), chat bugs (bare = work through oldest to newest or until stopped)
 
@@ -178,7 +178,6 @@ status			Board counts, blocked/ (needs decision), in-progress, features, bugs
 search \<kw\>		Find tasks by keyword
 learn [name]	Watch the flow run — catalog (no name) or play a sandboxed demo by name
 align			Feature ↔ task alignment
-context			Project summary for an AI session
 
 `learn` is read-only theater: a demo writes nothing, moves no task files, and
 makes no network calls, so it earns the look family. It is **not on the spine** —
@@ -191,8 +190,9 @@ actions when typed.
 ### keep — housekeep
 
 Command		Does
-profile			Create or update project conventions (interactive)
-profile show	Print profile, no AI
+profile			Create or update the project map — stack, code, commands, sources of truth, environments (interactive)
+profile show	Print the project map, no AI
+profile check	Map drift check, no AI — work + plan start run it; exit 1 when stale
 sync			Push task changes to GitHub
 validate		Integrity: IDs, edges, help/docs/commands surface
 cleanup			Clear stale scratch files
@@ -290,7 +290,8 @@ talk			chat					chat is mutual; talk is one-way / TTS-adjacent
 tasks			work					work is the execute verb; task stays the noun
 define			gate					honest name for the READY-gate; matches "plan start gates"
 checkfeatures	align					verb; feature↔task alignment
-ai-context		context					plain word, same job
+ai-context		context					plain word, same job (context itself retired below)
+context			status · profile		state is `status`; "what you need to know" is the project map (`profile`)
 audit-deps		deps					drop the auditor persona; still files one dep task
 sprint (cmd)	plan					"sprint" is a concept — next/ IS the sprint
 triage			chat · chat \<folder\>	folded into the conversational engine

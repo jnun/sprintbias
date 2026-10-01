@@ -126,6 +126,9 @@ and the reopen sweep / `--code` audit stay on `polish` itself.
 `docs/tasks/done/`, deletes the plan file (retirement is deletion, never a
 stored DONE status). If any member is still outstanding, it reports what remains
 and does nothing. Bare `plan done` picks a plan.
+When tasks were filed from the plan's work (**From plan**: N — reworks, deltas,
+put-off items, enhancements), plan done names them and prints the command that
+groups them into the next plan: `./sprint.sh newplan "… — follow-ups" from:N`.
 
 Usage:
   ./sprint.sh plan think  [id] [--model <id>]

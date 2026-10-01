@@ -147,7 +147,6 @@ bash docs/tests/test-no-stale-refs.sh
 | `test-plan-lifecycle.sh` | plan scripts | draft / start / done shapes |
 | `test-validate-tasks.sh` | `validate-tasks.sh` | ID integrity, dep tokens |
 | `test-check-alignment.sh` | `check-alignment.sh` | feature ↔ task links |
-| `test-context.sh` | `context.sh` | AI context summary |
 | `test-profile.sh` | `profile.sh` | non-AI show/help paths |
 | `test-cleanup-tmp.sh` | `cleanup-tmp.sh` | stale scratch files |
 | `test-setup-detection.sh` | `setup.sh` helpers | install detection + gitignore merge (pure block) **and** the scaffold/conflict machinery: `classify_target`, deferral policy, `apply_conflict`/`apply_deferred_conflicts`, gitignore prepend/replace, never-clobber, manual-name routing (both fenced blocks, extracted) |

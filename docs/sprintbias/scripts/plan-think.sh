@@ -165,8 +165,7 @@ Both of you evaluate every decision through three lenses:
 **Act vs hold.** Apply every change that best practice, the project's conventions, or the plan's own goal settles — ordering, dependency edges, sharper wording, missing criteria, a clear design fix. HOLD a finding for the human only when it is genuinely their call: a product or policy choice, a trade-off with no clear best practice, a number or period only the owner can set, or a cut/scope change they might reasonably contest. A held finding is not applied anywhere; it goes to the discuss file (Pass 3). When unsure, act on the sensible default and say so in the review — hold only what truly needs the owner.
 
 PROJECT CONTEXT:
-CLAUDE.md is auto-loaded with project overview, tech stack, and conventions.
-For task workflow details, see DOCUMENTATION.md.
+$(sprintbias_orient)
 
 PLAN FILE: $PLAN_FILE
 Read it fully (Goal, Why, Status, ordered Member tasks, any parallelism notes).
@@ -194,27 +193,22 @@ Work members in the improved order, finishing each fully before the next. Each m
 - Member in **(doing/)**, **(review/)**, or **(done/)** — trust it as completed exactly as it was originally defined; its code already exists on disk. Do NOT rewrite its Problem/Success — changing the acceptance bar after the code was built against it is a regression. Two sub-cases:
   - The improved plan needs nothing more from it → leave it untouched (just annotate below).
   - The improved plan genuinely needs MORE from it — a real blocker, not cosmetic drift → do NOT reopen the finished task. Instead file a NEW delta task with:
-        ./sprint.sh newtask \"<short description of the delta the plan now needs>\"
+        ./sprint.sh newtask \"<short description of the delta the plan now needs>\" --from-plan $PLAN_ID
     then append **Problem**, **Success criteria**, and a **Why** to the created file in docs/tasks/backlog/. Write it to START FROM THE CURRENT CODE/FILESYSTEM STATE (the finished member already landed) and add ONLY the new fix — do not re-describe work that already exists. Reference the completed member by id (\"builds on #<member id>\"). Then add the new task's id to $PLAN_FILE's member list so it becomes part of the plan and plan start will gate it. Record the filing in the member's annotation and in the review.
 
 For every member whose file exists, in either case, leave Notes and any Depends on / Dependents lines intact and append a lean ## Plan Think section recording: its reality-check verdict and evidence (unstarted members), how each persona views this task, the key tension and how it resolved, which lens drove any change, and — for a worked member — whether you left it as-is or filed a delta task (name its id). If a member has no file on disk, note that in the review instead of inventing a file.
 
 **Pass 3 — Record.**
-Held findings go to $DISCUSS_FILE. If it already exists from an earlier session, read it first: apply any item that has a filled \`Decision:\` line as part of this pass and drop it from the file; carry still-open items forward unless this pass settles them. Write the file in this shape (omit it entirely when nothing is held):
+Held findings go to $DISCUSS_FILE as a checklist (docs/sprintbias/ai/conversation.md → Many decisions). If it already exists from an earlier session, read it first: apply any checked \`- [x]\` item that this pass has not yet carried out, keep checked lines as they are, and carry unchecked lines forward unless this pass settles them. Write it in this shape (omit it entirely when nothing is held):
 
-    # Plan $PLAN_ID — discussion
-    Source: plan think. Raise one item at a time; act on each decision before the next.
+    # Plan $PLAN_ID — decisions
+    Work loop: take the first unchecked line, work it to a decision with the user, do the updates, note it, check it off, re-read.
 
-    ## 1. <short title>
-    Verdict: <DONE ALREADY | NOT REAL | OFF GOAL | DECISION>
-    Problem: <what is wrong or undecided, one or two sentences>
-    Evidence: <task ids, files, lines>
-    Recommendation: <your pick and why>
-    Decision:
+    - [ ] Plan: <one singular issue> — suggested: <your pick and why>
+    - [ ] #<id> <task title> — <VERDICT>: <one singular issue> — suggested: <pick> (evidence: <files, lines>)
+      - [ ] #<id> follow-up: <one singular question> — suggested: <pick>
 
-Verdict carries the reality-check result for a member task (with its #id in the title), or DECISION for any other owner call. Evidence per verdict: DONE ALREADY — where the code already meets each Success criterion, and any criterion it does not; NOT REAL — what you checked and what the code actually does; OFF GOAL — why the work sits outside the plan's Goal.
-
-Number items most-blocking first. Leave every \`Decision:\` line empty — the human fills them in chat.
+One line per singular issue: plan-level calls first, then each member's lines in plan order, with any follow-up questions indented beneath their issue. VERDICT is DONE ALREADY, NOT REAL, OFF GOAL, or DECISION for any other owner call. Evidence per verdict: DONE ALREADY — where the code already meets each Success criterion, and any criterion it does not; NOT REAL — what you checked and what the code actually does; OFF GOAL — why the work sits outside the plan's Goal. Leave every line unchecked — the human works them in chat.
 
 Write the plan-level analysis to $REVIEW_FILE with:
 1. **Reality check** — one line per member: #id — verdict (KEEP / TRIM / DONE ALREADY / NOT REAL / OFF GOAL, or FINISHED for doing/review/done) — the code evidence (file:line) behind it.
@@ -254,7 +248,7 @@ _model_args=()
 if [ "$AI_MODE" = "emit" ]; then
   PROMPT="$PROMPT
 
-**After the completion marker:** if $DISCUSS_FILE holds items, you are also the chat session. Raise them with the user one at a time as set out in docs/sprintbias/ai/conversation.md (Many decisions: one issue at a time): one issue per message with numbered options and a (suggested) pick where best practice gives one; act on each pick right away (plan, member tasks, docs), record it on its Decision: line, then raise the next. Delete $DISCUSS_FILE when all are decided."
+**After the completion marker:** if $DISCUSS_FILE holds items, you are also the chat session. Run the work loop in docs/sprintbias/ai/conversation.md (Many decisions: one issue at a time) over its unchecked lines: one issue per message with numbered options and a (suggested) pick; do the updates it calls for (plan, member tasks, docs), note the decision under the line, check it off, re-read the file, and take the next unchecked line. Delete $DISCUSS_FILE when none remain."
   sprintbias_run -p "$PROMPT" \
     ${_model_args[@]+"${_model_args[@]}"} \
     --tools "$TOOLS" \

@@ -96,23 +96,30 @@ task's **Depends on** points into `blocked/`, the sweep lifts and defines that
 dependency (via the same fresh-context chain) so the dependent task can actually
 be worked. The folder argument only chooses WHICH files are opened.
 
+**Decisions come one at a time.** In any chat session, when the AI has two or
+more calls for you, it writes them as a checklist in
+`docs/tmp/<subject>_discuss.md` (e.g. `task-231_discuss.md`): one `- [ ]` line
+per issue, follow-up questions indented beneath it. Then it runs the work loop
+on the first unchecked line: ask (numbered options, suggested pick), work it
+through with you, do the doc or task updates your answer calls for, note the
+decision, check the line off, re-read the checklist, and take the next
+unchecked line. Clear-cut questions it settles itself. If you leave early, the
+next `chat` on the same task or plan picks up at the first unchecked line.
+
 With `plan` (or `plan <id>`), `chat` authors a plan file in `docs/plans/` —
 conversational grouping, not task refinement. Bare `chat plan` picks a plan
 (like bare `chat backlog`); `chat plan <id>` uses a *plan* id (never a task
-id). Create the scaffold first with `newplan`. The walk injects the shared
-Conversation Method and writes only the plan file: Goal, ordered member task
-IDs (from `backlog/`, read-only — no task moves or edits), parallelism notes
-(recorded, not acted on), and `**Status:** DRAFT → READY` when you confirm.
-`chat backlog` mutates task files; `chat plan` only records IDs into the plan.
-When `plan think` has held decisions for you (docs/tmp/plan-<id>_discuss.md),
-`chat plan <id>` raises those first, one issue per message with numbered
-options (the best-practice pick marked suggested), carries out your pick right
-away, records it in that file, and moves to the next (deleting the file when
-all are done). A session that ends early resumes at the first undecided item. Each held task is raised by its
-verdict: DONE ALREADY shows where the code already does it, then offers close
-(→ review/), trim to the gap, or delete; NOT REAL walks the evidence that the
-problem isn't one, then offers delete or keep-with-your-context; OFF GOAL says
-why it's off topic, then offers delete or put off (stays in backlog/).
+id). Create the scaffold first with `newplan`. The session writes only the plan
+file: Goal, ordered member task IDs (from `backlog/`, read-only — no task moves
+or edits), parallelism notes (recorded, not acted on), and
+`**Status:** DRAFT → READY` when you confirm.
+When `plan think` has listed decisions for you (docs/tmp/plan-<id>_discuss.md),
+`chat plan <id>` runs the work loop over that checklist first: plan-level
+lines, then each task's lines in plan order. Each held task is raised by its verdict: DONE ALREADY shows where the
+code already does it, then offers close (→ review/), trim to the gap, or
+delete; NOT REAL walks the evidence that the problem isn't one, then offers
+delete or keep-with-your-context; OFF GOAL says why it's off topic, then offers
+delete or put off (stays in backlog/).
 After authoring: optional `./sprint.sh plan think <id>` (dual-persona critique),
 then `./sprint.sh plan start <id>` to commit members into the sprint — not here.
 
@@ -166,6 +173,8 @@ See and set persistent pins with ./sprint.sh model (help model).
 
 What it does:
   - Sizes the task up first, then splits or refines accordingly
+  - Checks the task against the current code — paths, dependencies, and
+    assumptions that have moved on — and updates the brief to match
   - Asks one focused question at a time, targeting the biggest gap
   - Lays out open technical decisions with a recommended default and its
     rationale, flagging security and performance trade-offs

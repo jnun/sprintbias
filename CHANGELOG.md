@@ -9,6 +9,76 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+### Added
+
+- `profile` builds the project map: `docs/sprintbias/project.md` now records
+  where the project's knowledge lives — code layout, run/test/lint/build
+  commands, sources of truth (glossary / lexicon / taxonomy, architecture,
+  decisions, API, security, instruction files), and environments (local, CI,
+  deploy, and who may deploy) — ending with a `**Checked:**` date @ commit stamp.
+- `profile check` (no AI) flags a missing map, listed paths that no longer
+  exist, and tracked files changed since the last check. `work` and
+  `plan start` run it first and print one line when the map has drifted.
+- Tasks are grounded before they are worked. The gate writes `## Grounding`
+  into each task: the sources it relies on, the glossary terms it uses (copied
+  word for word), and its conflicts — task vs a source, source vs source, task
+  vs code, or task vs SprintBias itself — each settled before work. A conflict
+  that changes scope becomes a question for you. `work` fills in missing
+  grounding, and both the gate and `work` print every noted conflict.
+- Docs stay in step with the work. A worker whose change alters what a source
+  of truth describes updates it in the same task; governing sources (security
+  policy, decision records, `CLAUDE.md` / `AGENTS.md`) and out-of-scope gaps are
+  recorded under `### Doc follow-ups`. `work` and `promote` collect them into one
+  backlog task, *Bring project docs in step with landed work*, each line tagged
+  with its source task and filed once. `polish` flags a change that left a
+  source wrong with neither.
+
+- Rework decided while working a plan is grouped for after the plan. Tasks
+  filed from plan N's work — "rework later" decisions in `chat plan`, deltas
+  from `plan think`, put-off members, `polish` enhancements — carry
+  `**From plan**: N` (`newtask "…" --from-plan N`) and stay out of plan N.
+  `plan done N` lists them and prints the one command that groups them:
+  `newplan "… — follow-ups" from:N` → `plan start <id>` → `work`.
+- `newplan "Name" backlog` puts every backlog task not yet in a plan into a new
+  plan. `from:N` and `backlog` also work at the interactive member prompt and
+  mix with ids and `parent:N`.
+- A plan created with its members named (ids, `parent:N`, `from:N`, `backlog`)
+  starts `READY`, so `plan start` runs from an agent session too. A plan created
+  empty still starts `DRAFT`.
+
+### Removed
+
+- `context` is retired: use `status` for project state and `profile` for what
+  an agent needs to know.
+
+### Changed
+
+- Every AI command now orients the same way: one line naming the instruction
+  file your provider loads (`CLAUDE.md` or `AGENTS.md`), the manual, and the
+  project map, with one policy — sources of truth are the authority, conflicts
+  are named rather than worked around, deploys and secrets are human-owned.
+  Grok runs are no longer told to read `CLAUDE.md`.
+- `chat` raises decisions one at a time in every session, not just reviews.
+  When the AI has two or more calls for you, it writes them as a checklist in
+  `docs/tmp/<subject>_discuss.md` (e.g. `task-231_discuss.md`) and works it
+  one line at a time: ask, settle it with you, make the updates, note the
+  decision, check it off, re-read, next. Checked lines are never reworked, and
+  the next `chat` on that task or plan picks up at the first unchecked line.
+- `plan think` lists the decisions it holds for you in the same checklist
+  form, plan-level first and then task by task, and `chat plan` works through
+  it the same way.
+- `chat <id>` now checks the task against the current code in its opening read.
+  Next to *well-defined?*, *worth more discussion?*, and *best-practice path*,
+  it asks *aligned with the current code?* and names any drift: moved or renamed
+  paths, outdated dependencies, stale assumptions, work already done, or a
+  change in direction. It then updates the brief to match before refining.
+
+### Fixed
+
+- `plan check` and `chat plan` on a plan with no member tasks no longer exit
+  silently: `plan check` reports the plan as empty, and `chat plan` opens
+  authoring.
+
 ## 0.0.128 — 2026-09-28
 
 ### Added

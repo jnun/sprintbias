@@ -193,7 +193,7 @@ fi
 # After the chat/work/gate/align/context/deps remap, live surface paths must
 # not teach retired dispatch labels as runnable commands. Command-matrix
 # retired-names table and this test's own patterns are allowlisted below.
-check '\./sprint\.sh (talk|tasks|define|checkfeatures|ai-context|audit-deps)\b' \
+check '\./sprint\.sh (talk|tasks|define|checkfeatures|ai-context|audit-deps|context)\b' \
     "no retired ./sprint.sh command invocations on live surface"
 
 # Config keys renamed with the surface (hard cut). Anchored to an assignment

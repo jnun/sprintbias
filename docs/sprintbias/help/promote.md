@@ -12,6 +12,10 @@ ways:
   that landed meets them. It reports by default and moves nothing; add `--move`
   to close the DONE ones. See **Acceptance audit** below.
 
+Before closing anything, promote files the ### Doc follow-ups recorded in
+review/ and done/ into the one open backlog task that tracks them (see
+`./sprint.sh help work`); --dry-run files nothing.
+
 **Two gates, one lifecycle.** The same dependency edge that gates the *run*
 also gates the *close*: **`Depends on` gates `work`** (a task does not run until
 every prerequisite reaches `review/`/`done/`), and **`Tests` gates `promote`**

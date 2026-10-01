@@ -187,7 +187,7 @@ if [ "$AI_MODE" = "emit" ]; then
     echo "✗ Protocol file missing: $PROTOCOL" >&2
     exit 1
   fi
-  _profile_line="$(sprintbias_profile_line)"
+  _orient="$(sprintbias_orient)"
   _rules="$(sprintbias_excellence_rules)"
   _today="$(date +%Y-%m-%d)"
 
@@ -226,7 +226,7 @@ ${_m_block}"
   if sprintbias_orchestration_capable; then
     sprintbias_run -p "You are running the SprintBias plan-polish pass: $COUNT finished
 member task(s) of plan $PLAN_ID (in review/ or done/) to excellence-judge.
-CLAUDE.md / AGENTS.md is auto-loaded when present.${_profile_line}
+${_orient}
 
 Judge each member in $(sprintbias_subagent_own_fresh polish) so contexts never
 mix. You are the orchestrator — the subagents judge and write; you only route.
@@ -242,7 +242,8 @@ Members (plan order), each with the exact '## Excellence' block to append:$_memb
 
 When every member is judged, report a one-line summary: how many EXCELLENT vs
 FILED (with total enhancement tasks filed, and their routing split) vs BLOCKER.
-Filed enhancements default to docs/tasks/backlog/; up to 1–2 per member that
+Filed enhancements carry --from-plan $PLAN_ID (newtask) so they group with this
+plan's follow-ups, and default to docs/tasks/backlog/; up to 1–2 per member that
 clear the \"a senior engineer would act now\" bar are warm-routed into
 docs/tasks/next/ through the shared gate. The audited tasks themselves are never
 reopened or moved. Report the filed total with its split, e.g. FILED — 3 (1 →
@@ -251,7 +252,7 @@ next/, 2 → backlog/)." || {
   else
     sprintbias_run -p "You are running the SprintBias plan-polish pass: $COUNT finished
 member task(s) of plan $PLAN_ID (in review/ or done/) to excellence-judge.
-CLAUDE.md is auto-loaded.${_profile_line}
+${_orient}
 
 Work the members ONE AT A TIME, in the listed order. You have no subagent tool,
 so you are the judge — after each member, reset your focus and start the next
@@ -266,7 +267,8 @@ Members (plan order), each with the exact '## Excellence' block to append:$_memb
 
 When every member is judged, report a one-line summary: how many EXCELLENT vs
 FILED (with total enhancement tasks filed, and their routing split) vs BLOCKER.
-Filed enhancements default to docs/tasks/backlog/; up to 1–2 per member that
+Filed enhancements carry --from-plan $PLAN_ID (newtask) so they group with this
+plan's follow-ups, and default to docs/tasks/backlog/; up to 1–2 per member that
 clear the \"a senior engineer would act now\" bar are warm-routed into
 docs/tasks/next/ through the shared gate. The audited tasks themselves are never
 reopened or moved. Report the filed total with its split, e.g. FILED — 3 (1 →

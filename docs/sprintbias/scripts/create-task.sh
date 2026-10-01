@@ -11,6 +11,24 @@ if [ ! -f "docs/sprintbias/DOC_STATE.md" ]; then
     exit 1
 fi
 
+# --from-plan N records which plan's work this task came out of (a rework,
+# delta, deferred item, or enhancement filed while working plan N), so
+# `newplan "…" from:N` can group the follow-ups once the plan is done.
+FROM_PLAN=""
+_pos=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --from-plan)   FROM_PLAN="${2:-}"; shift 2 || shift ;;
+    --from-plan=*) FROM_PLAN="${1#--from-plan=}"; shift ;;
+    *)             _pos+=("$1"); shift ;;
+  esac
+done
+set -- ${_pos[@]+"${_pos[@]}"}
+if [ -n "$FROM_PLAN" ] && ! [[ "$FROM_PLAN" =~ ^[0-9]+$ ]]; then
+  echo -e "${RED}ERROR: --from-plan needs a plan id (a number), got '$FROM_PLAN'.${NC}"
+  exit 1
+fi
+
 # Get the task description from the command line argument
 DESCRIPTION="${1:-}"
 if [ -z "$DESCRIPTION" ]; then
@@ -19,6 +37,7 @@ if [ -z "$DESCRIPTION" ]; then
   echo "Examples:"
   echo "  $0 \"Fix login bug\""
   echo "  $0 \"Add user authentication\" user-auth"
+  echo "  $0 \"Rework the login copy\" --from-plan 24"
   exit 1
 fi
 
@@ -75,6 +94,16 @@ sed_inplace "s/\[Brief Description\]/$(sed_escape "$DESCRIPTION")/g" "docs/tasks
 sed_inplace "s/YYYY-MM-DD/$CREATED_DATE/g" "docs/tasks/backlog/$FILENAME"
 if [ -n "$FEATURE" ]; then
     sed_inplace "s/\*\*Feature\*\*: none/$(sed_escape "$FEATURE_LINE")/g" "docs/tasks/backlog/$FILENAME"
+fi
+if [ -n "$FROM_PLAN" ]; then
+    if grep -q '^\*\*From plan\*\*:' "docs/tasks/backlog/$FILENAME"; then
+        sed_inplace "s/^\*\*From plan\*\*:.*/**From plan**: $FROM_PLAN/" "docs/tasks/backlog/$FILENAME"
+    else
+        # An older project template without the field: add it under **Plan**.
+        sed_inplace "/^\*\*Plan\*\*:/a\\
+**From plan**: $FROM_PLAN
+" "docs/tasks/backlog/$FILENAME"
+    fi
 fi
 
 # Update DOC_STATE.md in place — only touch the fields that changed

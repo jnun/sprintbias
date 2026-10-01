@@ -145,6 +145,21 @@ today=$(date +%Y-%m-%d)
 assert_contains "Created date is today" "$content" "**Created**: $today"
 
 # --- Summary ---
+# --from-plan N stamps **From plan** (both spellings); bad id is refused
+echo "Test: --from-plan marks a follow-up from a plan"
+setup
+(cd "$TMPDIR" && bash docs/sprintbias/scripts/create-task.sh "Rework the login copy" --from-plan 24 >/dev/null 2>&1)
+_f=$(ls "$TMPDIR"/docs/tasks/backlog/*rework-the-login-copy.md 2>/dev/null | head -1)
+assert_eq "From plan stamped" "**From plan**: 24" "$(grep -m1 '^\*\*From plan\*\*' "$_f")"
+assert_eq "description is not swallowed by the flag" "1" "$(grep -c '^# Task .*: Rework the login copy$' "$_f")"
+(cd "$TMPDIR" && bash docs/sprintbias/scripts/create-task.sh --from-plan=7 "Retry on expiry" >/dev/null 2>&1)
+_f=$(ls "$TMPDIR"/docs/tasks/backlog/*retry-on-expiry.md 2>/dev/null | head -1)
+assert_eq "--from-plan=N form works" "**From plan**: 7" "$(grep -m1 '^\*\*From plan\*\*' "$_f")"
+rc=0
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/create-task.sh "Bad" --from-plan x 2>&1) || rc=$?
+assert_eq "non-numeric plan id exits 1" "1" "$rc"
+assert_contains "says what is wrong" "$out" "needs a plan id"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1

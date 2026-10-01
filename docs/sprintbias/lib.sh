@@ -25,10 +25,18 @@
 #   sprintbias_coerce_model MODEL — remap Claude/Grok-only ids for active tier
 #   sprintbias_tier_model SFX     — resolve + strong default on
 #       claude-code (opus) and grok-build (grok-4.5) when config is empty
-#   sprintbias_profile_line       — one-line pointer to project.md (empty if absent)
+#   sprintbias_orient             — orientation block every AI prompt carries (instructions, workflow, project map)
+#   sprintbias_grounding_rule     — the ## Grounding contract (gate writes, work fills gaps)
+#   sprintbias_grounding_conflicts FILE — conflict bullets from a task's ## Grounding
+#   sprintbias_profile_check      — no-AI health check of project.md (paths, staleness)
+#   sprintbias_doc_sync_rule      — the write side: keep sources accurate or record ### Doc follow-ups
+#   sprintbias_doc_followups FILE — follow-up bullets from a finished task
+#   sprintbias_file_doc_followups — collect follow-ups from review/ + done/ into one backlog task
 #   sprintbias_conversation_method — contents of ai/conversation.md (loud fail if missing)
+#   sprintbias_discuss_file SUBJECT — docs/tmp/<subject>_discuss.md (a session's decision checklist)
 #   sprintbias_plan_discuss_file ID — docs/tmp/plan-<id>_discuss.md (held decisions)
-#   sprintbias_discuss_open_count FILE — number of empty `Decision:` lines (0 if absent)
+#   sprintbias_checklist_line SUBJECT — prompt line naming that checklist; flags unchecked lines to resume
+#   sprintbias_discuss_open_count FILE — number of unchecked `- [ ]` lines (0 if absent)
 #   sprintbias_next_blocked_resolution — prompt: dependent in next/ held on task in blocked/
 #       (two-path choice, demote inline for B, hand off to chat for A). Shared
 #       by chat-sprint.sh and the chat-next folder walk so the logic is written once.
@@ -507,12 +515,241 @@ sprintbias_tier_model() {
 
 # ── Task helpers ─────────────────────────────────────────────────────
 
-# Emit a "read project.md" line if a profile exists (else nothing).
-# Always returns 0 so it is safe in `var=$(sprintbias_profile_line)` under set -e.
-sprintbias_profile_line() {
-    [ -f "docs/sprintbias/project.md" ] || return 0
-    printf '%s' "
-Also read docs/sprintbias/project.md for project-specific stack and conventions."
+# ── Knowing what you need to know ────────────────────────────────────
+# docs/sprintbias/project.md (written by `./sprint.sh profile`) is the ONE map
+# of where a project's knowledge lives: stack, code layout, commands, sources of
+# truth, environments. Every AI prompt orients through sprintbias_orient — one
+# wording, every command, every mode and provider. Tasks ground themselves in
+# that map through sprintbias_grounding_rule (gate writes it, work fills gaps).
+SPRINTBIAS_PROJECT_MAP="${SPRINTBIAS_PROJECT_MAP:-docs/sprintbias/project.md}"
+
+# The instruction file the active provider auto-loads.
+_sprintbias_instructions_file() {
+    case "$(sprintbias_ai_tier)" in
+        claude-code) printf 'CLAUDE.md' ;;
+        grok-build)  printf 'AGENTS.md' ;;
+        *)           printf 'CLAUDE.md / AGENTS.md' ;;
+    esac
+}
+
+# Orientation block for every AI prompt: where instructions, workflow, and the
+# project map live, and the one policy for sources of truth. No leading or
+# trailing newline — callers place it on its own line. Always returns 0.
+sprintbias_orient() {
+    printf 'Project instructions: %s (auto-loaded when present). SprintBias task workflow: DOCUMENTATION.md.\n' \
+        "$(_sprintbias_instructions_file)"
+    if [ -f "$SPRINTBIAS_PROJECT_MAP" ]; then
+        printf '%s' "Project map: $SPRINTBIAS_PROJECT_MAP — stack, code layout, commands, sources of truth, and environments. Start there and read the sources your work touches. Sources of truth are the authority: never change one to make your work fit it, and when your work conflicts with one, name the conflict instead of working around it. Deploys and secrets are human-owned."
+    else
+        printf '%s' "Project map: none yet ($SPRINTBIAS_PROJECT_MAP, created with ./sprint.sh profile) — orient from the instructions file and the code. Deploys and secrets are human-owned."
+    fi
+    return 0
+}
+
+# The grounding contract: before a task is worked, its file names the sources
+# it relies on, copies the terms it uses, and settles its conflicts. Shared by
+# the gate (writes it) and work (fills what is missing) so both say it once.
+sprintbias_grounding_rule() {
+    cat <<'EOF'
+Grounding (before any other work on the task): the task file carries a
+## Grounding section, placed after ## References. Write it when missing; when it
+is present, keep it and add what is missing.
+
+## Grounding
+
+**Sources:** the project-map entries this task touches — code structure,
+language and style, glossary / lexicon / taxonomy, other sources of truth — as
+`path` (what it governs), comma-separated.
+**Terms:**
+- **term** — definition copied word for word from the glossary / lexicon /
+  taxonomy. Only terms this task uses; 'None.' when the project has none.
+**Conflicts:**
+- <what disagrees with what> → <how the work proceeds>
+('None found.' when there are none.)
+
+Conflicts cover the task vs a source of truth, two sources vs each other, the
+task vs the current code, and the task vs the SprintBias framework itself (its
+folders, rules, or commands). Settle each one here, before work, choosing the
+path that keeps the sources of truth intact. A term the glossary lacks is a
+conflict line: the reading you use, and a suggestion to add it. A conflict that
+changes scope or what done means is a product/scope fork for the human. A
+conflict that leaves a source wrong or incomplete (a missing term, an outdated
+section) becomes a Doc follow-up when the task completes.
+EOF
+}
+
+# The write side of the same policy: work that changes what a source of truth
+# describes keeps that source accurate, or records the gap for later. Used by
+# work (exec + emit). Follow-ups are collected into one backlog task by
+# sprintbias_file_doc_followups, so no gap is lost in a done/ file.
+sprintbias_doc_sync_rule() {
+    cat <<'EOF'
+Docs stay in step with the work. When your change alters what a source of truth
+describes — an API, the architecture, a term, a command, an environment — update
+that document in this task so it states the new facts. Descriptive sources
+(glossary / lexicon / taxonomy, architecture, API, README, commands) you update
+directly. Governing sources (security policy, decision records, instruction
+files such as CLAUDE.md / AGENTS.md) and anything outside this task's scope go
+under ## Completed as:
+
+### Doc follow-ups
+- `path` — what needs to change and why
+
+Add a line the same way for a project-map change (a source added, moved, or
+removed; a changed command or environment) — the map is refreshed with
+./sprint.sh profile. Leave the subsection out when there is nothing to follow up.
+EOF
+}
+
+# Print the bullets under '### Doc follow-ups' in FILE (one per line, "- "
+# kept). Stops at the next heading. Nothing when absent.
+sprintbias_doc_followups() {
+    local f="$1"
+    [ -f "$f" ] || return 0
+    awk '
+        /^###? / { in_f = ($0 ~ /^### Doc follow-ups[[:space:]]*$/); next }
+        in_f && /^- / { if ($0 !~ /^- *None/) print }
+    ' "$f"
+}
+
+# Collect every Doc follow-up from finished tasks (review/ + done/) into ONE
+# open backlog task, so doc gaps become work instead of dying in done/. The
+# tracker is found by its marker; a new one is created (via create-task.sh)
+# only when no tracker is waiting in backlog/. Each line carries its source
+# task id and is filed once — trackers in any folder count as already filed —
+# so this is safe to run at the start and end of every work and promote.
+# Prints one summary line when it filed anything. Best-effort: never fails.
+SPRINTBIAS_DOC_FOLLOWUPS_MARKER="<!-- sb:doc-followups -->"
+sprintbias_file_doc_followups() {
+    local marker="$SPRINTBIAS_DOC_FOLLOWUPS_MARKER" f id line item new=() trackers tracker=""
+    local scripts_dir="$_SPRINTBIAS_LIB_DIR/scripts"
+    trackers=$(grep -lF -- "$marker" docs/tasks/*/*.md 2>/dev/null || true)
+    for f in $(grep -l '^### Doc follow-ups' docs/tasks/review/*.md docs/tasks/done/*.md 2>/dev/null || true); do
+        grep -qF -- "$marker" "$f" && continue
+        id=$(basename "$f" | grep -oE '^[0-9]+' || true)
+        while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            item="- [ ] ${line#- } (from #${id:-?})"
+            if [ -n "$trackers" ] && printf '%s\n' "$trackers" | xargs grep -qF -- "$item" 2>/dev/null; then
+                continue
+            fi
+            new+=("$item")
+        done <<< "$(sprintbias_doc_followups "$f")"
+    done
+    [ ${#new[@]} -eq 0 ] && return 0
+
+    tracker=$(printf '%s\n' "$trackers" | grep '^docs/tasks/backlog/' | head -1 || true)
+    if [ -z "$tracker" ]; then
+        local out
+        out="$(bash "$scripts_dir/create-task.sh" "Bring project docs in step with landed work" 2>&1)" || true
+        tracker="$(printf '%s\n' "$out" | grep -oE 'docs/tasks/backlog/[^ ]+\.md' | tail -1)"
+        if [ -z "$tracker" ] || [ ! -f "$tracker" ]; then
+            echo "▸ Could not file ${#new[@]} doc follow-up(s): task creation failed" >&2
+            return 0
+        fi
+        awk -v m="$marker" '
+            /^## Problem/ { print; print ""; print "Landed work changed what project documents describe, or found gaps in"; print "them (a missing term, a moved source). Each item under ## Follow-ups names"; print "the document, what must change, and the task it came from."; print ""; skip = 1; next }
+            /^## Success criteria/ { print; print ""; print "- [ ] Every item under ## Follow-ups is resolved: the named document states"; print "      the current facts, or the item is struck with a one-line reason."; print "- [ ] Project-map items are settled with ./sprint.sh profile (profile check is clean)."; print ""; skip = 1; next }
+            /^## / { skip = 0 }
+            skip { next }
+            { print }
+            END { print ""; print m; print "## Follow-ups"; print "" }
+        ' "$tracker" > "$tracker.tmp" && mv "$tracker.tmp" "$tracker"
+    fi
+    printf '%s\n' "${new[@]}" >> "$tracker"
+    echo "▸ Filed ${#new[@]} doc follow-up(s) → $tracker"
+    return 0
+}
+
+# Print the conflict bullets recorded under ## Grounding → **Conflicts:** in
+# FILE (one per line, leading "- " kept). Nothing when absent or "None found."
+sprintbias_grounding_conflicts() {
+    local f="$1"
+    [ -f "$f" ] || return 0
+    awk '
+        /^## / { in_g = ($0 ~ /^## Grounding[[:space:]]*$/); in_c = 0; next }
+        in_g && /^\*\*Conflicts:\*\*/ { in_c = 1; next }
+        in_g && /^\*\*[A-Za-z ]+:\*\*/ { in_c = 0; next }
+        in_c && /^- / { if ($0 !~ /^- *None/) print }
+    ' "$f"
+}
+
+# Deterministic health check of the project map (no AI). Prints one line per
+# problem to stdout and returns 1; prints nothing and returns 0 when current.
+# Checks: the map exists, every path it lists exists, and nothing it tracks
+# (listed paths, manifests, CI/deploy files, new top-level docs) changed since
+# its **Checked:** stamp. Callers that only want a nudge: `… >&2 || true`.
+sprintbias_profile_check() {
+    local map="$SPRINTBIAS_PROJECT_MAP" issues=0 p missing=()
+    if [ ! -f "$map" ]; then
+        echo "▸ No project map yet — run ./sprint.sh profile so agents know where your sources of truth live."
+        return 1
+    fi
+
+    # Listed paths: backticked, space-free tokens outside ## Commands, each
+    # tagged with its section. Every path must exist; only paths outside
+    # ## Code are tracked for change (code folders change on every task).
+    local tagged paths tracked
+    tagged=$(awk '
+        /^## / { sec = $0; next }
+        sec ~ /^## Commands/ || /^\*\*Checked:\*\*/ { next }
+        { t = (sec ~ /^## Code/) ? "code" : "src"
+          while (match($0, /`[^` ]+`/)) { print t "\t" substr($0, RSTART + 1, RLENGTH - 2); $0 = substr($0, RSTART + RLENGTH) } }
+    ' "$map" | grep -vE $'\t''([*<>$]|-|https?:)' || true)
+    paths=$(printf '%s\n' "$tagged" | cut -f2 | sed '/^$/d' | sort -u)
+    tracked=$(printf '%s\n' "$tagged" | awk -F'\t' '$1 == "src" { print $2 }' | sort -u)
+    while IFS= read -r p; do
+        [ -z "$p" ] && continue
+        [ -e "${p%/}" ] || missing+=("$p")
+    done <<< "$paths"
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo "▸ Project map lists ${#missing[@]} path(s) that no longer exist: ${missing[*]} — refresh: ./sprint.sh profile"
+        issues=1
+    fi
+
+    local stamp sha date
+    stamp=$(grep -m1 '^\*\*Checked:\*\*' "$map" || true)
+    if [ -z "$stamp" ]; then
+        echo "▸ Project map has no **Checked:** stamp — refresh: ./sprint.sh profile"
+        return 1
+    fi
+    date=$(printf '%s' "$stamp" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1 || true)
+    sha=$(printf '%s' "$stamp" | sed -n 's/.*@ *\([0-9a-fA-F]\{4,40\}\).*/\1/p')
+    if [ -n "$sha" ] && git rev-parse --git-dir >/dev/null 2>&1 \
+       && git cat-file -e "${sha}^{commit}" 2>/dev/null; then
+        local changed added rel=() f l
+        changed=$(git diff --name-only "$sha" -- 2>/dev/null || true)
+        added=$( { git diff --name-only --diff-filter=A "$sha" -- 2>/dev/null; \
+                   git ls-files --others --exclude-standard 2>/dev/null; } || true)
+        while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            [ "$f" = "$map" ] && continue
+            case "${f##*/}" in
+                package.json|Cargo.toml|go.mod|pyproject.toml|Gemfile|pom.xml|build.gradle*|composer.json|requirements*.txt|Makefile|Dockerfile*|docker-compose*|compose.y*ml|*.tf)
+                    rel+=("$f"); continue ;;
+            esac
+            case "$f" in .github/workflows/*|.gitlab-ci.yml|.circleci/*) rel+=("$f"); continue ;; esac
+            while IFS= read -r l; do
+                [ -z "$l" ] && continue
+                l="${l%/}"
+                if [ "$f" = "$l" ] || [ "${f#"$l"/}" != "$f" ]; then rel+=("$f"); break; fi
+            done <<< "$tracked"
+        done <<< "$changed"
+        while IFS= read -r f; do
+            case "$f" in [!/]*.md) [ "${f%/*}" = "$f" ] && rel+=("$f") ;; esac
+            case "$f" in docs/[!/]*.md) [ "${f#docs/*/}" = "$f" ] && rel+=("$f") ;; esac
+        done <<< "$added"
+        if [ ${#rel[@]} -gt 0 ]; then
+            local uniq shown n
+            uniq=$(printf '%s\n' "${rel[@]}" | sort -u)
+            n=$(printf '%s\n' "$uniq" | wc -l | tr -d ' ')
+            shown=$(printf '%s\n' "$uniq" | head -4 | paste -sd, - | sed 's/,/, /g')
+            [ "$n" -gt 4 ] && shown="$shown, …"
+            echo "▸ Project map may be out of date — $n file(s) it tracks changed since ${date:-its last check} ($shown) — refresh: ./sprint.sh profile"
+            issues=1
+        fi
+    fi
+    return "$issues"
 }
 
 # Load the shared Conversation Method (docs/sprintbias/ai/conversation.md) for
@@ -530,19 +767,37 @@ sprintbias_conversation_method() {
     cat "$f"
 }
 
-# Discuss file for a plan: decisions plan think held for the human, walked one
-# at a time by chat plan (ai/conversation.md → Many decisions). One path, named
-# once, so the writer and the walker cannot drift.
+# Decision checklist for a chat subject (task-<id>, plan-<id>, …): the user's calls,
+# raised one at a time (ai/conversation.md → Many decisions). One path, named
+# once, so the writer and the walker cannot drift. plan think writes the plan
+# checklist; chat plan works it.
+sprintbias_discuss_file() {
+    printf 'docs/tmp/%s_discuss.md' "$1"
+}
 sprintbias_plan_discuss_file() {
-    printf 'docs/tmp/plan-%s_discuss.md' "$1"
+    sprintbias_discuss_file "plan-$1"
 }
 
-# Count undecided items in a discuss file: lines that are exactly `Decision:`
-# (optionally trailing space). Prints 0 when the file is absent.
+# Count open items in a decision checklist: unchecked `- [ ]` lines, nested
+# follow-ups included. Prints 0 when the file is absent.
 sprintbias_discuss_open_count() {
     local f="$1" n=0
-    [ -f "$f" ] && n=$(grep -cE '^Decision:[[:space:]]*$' "$f" || true)
+    [ -f "$f" ] && n=$(grep -cE '^[[:space:]]*- \[ \]' "$f" || true)
     printf '%s' "${n:-0}"
+}
+
+# Prompt line naming a session's decision checklist. With open items left from an
+# earlier session it says resume there first; otherwise it names the file to
+# list into when two or more decisions come up.
+sprintbias_checklist_line() {
+    local f n
+    f="$(sprintbias_discuss_file "$1")"
+    n="$(sprintbias_discuss_open_count "$f")"
+    if [ "$n" -gt 0 ]; then
+        printf '\nDECISION CHECKLIST: %s holds %s unchecked item(s) from an earlier session. Say so in one line, then run the work loop from the first unchecked line before anything else.' "$f" "$n"
+    else
+        printf '\nDECISION CHECKLIST: %s — when you hold two or more decisions for the user, write them here as a checklist and run the work loop (Conversation Method → Many decisions).' "$f"
+    fi
 }
 
 # ── Shared walkthrough: dependent in next/ held on an undefined task in blocked/ ──
@@ -981,6 +1236,25 @@ sprintbias_meta_value() {
         | sed -E 's/^[^:]*:[[:space:]]*//'
 }
 
+# sprintbias_plan_followups PLAN_ID
+# Open tasks (backlog/next/doing/blocked) that came out of plan PLAN_ID's work —
+# stamped **From plan**: PLAN_ID — and are not already bound to another plan.
+# One id per line, lowest first. Shared by `newplan … from:N` and `plan done`.
+sprintbias_plan_followups() {
+    local pid="$1" stage f id from plan
+    for stage in "${SPRINTBIAS_OPEN_STAGES[@]}"; do
+        for f in "docs/tasks/$stage"/*.md; do
+            [ -f "$f" ] || continue
+            from=$(sprintbias_meta_value "$f" "From plan"); from="${from//[[:space:]#]/}"
+            [ "$from" = "$pid" ] || continue
+            plan=$(sprintbias_meta_value "$f" "Plan"); plan="${plan//[[:space:]#]/}"
+            case "$plan" in ""|none|None|"$pid") ;; *) continue ;; esac
+            id=$(basename "$f" | grep -oE '^[0-9]+' || true)
+            [ -n "$id" ] && printf '%s\n' "$id"
+        done
+    done | sort -n
+}
+
 # sprintbias_iter_id_list VALUE
 # Parse a Depends-on / Dependents style value (comma/space list, N-M ranges).
 # Emits one line per token:
@@ -1334,7 +1608,7 @@ sprintbias_plan_member_ids() {
     local f="$1"
     [ -f "$f" ] || return 0
     { grep -oE '^- (\[[ xX]\] )?#[0-9]+' "$f" 2>/dev/null || true; } \
-        | grep -oE '[0-9]+' | awk '!seen[$0]++'
+        | { grep -oE '[0-9]+' || true; } | awk '!seen[$0]++'
 }
 
 # sprintbias_plan_file_id PLAN_FILE -> the numeric plan id from its filename.
@@ -2211,7 +2485,8 @@ sprintbias_excellence_strip_section() {
 sprintbias_excellence_rules() {
     cat <<'EOF'
 Follow docs/sprintbias/ai/audit-excellence.md exactly. Your writes are exactly
-two: a new backlog task (via ./sprint.sh newtask "<desc>") for each enhancement
+two: a new backlog task (via ./sprint.sh newtask "<desc>", plus --from-plan <id>
+when the audited task names a **Plan**) for each enhancement
 you find, and an appended '## Excellence' section on the audited task file —
 write it EXACTLY as the pre-rendered block you are given for this task, filling
 only the placeholders (verdict, tasks filed, routing, Summary) and copying every

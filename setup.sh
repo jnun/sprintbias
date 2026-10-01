@@ -1636,6 +1636,10 @@ RETIRED_FRAMEWORK_FILES=(
     # look-family renames
     "docs/sprintbias/scripts/ai-context.sh"
     "docs/sprintbias/help/ai-context.md"
+    # context → status (state) · profile (the project map)
+    "docs/sprintbias/scripts/context.sh"
+    "docs/sprintbias/help/context.md"
+    "docs/sprintbias/learning/context.py"
     "docs/sprintbias/help/checkfeatures.md"
     # keep-family / retired profession commands
     "docs/sprintbias/scripts/audit-deps.sh"

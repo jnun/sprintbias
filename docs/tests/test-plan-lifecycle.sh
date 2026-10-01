@@ -313,6 +313,49 @@ out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/plan.sh start 111 --commit-on
 assert_eq "--model without id exits non-zero" "1" "$rc"
 assert_contains "--model needs a model id" "$out" "--model needs a model id"
 
+# --- newplan backlog: every unplanned backlog task, plan READY ---
+echo "Test: newplan <name> backlog binds unplanned backlog tasks and marks READY"
+setup
+cp "$SPRINTBIAS_SRC/../plans/.TEMPLATE-plan.md" "$TMPDIR/docs/plans/"
+printf '# State\n**sprint_TASK_ID**: 12\n**sprint_PLAN_ID**: 4\n**Last Updated**: 2026-01-01\n' \
+  > "$TMPDIR/docs/sprintbias/DOC_STATE.md"
+for _i in 10 3; do printf '# Task %s: thing\n\n**Plan**: none\n' "$_i" > "$TMPDIR/docs/tasks/backlog/${_i}-thing.md"; done
+printf '# Task 12: planned\n\n**Plan**: 2\n' > "$TMPDIR/docs/tasks/backlog/12-planned.md"
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/create-plan.sh "Clear the backlog" backlog </dev/null 2>&1) || true
+_pf=$(ls "$TMPDIR"/docs/plans/5-*.md 2>/dev/null | head -1)
+assert_contains "binds unplanned members lowest first" "$out" "Members: 3 10"
+assert_eq "skips a task already in a plan" "0" "$(grep -c '#12' "$_pf" || true)"
+assert_eq "plan with bound members is READY" "READY" \
+  "$(grep -m1 '^\*\*Status:\*\*' "$_pf" | sed 's/.*\*\*Status:\*\*[[:space:]]*//' | tr -d '[:space:]')"
+rc=0
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/create-plan.sh "Again" backlog </dev/null 2>&1) || rc=$?
+assert_eq "nothing unplanned left exits non-zero" "1" "$rc"
+assert_contains "says why" "$out" "no tasks outside a plan"
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/create-plan.sh "Empty" </dev/null 2>&1) || true
+assert_eq "plan created empty stays DRAFT" "DRAFT" \
+  "$(grep -m1 '^\*\*Status:\*\*' "$TMPDIR"/docs/plans/6-*.md | sed 's/.*\*\*Status:\*\*[[:space:]]*//' | tr -d '[:space:]')"
+
+# --- follow-ups: plan done names them, newplan from:N groups them ---
+echo "Test: plan done points at follow-ups; newplan from:N groups only those"
+setup
+cp "$SPRINTBIAS_SRC/../plans/.TEMPLATE-plan.md" "$TMPDIR/docs/plans/"
+printf '# State\n**sprint_TASK_ID**: 22\n**sprint_PLAN_ID**: 24\n**Last Updated**: 2026-01-01\n' \
+  > "$TMPDIR/docs/sprintbias/DOC_STATE.md"
+printf '# Plan 24: Tighten login\n\n**Status:** STARTED\n\n## Members\n- [x] #5 — a\n' > "$TMPDIR/docs/plans/24-tighten-login.md"
+printf '# Task 5: a\n\n**Plan**: 24\n' > "$TMPDIR/docs/tasks/done/5-a.md"
+printf '# Task 21: rework\n\n**Plan**: none\n**From plan**: 24\n' > "$TMPDIR/docs/tasks/backlog/21-rework.md"
+printf '# Task 22: enh\n\n**Plan**: none\n**From plan**: 24\n' > "$TMPDIR/docs/tasks/blocked/22-enh.md"
+printf '# Task 23: other\n\n**Plan**: 30\n**From plan**: 24\n' > "$TMPDIR/docs/tasks/backlog/23-other.md"
+printf '# Task 9: unrelated\n\n**Plan**: none\n' > "$TMPDIR/docs/tasks/backlog/9-unrelated.md"
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/plan-done.sh 24 </dev/null 2>&1) || true
+assert_contains "plan done counts follow-ups" "$out" "2 follow-up task(s) came out of this plan"
+assert_contains "plan done prints the grouping command" "$out" 'newplan "Tighten login — follow-ups" from:24'
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/create-plan.sh "Tighten login — follow-ups" from:24 </dev/null 2>&1) || true
+assert_contains "from:N binds only plan 24's unbound follow-ups" "$out" "Members: 21 22"
+rc=0
+out=$(cd "$TMPDIR" && bash docs/sprintbias/scripts/create-plan.sh "Again" from:24 </dev/null 2>&1) || rc=$?
+assert_eq "from:N with nothing left exits non-zero" "1" "$rc"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1
