@@ -384,6 +384,11 @@ cmd_loop() {
     run_script "loop.sh" "$@"
 }
 
+# crew: named AI sessions with roles (work family).
+cmd_crew() {
+    run_script "crew.sh" "$@"
+}
+
 cmd_split() {
     [ -z "${1:-}" ] && { echo -e "${RED}ERROR: Task file path required${NC}"; echo "Usage: ./sprint.sh split <path/to/task.md>"; exit 1; }
     run_script "split.sh" "$@"
@@ -523,6 +528,7 @@ case "$CMD" in
     work)          shift; cmd_work "$@" ;;
     loop)          shift; cmd_loop "$@" ;;
     split)         shift; cmd_split "$@" ;;
+    crew)          shift; cmd_crew "$@" ;;
     deps)          shift; cmd_deps "$@" ;;
     model)         shift; cmd_model "$@" ;;
     config)        shift; cmd_config "$@" ;;

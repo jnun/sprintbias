@@ -9,6 +9,8 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+## 0.0.131 — 2026-10-04
+
 ### Added
 
 - `crew` runs several named AI sessions on one project, each with a role. A

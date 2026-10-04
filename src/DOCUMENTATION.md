@@ -66,13 +66,15 @@ docs/
 ├── sprintbias/          # FRAMEWORK — do not edit (except DOC_STATE.md)
 │   ├── scripts/         # the commands
 │   ├── ai/              # AI instructions
-│   ├── guides/          # framework guides (doc-style, sprint alias, chat)
-│   ├── help/            # per-command help pages
+│   ├── guides/          # framework guides, in detail (doc-style, sprint alias, chat, crew)
+│   ├── help/            # per-command help pages: how do I do X
+│   ├── learning/        # demos you watch: ./sprint.sh learn
 │   └── DOC_STATE.md     # ID counters + state (the one framework file you own)
 ├── ideas/               # rough concepts being refined
 ├── features/            # fully defined specs
 ├── tasks/{backlog,next,doing,blocked,review,done}/   # work — folder = status
 ├── plans/               # named lists of task IDs (an index, not a stage)
+├── crew/                # one file per named AI session (role, what it may touch)
 ├── bugs/                # open bug reports (inbox; handled reports are deleted)
 ├── guides/  tests/  designs/  examples/  data/       # your content
 └── tmp/                 # scratch (gitignored)
@@ -112,6 +114,8 @@ docs/
   `promote` (close), so work happens and closes in dependency order.
 - `Dependents` — reverse edge; graph info only, does not block anything.
 - `Plan` — which plan this belongs to (`none` or an id).
+- `Crew` — which crew member the task is routed to or held by (`none` or a name).
+  In `doing/`, it is the claim: that member owns the task. See **Crew**.
 - `Tests` — suite scripts under `docs/tests/` that prove success. `promote` runs them;
   all green → `done/`. `none` means a human signs off.
 
@@ -162,6 +166,7 @@ Groups: **create · chat · plan · work · look · keep**.
 ./sprint.sh loop                # autopilot: plan start refill, then drain next/
 ./sprint.sh gate [folder]       # off-spine quality gate: re-gate next/ or report elsewhere
 ./sprint.sh settle [id]         # accept "Suggestion:" answers; demote next/ still needing a human
+./sprint.sh crew [name] [ID]    # list the crew · start a session as one member (add <name> "<role>")
 ./sprint.sh split <path>        # split a large task into subtasks
 ./sprint.sh polish [id]         # sweep review/, deep-judge a task, or --code audit
 ./sprint.sh promote [id]        # close review/ → done/ (runs Tests; --audit = AI acceptance judge)
@@ -184,6 +189,60 @@ Groups: **create · chat · plan · work · look · keep**.
 
 > Tired of `./sprint.sh`? Add `alias sprint='./sprint.sh'` to your shell rc.
 > `setup.sh` offers this; see `docs/sprintbias/guides/sprint_command.md`.
+
+## Crew
+
+A crew is several AI sessions working the same project at once, each with a name
+and a job: a lead that keeps everyone rowing, plus members such as a builder, a
+bug fixer or a production operator. Each member is one file, `docs/crew/<name>.md`,
+saying its role, what it reads first, what it may touch and how it reports.
+
+```bash
+./sprint.sh crew add lead "Keeps everyone rowing: holds the plan, routes tasks" --lead
+./sprint.sh crew add fixer "Finds and fixes bugs"
+./sprint.sh crew lead plan:5      # start the lead on plan 5 (session named "lead")
+./sprint.sh crew fixer 42         # start the fixer on task 42 (session named "fixer")
+./sprint.sh crew                  # who is on the crew and what each holds
+```
+
+Start each member in its own terminal. The rules every member starts with:
+
+1. **The files are the shared state.** A task's `Crew` field routes it to a member.
+   Moving the task into `doing/` and setting `Crew` to your own name is the claim;
+   a task in `doing/` held by someone else is theirs.
+2. **Stay in your lane.** Each member touches only what its file allows, so two
+   sessions never fight over the same work (for example, only the operator holds
+   production credentials).
+3. **The lead coordinates.** A member file with `**Lead**: yes` runs the plan: it
+   holds the central idea of the solution in the plan's `## Crew` section, routes
+   tasks, catches collisions across members and unblocks. It leaves product code
+   to the others.
+4. **Messages nudge, files record.** When the AI CLI can message other sessions
+   (Claude Code: `ListAgents`, `SendMessage`), members reach each other by crew name.
+   Anything that must last goes in a task or plan file.
+
+`work` and `loop` stay the headless path; a crew is for interactive work you want
+to steer. Watch one run with `./sprint.sh crew --demo`. The full guide, including
+running a crew on a shared dev server, is `docs/sprintbias/guides/crew.md`.
+
+## Learn more
+
+This manual is the baseline. Three places go further, each for one kind of question:
+
+| Question | Where |
+|----------|-------|
+| How do I do X with a command? | `./sprint.sh help <cmd>` (pages in `docs/sprintbias/help/`) |
+| What does it look like in motion? | `./sprint.sh learn` or `<cmd> --demo` (demos in `docs/sprintbias/learning/`) |
+| How does a whole workflow fit together? | `docs/sprintbias/guides/` |
+
+Guides:
+
+| Guide | Covers |
+|-------|--------|
+| `use_chat.md` | How `chat` runs inside an agent, in a terminal, or as one pass |
+| `crew.md` | Running named sessions with a lead, claiming, and a crew on a shared dev server |
+| `sprint_command.md` | Typing `sprint` instead of `./sprint.sh` |
+| `doc-style.md` | Writing docs and tasks that cost the reader the least |
 
 ## Moving tasks
 
