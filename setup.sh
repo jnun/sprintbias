@@ -532,6 +532,10 @@ ensure_task_folders
 # .TEMPLATE-plan.md lands via the src/ walk below.
 safe_mkdir "docs/plans"
 
+# Crew — one file per named AI session (role, what it may touch). Created
+# empty; .TEMPLATE-crew.md lands via the src/ walk below.
+safe_mkdir "docs/crew"
+
 # Other directories
 safe_mkdir "docs/ideas"
 safe_mkdir "docs/bugs"

@@ -128,6 +128,7 @@ loop [--model \<id\>]	Autopilot: plan start refill + work drain (`--model` pins 
 gate [folder]	READY-gate next/ (default), or quality report on another folder
 settle [id]	Accept (Suggestion: …) open questions; demote READY+openQ out of next/
 split \<path\>	One-shot: one large task → atomic children (no conversation)
+crew [name [id / plan:N]]	Named interactive sessions with roles (docs/crew/); bare = list who holds what (no AI); `add <name> "<role>" [--lead]`
 polish …		Post-work quality: sweep review/, deep-judge a task (id/file), or --code
 			(sweep takes work's --parallel/--fast/--jobs N to fan judges out)
 promote [id]	Test-gated close: run each review/ task's **Tests**, all green → done/
@@ -137,6 +138,10 @@ Happy path: `plan start` → `work`. `plan start` already gates on commit, so
 `gate` is off-spine — re-gate after edits, or report on backlog/doing/blocked.
 `loop --refill` starts the next READY plan when next/ empties; no separate
 gate step on that spine.
+
+`crew` is the one interactive member of this family: it starts named sessions a
+human steers, while `work`/`loop` stay the headless path. Its claim is the task's
+**Crew** field plus the `doing/` folder — no lock files, no new stage.
 
 `polish` is the one post-work quality surface (sweep / deep-judge / code fix).
 Argument shape selects the mode; do not re-split it into sibling commands. A

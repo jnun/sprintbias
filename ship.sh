@@ -63,6 +63,7 @@ TEMPLATE_FILES=(
     "docs/ideas/.TEMPLATE-idea.md"
     "docs/tests/.TEMPLATE-test.md"
     "docs/plans/.TEMPLATE-plan.md"
+    "docs/crew/.TEMPLATE-crew.md"
 )
 
 # Whole directory trees mirrored live -> distributable, "LIVE_DIR:SRC_DIR".

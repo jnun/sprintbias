@@ -71,6 +71,7 @@ layers that stack:
 | `chat` | Talk an existing plan into shape: goal, order, READY | `chat.py` |
 | `loop` | Unattended autopilot — refill, drain, gate still holds | `loop.py` |
 | `split` | Break an oversized task; the graph stays whole | `split.py` |
+| `crew` | A lead routes a plan to named sessions; the move into doing/ is the claim | `crew.py` |
 | `polish` | A second look at review/ catches work that isn't done | `polish.py` |
 | `promote` | Close only what's proven: Tests green + deps closed → done/ | `promote.py` |
 | `search` | Find any task by keyword across the whole board | `search.py` |

@@ -35,6 +35,7 @@ work          | work     | [N] [count N] [--fast] [--model] | Execute — happy 
 loop          | work     | [--refill] [--retry]| Autopilot spine — plan start refill (gates as it commits) then work drain | loop
 gate          | work     | [folder] [limit] [--model] | Off-spine quality gate — re-gate next/ (--force) or report on backlog/doing/blocked (not the happy path) | gate
 settle        | work     | [id] [--dry-run] [--blocked] | Accept (Suggestion: …) open questions — fold into Notes, clear list; demote next/ files that still need a human
+crew          | work     | [name] [ID / plan:N] | Run a crew of named AI sessions — bare: list who holds what · add <name> "<role>" [--lead]: add a member · <name>: start a session as one (a lead coordinates the rest) | crew
 split         | work     | <path>              | Off-spine — one-shot split of a large task into subtasks (no conversation) | split
 polish        | work     | [limit/id/file] [--code] [--model] | After work — quality sweep review/, deep-judge a task (by id or file), or --code audit | polish
 promote       | work     | [id] [--dry-run] [--audit [--move]] | Close review/ → done/: default runs each task's **Tests** (green → done/); --audit is an AI acceptance judge (add --move to close) | promote

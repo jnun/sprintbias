@@ -9,6 +9,18 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+### Added
+
+- `crew` runs several named AI sessions on one project, each with a role. A
+  member is a file in `docs/crew/` (`crew add <name> "<role>" [--lead]`);
+  `crew <name> [ID | plan:N]` starts a session by that name; plain `crew` lists
+  who holds what. A lead coordinates the rest through the plan's `## Crew`
+  section, and a new task field, `Crew`, routes a task to a member and marks
+  the claim once it is in `doing/`.
+- Crew guide (`docs/sprintbias/guides/crew.md`), including running a crew on a
+  shared dev server, and a `crew --demo` you can watch. The manual gains a
+  "Learn more" section pointing to help pages, demos and guides.
+
 ## 0.0.130 — 2026-09-30
 
 ## 0.0.129 — 2026-09-30
