@@ -173,6 +173,7 @@ Groups: **create · chat · plan · work · look · keep**.
 
 # look — read-only
 ./sprint.sh status              # project status
+./sprint.sh agents              # every AI session here and on AGENT_HOSTS servers (label = title each tab)
 ./sprint.sh search <keyword>    # search tasks
 ./sprint.sh learn [demo]        # watch the flow run (no name lists demos)
 ./sprint.sh align               # feature alignment
@@ -184,6 +185,7 @@ Groups: **create · chat · plan · work · look · keep**.
 ./sprint.sh cleanup             # clean stale docs/tmp/ files
 ./sprint.sh model show          # see/list/set the AI model per role
 ./sprint.sh config              # set provider + default model (interactive)
+./sprint.sh shell               # cozy terminal prompt: machine, path, branch, clock (install / remove)
 ./sprint.sh deps                # file a task auditing outdated/vulnerable deps
 ```
 
@@ -220,6 +222,13 @@ Start each member in its own terminal. The rules every member starts with:
 4. **Messages nudge, files record.** When the AI CLI can message other sessions
    (Claude Code: `ListAgents`, `SendMessage`), members reach each other by crew name.
    Anything that must last goes in a task or plan file.
+
+To see the whole crew at work, run `./sprint.sh agents`: each running session
+with its name, state, terminal tab or tmux window, project and branch, uptime,
+last activity, model, context size, CPU and memory, and what it is working on.
+List your servers' ssh aliases in `AGENT_HOSTS` (in `docs/sprintbias/config.local`)
+to include them. `./sprint.sh agents label` titles each terminal with its session
+name; a session started with `crew <name>` keeps that title on its own.
 
 `work` and `loop` stay the headless path; a crew is for interactive work you want
 to steer. Watch one run with `./sprint.sh crew --demo`. The full guide, including

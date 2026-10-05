@@ -9,6 +9,25 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+## 0.0.132 — 2026-10-05
+
+### Added
+
+- `agents` shows every AI session running on this machine and on your servers:
+  name, busy/idle/waiting, which terminal tab or tmux window it lives in,
+  project and branch, uptime, last activity, model, context size, CPU and
+  memory, and the topic and last prompt. Add servers by ssh alias in
+  `AGENT_HOSTS`. `agents label` titles each terminal with its session name.
+  Reads what Claude Code already records; no AI runs.
+- `shell` sets up a friendly terminal prompt on macOS and Linux: machine name
+  (bold red over SSH, so a server never looks like your laptop), folder, git
+  branch with a `*` for uncommitted changes, clock with time zone, and how long
+  slow commands took. `shell install` walks you through zsh (macOS default),
+  bash (Linux default), and a tmux status bar that keeps the machine name in
+  view during remote sessions. It adds one marked block per file; run it again
+  to update, run it on each new server, and `shell remove` puts your files
+  back exactly as they were.
+
 ## 0.0.131 — 2026-10-04
 
 ### Added

@@ -129,6 +129,7 @@ gate [folder]	READY-gate next/ (default), or quality report on another folder
 settle [id]	Accept (Suggestion: …) open questions; demote READY+openQ out of next/
 split \<path\>	One-shot: one large task → atomic children (no conversation)
 crew [name [id / plan:N]]	Named interactive sessions with roles (docs/crew/); bare = list who holds what (no AI); `add <name> "<role>" [--lead]`
+agents [label]	Live view of every running AI session, here and on AGENT_HOSTS over ssh (no AI); `label` titles each terminal / tmux window with the session name. Reads Claude Code's ~/.claude/sessions registry + transcripts
 polish …		Post-work quality: sweep review/, deep-judge a task (id/file), or --code
 			(sweep takes work's --parallel/--fast/--jobs N to fan judges out)
 promote [id]	Test-gated close: run each review/ task's **Tests**, all green → done/
@@ -207,6 +208,7 @@ model show		Print CLI, tier, and effective model per role with source
 model list		Models the current provider offers (Grok: `grok models`; Claude: known aliases)
 model set KEY VALUE	Write `MODEL_DEFAULT` or `MODEL_<ROLE>` into config
 config			Interactive: set AI provider + default model in config (no AI)
+shell			Terminal prompt status; guided `install` (asks zsh / bash / tmux, or `--zsh --bash --tmux`) / `remove` (no AI; one marked block per user file)
 
 ### Global launcher flags — not commands
 

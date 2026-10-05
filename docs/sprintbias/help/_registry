@@ -41,6 +41,7 @@ polish        | work     | [limit/id/file] [--code] [--model] | After work — q
 promote       | work     | [id] [--dry-run] [--audit [--move]] | Close review/ → done/: default runs each task's **Tests** (green → done/); --audit is an AI acceptance judge (add --move to close) | promote
 
 status        | look     |                     | Show project status | status
+agents        | look     | [label] [--local] [--host H] [--json] | Every AI session running here and on your servers — name, state, terminal, project@branch, uptime, last activity, model, context, CPU/memory, topic; label titles each terminal with its name (no AI)
 search        | look     | <keyword>           | Search tasks by keyword | search
 learn         | look     | [demo]              | Watch the flow run — play a sandboxed demo (no name = list demos) | learn
 align         | look     |                     | Analyze feature alignment | align
@@ -56,3 +57,4 @@ cleanup       | keep     | [--force]           | Clean stale scratch files | cle
 deps          | keep     |                     | File a backlog task auditing outdated/vulnerable deps | deps
 model         | keep     | show/list/set [k v] | See the effective AI model per role, list provider models, or set a default (no AI)
 config        | keep     |                     | Interactively set the AI provider and default model in docs/sprintbias/config (no AI)
+shell         | keep     | [install / remove]  | Cozy terminal prompt — guided setup for zsh, bash, and tmux: machine name (red over SSH), path, git branch, clock, slow-command timer (no AI)

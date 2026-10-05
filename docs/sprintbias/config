@@ -73,3 +73,8 @@ BUDGET_AUDIT=5.00
 
 # Code audit max iterative passes
 AUDIT_MAX_PASSES=2
+
+# Servers for `./sprint.sh agents` to check over ssh, as ssh aliases,
+# space-separated (e.g. AGENT_HOSTS=dev-box build-1). Personal, so it usually
+# belongs in config.local. Empty = this machine only.
+AGENT_HOSTS=

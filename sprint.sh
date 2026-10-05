@@ -409,6 +409,15 @@ cmd_config() {
     run_script "config.sh" "$@"
 }
 
+# shell: install/update/remove the SprintBias terminal prompt (keep family, no AI).
+cmd_shell() {
+    run_script "shell.sh" "$@"
+}
+
+cmd_agents() {
+    run_script "agents.sh" "$@"
+}
+
 cmd_polish() {
     run_script "polish.sh" "$@"
 }
@@ -529,9 +538,11 @@ case "$CMD" in
     loop)          shift; cmd_loop "$@" ;;
     split)         shift; cmd_split "$@" ;;
     crew)          shift; cmd_crew "$@" ;;
+    agents)        shift; cmd_agents "$@" ;;
     deps)          shift; cmd_deps "$@" ;;
     model)         shift; cmd_model "$@" ;;
     config)        shift; cmd_config "$@" ;;
+    shell)         shift; cmd_shell "$@" ;;
     polish)        shift; cmd_polish "$@" ;;
     promote)       shift; cmd_promote "$@" ;;
     sync)          shift; cmd_sync "$@" ;;
