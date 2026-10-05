@@ -9,6 +9,8 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+## 0.0.133 — 2026-10-05
+
 ## 0.0.132 — 2026-10-05
 
 ### Added
