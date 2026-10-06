@@ -142,12 +142,12 @@ Provider for this run only (AI subcommands; leading flags; no config rewrite):
   ./sprint.sh -g plan think [id]     # Grok Build
   ./sprint.sh -c plan start [id]     # Claude Code
 
-Model for this run only: add --model <id> (e.g. ./sprint.sh plan start 23 --model claude-opus-4-8).
+Model for this run only: add --model <id> (e.g. ./sprint.sh plan start 23 --model claude-opus-5-5).
 Precedence (same as work/chat/gate/polish):
   --model flag / SPRINTBIAS_MODEL_<ROLE> env
     → config MODEL_<ROLE> → config MODEL_DEFAULT → tier default → CLI default
 Roles: plan think → PLAN_THINK · plan start → GATE · plan polish → EXCELLENCE.
-Persist a pin with: ./sprint.sh model set gate claude-opus-4-8
+Persist a pin with: ./sprint.sh model set gate claude-opus-5-5
 (or `model set default …`). The short alias `opus` follows Claude's latest;
 pin a full id when you want a specific generation.
 

@@ -87,12 +87,11 @@ echo ""
 echo -e "${BOLD}Default model${NC}  ($new_provider)"
 declare -a model_ids
 if [ "$new_provider" = "claude-code" ]; then
-  model_ids=(opus claude-opus-4-8 claude-opus-5 claude-sonnet-5 claude-haiku-4-5)
-  echo "  [1] opus              latest Opus — floating alias (tier default)"
-  echo "  [2] claude-opus-4-8   pinned Opus 4.8"
-  echo "  [3] claude-opus-5     pinned Opus 5"
-  echo "  [4] claude-sonnet-5   balanced speed/quality"
-  echo "  [5] claude-haiku-4-5  fastest, cheapest"
+  model_ids=(opus claude-opus-5-5 claude-sonnet-5-5 claude-haiku-4-5)
+  echo "  [1] opus                latest Opus — floating alias (tier default)"
+  echo "  [2] claude-opus-5-5     pinned Opus 5.5"
+  echo "  [3] claude-sonnet-5-5   balanced speed/quality"
+  echo "  [4] claude-haiku-4-5    fastest, cheapest"
 else
   model_ids=(grok-4.5 grok-4)
   echo "  [1] grok-4.5          strong default for Grok Build"
@@ -148,6 +147,18 @@ sprintbias_cfg_set MODEL_DEFAULT "$new_model"
 echo -e "${GREEN}✓${NC} Saved to docs/sprintbias/config"
 echo    "  Provider:       $new_provider  (CLI=$new_cli)"
 echo    "  Default model:  ${new_model:-(none — tier default applies)}"
+
+# config.local wins over what was just saved; say so when it pins one of these
+# keys to something else, or the choice above silently has no effect.
+for key in CLI PROVIDER MODEL_DEFAULT; do
+  if local_val="$(_sprintbias_cfg_read_file "$key" "$SPRINTBIAS_CONFIG_LOCAL_FILE")"; then
+    case "$key" in CLI) saved="$new_cli" ;; PROVIDER) saved="$new_provider" ;; *) saved="$new_model" ;; esac
+    if [ "$local_val" != "$saved" ]; then
+      echo -e "${YELLOW}⚠ docs/sprintbias/config.local sets ${key}=${local_val}, which still wins.${NC}"
+      echo    "  Edit or remove that line there to use ${saved:-the tier default}."
+    fi
+  fi
+done
 echo ""
 echo -e "${DIM}Verify:            ./sprint.sh model show${NC}"
 echo -e "${DIM}Per-command model: ./sprint.sh model set <role> <model>${NC}"

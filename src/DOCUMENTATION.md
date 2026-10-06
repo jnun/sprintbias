@@ -288,7 +288,7 @@ Your CLI, provider, and per-role models live in `docs/sprintbias/config`.
 
 ```bash
 ./sprint.sh config              # pick provider (Claude Code / Grok Build) + default model
-./sprint.sh model set work claude-opus-4-8   # pin a model for one role
+./sprint.sh model set work claude-opus-5-5   # pin a model for one role
 ./sprint.sh -g work             # one run on Grok (-c / --claude for Claude Code)
 ```
 

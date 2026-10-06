@@ -9,6 +9,20 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+## 0.0.134 — 2026-10-06
+
+### Changed
+
+- `config` offers the current Claude models: Opus 5.5, Sonnet 5.5 and Haiku 4.5
+  (Opus 4.8 and Opus 5 are gone from the menu; the custom entry still takes any
+  id). Examples in the manual and help now use `claude-opus-5-5`.
+
+### Fixed
+
+- `config` now warns when `docs/sprintbias/config.local` pins the provider or
+  default model to something else, since that local pin wins over the choice you
+  just saved and would otherwise leave you on the old model without notice.
+
 ## 0.0.133 — 2026-10-05
 
 ## 0.0.132 — 2026-10-05

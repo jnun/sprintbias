@@ -45,11 +45,11 @@ Per-run override (no config edit): pass --model <id> to a spine command to
 pin the model for that single invocation, e.g.
   ./sprint.sh work --model opus
   ./sprint.sh chat 42 --model sonnet
-  ./sprint.sh plan start 23 --model claude-opus-4-8
+  ./sprint.sh plan start 23 --model claude-opus-5-5
 It wins over config pins but yields to an explicit per-role
 SPRINTBIAS_MODEL_<ROLE> already exported in your shell.
 On Claude Code, the short alias `opus` follows the CLI's latest Opus; pin a
-full id (e.g. claude-opus-4-8) when you want a specific generation.
+full id (e.g. claude-opus-5-5) when you want a specific generation.
 
 Examples:
   ./sprint.sh model show

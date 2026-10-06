@@ -5,7 +5,7 @@
 # semi-permanent personal pins — CLI, PROVIDER, MODE, MODEL_* — that win over
 # this file, are gitignored, and never ship. A key set there overrides the value
 # here; setting it empty (KEY=) clears this file's value locally. Use it to pin,
-# say, MODEL_DEFAULT=claude-opus-4-8 for yourself without changing the default
+# say, MODEL_DEFAULT=claude-opus-5-5 for yourself without changing the default
 # everyone else gets. Precedence: env var → --model flag → config.local → config.
 
 # AI CLI binary for exec mode. Verified first-class profiles: claude, grok.
