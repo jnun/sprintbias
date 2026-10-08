@@ -40,6 +40,12 @@ decision records, CLAUDE.md / AGENTS.md) and out-of-scope gaps go under
 done/ into one backlog task (Bring project docs in step with landed work) at the
 start and end of each run — each line tagged "(from #id)" and filed once.
 
+Parallel agents: `work 1443` and `work 1452` can run side by side, one per
+terminal in the same checkout. Each worker announces its files as **Touching:**
+in ## Grounding and keeps clear of the others (DOCUMENTATION.md rule 8). A task
+in doing/ is claimed: `work N` refuses it without --force. For named sessions
+you steer, or agents on a shared server, see `help crew`.
+
 Readiness gate: only tasks stamped 'Status: READY' with a clear question list
 are executed. A next/ task that hasn't been gated yet is not skipped — work
 runs the gate on it first (the same gate `gate` runs on next/), then routes by

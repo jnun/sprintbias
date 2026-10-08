@@ -26,11 +26,17 @@ How do I:
                           crew <name> for each member it routes work to
   hand a task to someone  set the task's **Crew** field to their name (the
                           lead does this) and tell them
-  see who holds what      ./sprint.sh crew
-  take a task             move it into doing/ and set **Crew** to your name;
-                          a task in doing/ held by someone else is theirs
-  run a crew on a server  one checkout, one branch, one tmux window per member;
-                          see the guide below
+  see who holds what      ./sprint.sh crew (tasks) or ./sprint.sh agents (sessions)
+  take a task             move it into doing/, set **Crew** to your name, and list
+                          your files as **Touching:** in its ## Grounding; a task
+                          in doing/ held by someone else is theirs
+  run agents, no crew     ./sprint.sh work N in each terminal (work 12, work 15);
+                          the same doing/ claim and Touching lines keep them apart
+  run a crew on a server  one clone on one branch in a fixed path; one tmux window
+                          per member running ./sprint.sh crew <name>; on your
+                          laptop, add the server's ssh alias to AGENT_HOSTS in
+                          docs/sprintbias/config.local so agents lists them; the
+                          human commits and pushes from the server
 
 Start each member in its own plain terminal; inside an AI session the
 command prints the member's prompt instead of opening a session. Files are
@@ -38,3 +44,4 @@ the shared state; messages are only the nudge. The human approves, commits
 and ships.
 
 Guide: docs/sprintbias/guides/crew.md
+Watch a crew share one fix across two codebases: ./sprint.sh learn teamwork

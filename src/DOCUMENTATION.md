@@ -22,7 +22,7 @@ the full list and `./sprint.sh status` to see where work stands. Everything belo
 
 ## Rules for AI agents
 
-Follow these seven and you will not get lost:
+Follow these eight and you will not get lost:
 
 1. **Change status by moving the file** between folders. Do not edit a status field.
 2. **Create work with `./sprint.sh`** (`newtask`, `newbug`, …). Never write a task
@@ -42,6 +42,11 @@ Follow these seven and you will not get lost:
    project's knowledge lives. Ground a task before working it — its `## Grounding`
    names the sources, the terms, and the conflicts. Sources of truth are the
    authority: name a conflict instead of working around it.
+8. **Work alongside other agents.** Every task in `doing/` is an agent at work.
+   Announce yours with `**Touching:**` (files you expect to change) in its
+   `## Grounding`, read the others' at the start and whenever a file changes
+   under you, and leave changes you did not make as they are. On shared code
+   the lower task id owns it.
 
 ## Why folders and plain text
 
@@ -126,13 +131,13 @@ task the whole way:
 
 ```bash
 ./sprint.sh newtask "Add a login button"   # → backlog/12-add-login.md
-./sprint.sh chat 12                         # define it, then commit it to the sprint → next/
-./sprint.sh work                            # the AI builds it → review/
+./sprint.sh chat 12                         # define it until it's clear
+./sprint.sh work 12                         # gate it into next/, then the AI builds it → review/
 ./sprint.sh promote                         # Tests pass → done/ (no Tests: you approve the move)
 ```
 
-Tasks enter `next/` **only through the gate** — `chat`'s commit-to-sprint, `plan
-start`, or `gate` — never a raw `mv`. That gate is what keeps `next/` trustworthy.
+Tasks enter `next/` **only through the gate** — `work N`, `plan start`, or `chat
+<folder>`'s [w] — never a raw `mv`. That gate is what keeps `next/` trustworthy.
 
 For grouped work, use the spine **`chat → plan start → work → polish`**: gather tasks
 into a plan, `plan start` commits them all at once, `loop` runs it on autopilot.
@@ -221,7 +226,7 @@ Start each member in its own terminal. The rules every member starts with:
    to the others.
 4. **Messages nudge, files record.** When the AI CLI can message other sessions
    (Claude Code: `ListAgents`, `SendMessage`), members reach each other by crew name.
-   Anything that must last goes in a task or plan file.
+   Anything that must last goes in a task or plan file. Members follow rule 8.
 
 To see the whole crew at work, run `./sprint.sh agents`: each running session
 with its name, state, terminal tab or tmux window, project and branch, uptime,
@@ -231,8 +236,9 @@ to include them. `./sprint.sh agents label` titles each terminal with its sessio
 name; a session started with `crew <name>` keeps that title on its own.
 
 `work` and `loop` stay the headless path; a crew is for interactive work you want
-to steer. Watch one run with `./sprint.sh crew --demo`. The full guide, including
-running a crew on a shared dev server, is `docs/sprintbias/guides/crew.md`.
+to steer; `work N` in each terminal runs several agents without a crew (rule 8
+keeps them apart). Watch one run with `./sprint.sh learn teamwork`. The full
+guide, including a crew on a shared dev server, is `docs/sprintbias/guides/crew.md`.
 
 ## Learn more
 

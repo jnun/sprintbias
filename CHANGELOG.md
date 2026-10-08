@@ -9,6 +9,8 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+## 0.0.135 — 2026-10-08
+
 ### Added
 
 - Agents working in parallel (`work 1443` in one terminal, `work 1452` in
