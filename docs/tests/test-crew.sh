@@ -101,6 +101,24 @@ out="$(crew orcha plan:3)"
 assert_contains "Lead rules" "$out" "You lead this crew"
 assert_contains "Plan target" "$out" "Your work is plan 3"
 
+echo "Test 6b: members get the parallel-work rule and see the others in doing/"
+printf '# Task 9: Tidy the footer\n\n**Crew**: orcha\n' > "$TMPDIR/docs/tasks/doing/9-tidy-the-footer.md"
+out="$(crew dill 7)"
+assert_contains "Parallel rule" "$out" "Parallel work:"
+assert_contains "Announce via Touching" "$out" "**Touching:**"
+assert_contains "Sibling listed with holder" "$out" "docs/tasks/doing/9-tidy-the-footer.md (crew: orcha)"
+assert_not_contains "Own task not listed as a sibling" "$out" "- docs/tasks/doing/7-fix-the-upload.md"
+rm -f "$TMPDIR/docs/tasks/doing/9-tidy-the-footer.md"
+
+echo "Test 6c: a pile of doing/ files is capped so the prompt stays small"
+for i in 20 21 22 23 24 25 26 27 28 29; do
+    printf '# Task %s: Old\n' "$i" > "$TMPDIR/docs/tasks/doing/$i-old.md"
+done
+out="$(crew dill 7)"
+assert_contains "Overflow summarized" "$out" "and 2 more in docs/tasks/doing/"
+assert_not_contains "Ninth sibling not listed" "$out" "- docs/tasks/doing/29-old.md"
+rm -f "$TMPDIR"/docs/tasks/doing/2[0-9]-old.md
+
 echo "Test 7: unknown member, task and plan fail"
 assert_fails "Unknown member" nobody
 assert_fails "Unknown task" dill 999

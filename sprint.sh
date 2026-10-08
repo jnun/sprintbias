@@ -140,6 +140,13 @@ show_help() {
     echo -e "${BLUE}Keep:${NC}  (housekeeping)"
     print_command_group keep
     echo ""
+    echo -e "${BLUE}Several agents at once:${NC}  (one checkout — a task in doing/ is claimed)"
+    echo "  One machine   work N in each terminal (work 12, work 15), or a crew: crew <name> each"
+    echo "  A server      one clone on one branch, one tmux window per member running crew <name>;"
+    echo "                add its ssh alias to AGENT_HOSTS so agents lists them; the human commits"
+    echo "  Every agent   lists its files as **Touching:** in ## Grounding; leaves others' edits alone"
+    echo "  More          help crew · docs/sprintbias/guides/crew.md"
+    echo ""
     echo "  help                             Show this message"
     echo "  help <command>                   Show details for a command (e.g. help work)"
     echo ""

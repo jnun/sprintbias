@@ -110,7 +110,7 @@ cmd_start() {
   role="$(sprintbias_meta_value "$file" Role)"
   lead="$(sprintbias_meta_value "$file" Lead | tr '[:upper:]' '[:lower:]')"
 
-  local work_line
+  local work_line self=""
   case "$target" in
     "")
       if [ "$lead" = "yes" ]; then
@@ -129,7 +129,8 @@ cmd_start() {
       if ! [[ "$target" =~ ^[0-9]+$ ]] || ! tfile="$(sprintbias_task_path "$target")"; then
         echo -e "${RED}✗ No task $target. Pass a task ID or plan:N.${NC}" >&2; exit 1
       fi
-      work_line="Your work is task $target: $tfile. Claim it before you start." ;;
+      work_line="Your work is task $target: $tfile. Claim it before you start."
+      self="$tfile" ;;
   esac
 
   local rules="You are ${name}, a member of this project's crew. Your role: ${role}.
@@ -142,8 +143,10 @@ Crew rules:
 2. Claim a task before you work it: move it into docs/tasks/doing/ (git mv SRC DEST || mv SRC DEST) and set its **Crew** field to ${name}. A task in doing/ whose Crew names another member is theirs. Leave it alone and tell the lead if you need it.
 3. Stay inside what your member file says you may touch. Hand everything else to the member who owns it (./sprint.sh crew lists everyone).
 4. Finish the normal way: fill the task's ## Completed section, move it to review/, then report as your member file says.
-5. Other members are reachable by their crew name when your tools can message other sessions (in Claude Code: ListAgents, then SendMessage). Messages are for nudges and questions.
-6. The human approves, commits and ships."
+5. Other members are reachable by their crew name. Messages are for nudges and questions.
+6. The human approves, commits and ships.
+
+$(sprintbias_parallel_rule "$self")"
 
   if [ "$lead" = "yes" ]; then
     rules="${rules}

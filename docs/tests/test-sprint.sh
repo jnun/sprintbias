@@ -171,6 +171,13 @@ assert_contains "Usage mentions -c|-g" "$output" "[-c|-g]"
 assert_contains "Help lists --claude" "$output" "--claude"
 assert_contains "Help lists --grok" "$output" "--grok"
 
+# Test 12b: help shows how to run several agents (one machine and a server)
+echo "Test 12b: help covers several agents at once"
+assert_contains "Help has the several-agents section" "$output" "Several agents at once:"
+assert_contains "Help names work N side by side" "$output" "work N in each terminal"
+assert_contains "Help names the server setup" "$output" "AGENT_HOSTS"
+assert_contains "Help points to help crew" "$output" "help crew"
+
 # Test 13: -g exports Grok provider for child scripts
 echo "Test 13: -g sets SPRINTBIAS_CLI/PROVIDER for this run"
 setup

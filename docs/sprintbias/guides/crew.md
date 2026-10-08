@@ -87,6 +87,7 @@ Moving a task into doing/ with Crew set to your name is the claim	A file move is
 A task in doing/ held by someone else is theirs						Ask the lead instead of taking it
 New tasks come from ./sprint.sh newtask only						It locks the ID counter, so parallel members never draw the same ID
 Each kind of work has one owner										Set in May touch; the main defense against two sessions editing one file
+A member announces its task and **Touching:** files when it starts		Others check those lines before editing; on shared code the lower task id owns it
 Claude Code refuses to save a file changed since it was read		A second writer re-reads and retries instead of overwriting
 
 ## Messages between members

@@ -12,7 +12,7 @@ No database. No SaaS. No login.
 **[sprintbias.com](https://sprintbias.com)** · **[GitHub](https://github.com/jnun/sprintbias)**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.0.77-blue.svg)](https://github.com/jnun/sprintbias/releases)
+[![Version](https://img.shields.io/badge/version-0.0.134-blue.svg)](https://github.com/jnun/sprintbias/releases)
 ![AI: Claude · Grok](https://img.shields.io/badge/AI-Claude%20%C2%B7%20Grok-8A2BE2.svg)
 
 </div>
@@ -25,14 +25,11 @@ cd sprintbias
 ./setup.sh ~/code/my-app     # your project path
 ```
 
-That puts the board into **your project** — not into this repo.
+One question — **Enter** for Claude Code, **`g`** for Grok Build — and the board
+is in **your project**. Your own files are left in place.
 
-**Install is an Easy Button:** one door pick — **Enter** = Claude Code, **`g`** =
-Grok Build — then a silent scaffold (docs, pointers, gitignore). Your own files
-are not clobbered; optional GitHub Issues sync and extra AI dotfiles sit behind
-`More options?`. Details: [DOCUMENTATION.md → Installing SprintBias](DOCUMENTATION.md#installing-sprintbias).
-
-Then, from your project:
+**Needs:** bash, git, and Claude Code or Grok Build (python3 optional).
+Walkthrough: **[GETSTARTED.md](GETSTARTED.md)**.
 
 ---
 
@@ -51,32 +48,23 @@ Then, in your project:
 ```bash
 ./sprint.sh profile                         # once — teach the AI your stack
 ./sprint.sh newtask "Reject empty password on login"
-./sprint.sh chat 42                         # sharpen until it's READY
-./sprint.sh work                            # do the next ready task
+./sprint.sh chat 42                         # sharpen until it's clear
+./sprint.sh work 42                         # gate it, then build it
 git status                                  # the change is a git change
+./sprint.sh promote                         # Tests pass → done/
 ```
 
 That’s the whole loop: capture work, see it, ship it.
 
-Group related tasks when you’re ready (fast lane when ids are known):
+Then scale up — plans, autopilot, a crew of named sessions, either AI:
 
 ```bash
-./sprint.sh newplan "Auth" 12 13          # or: newplan "Auth" parent:12
-./sprint.sh plan start <id>               # gate → next/
-./sprint.sh work
-# or keep going:
-./sprint.sh loop --refill --retry
+./sprint.sh newplan "Auth" 12 13 && ./sprint.sh plan start 5   # group → next/
+./sprint.sh loop --refill --retry                              # autopilot
+./sprint.sh crew lead plan:5                                   # one terminal per member
+./sprint.sh agents                                             # every session, here and on servers
+./sprint.sh -g work                                            # Grok Build (-c = Claude Code)
 ```
-
-**Claude Code** (`-c`) and **Grok Build** (`-g`) are first-class:
-
-```bash
-./sprint.sh -g work
-./sprint.sh -c chat 12
-```
-
-Maintainers: before a release, smoke both hosts with the
-[dual-provider smoke protocol](docs/guides/dual-provider-smoke.md).
 
 ---
 

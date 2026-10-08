@@ -139,6 +139,7 @@ shorten the note — keep the row for grep stability.
 | KU-16 | Is `plan` subagent type useful for plan think / authoring? | DEFER | Not plan 11 |
 | KU-17 | Claude still passes `Agent` in TOOLS=; Grok map strips it | RESOLVED — works | Emit ignores tools |
 | KU-18 | Unsolicited child spawn on single headless work? | COVERED by #296 | |
+| KU-19 | Can parallel agents message each other? Claude Code interactive: `ListAgents` / `SendMessage`. Headless exec workers: TOOLS has no messaging tool, and a `-p` session's visibility to `ListAgents` is unproven. Grok Build: no inter-session messaging found; `--name` is dropped | OPEN | `sprintbias_parallel_rule` coordinates through doing/ task files (**Touching:**) and asks for messages only "when your tools can". Prove before adding messaging tools to work's TOOLS |
 
 ### Models
 

@@ -601,6 +601,46 @@ removed; a changed command or environment) — the map is refreshed with
 EOF
 }
 
+# The parallel-work contract: several agents may work one checkout at once
+# (`work 1443` in one terminal, `work 1452` in another, or a crew). doing/ is
+# the claim; each task file is its agent's announcement. Lists the tasks in
+# doing/ when the prompt is built (SELF, a task path or name, is left out) and
+# tells the agent to look again, since siblings start later. Used by work
+# (exec + emit) and crew. Always returns 0.
+sprintbias_parallel_rule() {
+    local self="${1##*/}" f crew others="" n=0
+    for f in docs/tasks/doing/[0-9]*-*.md; do
+        [ -f "$f" ] && [ "${f##*/}" != "$self" ] || continue
+        n=$((n + 1))
+        # A pile of abandoned doing/ files must not bloat every prompt.
+        [ "$n" -le 8 ] || continue
+        crew="$(sprintbias_meta_value "$f" Crew)"
+        case "$crew" in ''|[Nn]one) crew="" ;; *) crew=" (crew: $crew)" ;; esac
+        others="${others}
+- $f$crew"
+    done
+    cat <<'EOF'
+Parallel work: other agents may share this checkout. Each task in
+docs/tasks/doing/ is one of them, and its file is its announcement.
+- Announce: add **Touching:** (the files you expect to change) to your task's
+  ## Grounding and keep it current. When your tools can message other sessions
+  (Claude Code: ListAgents, SendMessage), send each running agent your task id
+  and Touching list.
+- See theirs with grep -H Touching docs/tasks/doing/*.md at the start and
+  whenever a file changes under you. On a shared file, re-read it right before
+  each edit and change only your part. Where two tasks rework the same code, the
+  lower task id owns it; the other builds around it and notes the overlap under
+  ## Completed.
+- Changes you did not make belong to another agent: leave them, and never
+  stash, reset, checkout, or revert them. A problem you spot in their files
+  goes to that agent, or under your ## Completed.
+EOF
+    [ "$n" -gt 8 ] && others="${others}
+- …and $((n - 8)) more in docs/tasks/doing/"
+    [ -n "$others" ] && printf 'In doing/ when you started:%s\n' "$others"
+    return 0
+}
+
 # Print the bullets under '### Doc follow-ups' in FILE (one per line, "- "
 # kept). Stops at the next heading. Nothing when absent.
 sprintbias_doc_followups() {

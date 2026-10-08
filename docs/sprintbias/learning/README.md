@@ -58,6 +58,7 @@ layers that stack:
 | S6    | The momentum of the whole spine in one short run    | `speedrun.py`     |
 | S7    | The whole board at a glance — every stage, plan, and hold, alive | `status.py` |
 | S8    | One command drains the READY queue: next/ → review/, your pace | `work.py` |
+| S9    | Two agents, two codebases, one shared contract — claim, announce, build around | `teamwork.py` |
 
 ### Per-command scenarios (play via `learn <name>` or `<cmd> --demo`)
 

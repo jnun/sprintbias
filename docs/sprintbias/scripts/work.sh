@@ -948,6 +948,8 @@ $content
 
 Rules:
 $_TASK_RULES
+
+$(sprintbias_parallel_rule "$path")
 PROMPT
 }
 
@@ -958,6 +960,7 @@ PROMPT
 # routing rules either way so behavior can't drift.
 if [ "$AI_MODE" = "emit" ]; then
   _orient="$(sprintbias_orient)"
+  _parallel="$(sprintbias_parallel_rule)"
 
   _task_list=""
   for ((i=0; i<COUNT; i++)); do
@@ -1057,7 +1060,9 @@ For EACH task file listed below (honor dependency order):
 2. Launch a subagent whose entire instruction is:
      \"Execute ONE task. Read the task file at docs/tasks/doing/<name> and do the work.
 $(sprintbias_subagent_no_nest)
-$_TASK_RULES\"
+$_TASK_RULES
+
+$_parallel\"
 3. When the subagent returns, read docs/tasks/doing/<name> and route it:
    a. contains a '## Completed' section → first DELETE any stale '## Outcome'
       block left by a prior failed attempt (a completed task must not carry a
@@ -1093,6 +1098,8 @@ For EACH task file listed below:
    If it is already in doing/, skip the move (resume in place).
 2. Read docs/tasks/doing/<name> and do the work:
 $_TASK_RULES
+
+$_parallel
 3. Route it:
    a. you wrote a '## Completed' section → first DELETE any stale '## Outcome'
       block left by a prior failed attempt (a completed task must not carry a

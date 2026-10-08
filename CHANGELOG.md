@@ -9,6 +9,36 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+### Added
+
+- Agents working in parallel (`work 1443` in one terminal, `work 1452` in
+  another, or a crew) now coordinate by default. Each one is told the other
+  tasks in `doing/`, announces the files it expects to change as a
+  `**Touching:**` line in its task, checks the others' lines before editing,
+  messages them when its tools can, and leaves changes it did not make alone.
+  The manual gains rule 8, "Work alongside other agents."
+- New demo, `./sprint.sh learn teamwork`: a lead, an API agent and an iOS
+  agent fix one bug across two codebases at once. Watch them claim tasks,
+  announce their files, message each other, share one contract file without
+  overwriting it, and hand finished work to you to review and commit.
+
+### Changed
+
+- `./sprint.sh help` gains a short "Several agents at once" section: `work N`
+  in each terminal or a crew on one machine, and a crew on a shared server
+  (one clone, one branch, a tmux window per member, `AGENT_HOSTS` so `agents`
+  lists them). `help crew`, `help work` and the manual give the same steps.
+- `GETSTARTED.md` is rewritten for today's tool: what you need installed, one
+  install step, `profile` on first run, the `newtask → chat → work N → promote`
+  loop, plans, crews and `agents`, and picking Claude Code or Grok Build. It no
+  longer tells you to move tasks into `next/` by hand.
+
+### Fixed
+
+- The getting-started loop and the manual's pipeline now use `work 12` to gate
+  and build a single task. They used to say `chat 12` puts the task into
+  `next/`, which it does not, so a plain `work` afterwards found nothing to do.
+
 ## 0.0.134 — 2026-10-06
 
 ### Changed

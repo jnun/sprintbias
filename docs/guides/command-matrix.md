@@ -275,6 +275,12 @@ Registry groups, help sections, and this matrix use the **same six labels**:
 (pipeline / workflow / maint / …). Global provider switches stay **launcher
 flags** (`-c` / `-g`), not a seventh family.
 
+The index also carries a few how-to blocks that list no commands (Provider,
+Model, Several agents at once). They live in `show_help` in `sprint.sh`, stay
+a handful of lines, and point to `help <cmd>` for depth. The several-agents
+block covers `work N` side by side and a crew on a shared server; its depth is
+`help crew` and `guides/crew.md`.
+
 **Demos are data, not a family.** Placement for the `learn` / `--demo` pair:
 
 If the demo...					Then reach it with...
