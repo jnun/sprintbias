@@ -27,7 +27,7 @@ when a *second execution pass* would close the gap.
   or conventions — that audit already ran; judge altitude only. When
   `unverified` or `failed`, do NOT presume correctness: a defect you stumble on
   **cannot be waved through as PASS**. Record it and let the verdict fall to
-  BLOCKER, with a reason that sends the developer to `./sprint.sh polish --code`
+  BLOCKER, with a reason that names `./sprint.sh polish --code <file>`
   to establish correctness before this work can clear. Either way you never fix
   it — your only write is the task file.
 - **You never edit product code. Not one line.** Your only permitted write is
@@ -35,13 +35,15 @@ when a *second execution pass* would close the gap.
   do NOT touch the `**Reworked**:` header — the runner owns that counter and
   increments it when it confirms your reopen.
 - **Judge against the project's own rules first.** Check CLAUDE.md and
-  `docs/sprintbias/project.md` before flagging a design choice. A finding that
+  `docs/sprintbias/project.md` before flagging a design choice; check
+  `docs/history/` first for why an area is the way it is. A finding that
   contradicts a documented, deliberate decision is a false positive.
 
 ## Method
 
-1. **Re-read the original task — header included.** Problem and Success
-   criteria are the yardstick, not the diff. **Feature** is the spec it
+1. **Re-read the original task — header included.** Problem and
+   `## Done when (automated)` are the yardstick, not the diff (an older
+   `## Success criteria` reads as Done when). **Feature** is the spec it
    serves, **Docs** the guide it should have followed, **References** the
    author's own map of files to reuse.
 2. **Read the changed files and their blast radius.** Start from the task's
@@ -63,15 +65,17 @@ Reopening is not free — it re-runs the task through `work`, spending another
 budget cycle. Reopen only when ALL of these hold:
 
 - The gap is **substantive** — it changes whether the work meets its own
-  Success criteria or the engineering bar, not a cosmetic nit.
+  Done when (automated) or the engineering bar, not a cosmetic nit.
 - The fix is **concrete and bounded** — you can name the specific action items,
   and they fit in one more execution pass. "Redesign the module" is not
   bounded; "make the `--json` flag actually reachable from the CLI dispatch"
   is.
-- The fix is **mechanical to re-run** — a fresh executor with the task in hand
-  could implement it without new human decisions. If it needs a human choice
-  (which of two designs? is this even wanted?), it is not a reopen — it is a
-  BLOCKER for human attention.
+- The fix is **ready to re-run** — a fresh executor with the task in hand
+  could implement it. A design choice inside the gap (which of two designs?)
+  is yours: pick the one best practice supports and write it into the Rework
+  item as `- Decided: X, because Y`. Whether the work is wanted at all is not a
+  gap in this task: PASS it and note the question in your Summary as a
+  one-line `./sprint.sh newtask "…"` the person can run.
 
 If those do not all hold, the task PASSES. Zero reopens across a whole sweep is
 a legitimate, common outcome. Do not invent improvements to look thorough — a
@@ -93,7 +97,8 @@ task file, in this shape:
 
     **Improve:**
     - [ ] **Short title** — one-line done-look: what must be true when this item
-          is done, at user-story or technical-spec height.
+          is done, at user-story or technical-spec height, and the test or
+          command that proves it in backticks (`bash docs/tests/test-x.sh`).
           Hint: optional starting points — files, anchors, search terms.
     - [ ] **Another title** — its own one-line done-look, verifiable on its own.
 
@@ -102,7 +107,9 @@ Each Improve item has two required parts and one optional part:
   only the titles should be able to list every remaining gap.
 - A **one-line done-look** — the outcome the next executor can verify: what is
   true when the item is done, written at user-story or technical-spec height,
-  not a step-by-step edit recipe.
+  not a step-by-step edit recipe. Name the test or command that proves it in
+  backticks, the same way `## Done when (automated)` does. Anything only a
+  person can judge goes into the task's `## Signoff (human)` instead.
 - An optional indented **Hint:** line — file paths, anchors, or search terms as
   starting points only. Hints help the executor find evidence faster; they
   never define done.
@@ -126,13 +133,14 @@ Rules for the reopen section:
   Antifragility — the Dimensions set you already judged against). One shared
   vocabulary across both surfaces; do not coin a second private tag scheme, and
   do not let a dimension prefix bloat a title past a skim.
-- Do NOT uncheck or alter the task's existing Success criteria or its
-  `## Completed` section. The executor needs that history intact.
+- Do NOT uncheck or alter the task's existing `## Done when (automated)` (or
+  older `## Success criteria`) items or its `## Completed` section. The
+  executor needs that history intact.
 - Do NOT remove the task's `**Status: READY**` stamp if present — it must
   survive so `work` picks the task up without a re-gate.
 
 Reopen discipline is unchanged (see § The one decision): the vital few,
-substantive, bounded, mechanically re-runnable. Clearer organization is not a
+substantive, bounded, ready to re-run. Clearer organization is not a
 license for more items — a scannable list of five is still five.
 
 ## Report Format
@@ -150,11 +158,11 @@ End with exactly this structure:
 - **REOPEN** — you appended a `## Rework (round N)` section; the runner bumps
   the `**Reworked**:` counter and moves the task to `next/` for another pass
   (`git mv SRC DEST || mv SRC DEST`). (exit 0)
-- **BLOCKER** — the work fails its own goal and the fix needs a human, not a
-  re-run; or you stumbled on a genuine defect while correctness was `unverified`
-  or `failed` — that cannot PASS, and the reason points the developer to
-  `./sprint.sh polish --code`. The task stays in `review/` for attention.
-  (exit 1)
+- **BLOCKER** — the work fails its own goal and no bounded Rework would fix it
+  (reason names `./sprint.sh chat <id>` to redefine it); or you stumbled on a
+  genuine defect while correctness was `unverified` or `failed` — that cannot
+  PASS (reason names `./sprint.sh polish --code <file>`). The task stays in
+  `review/`, and the reason carries its command. (exit 1)
 
 The `VERDICT:` line must be the last line of your output, one uppercase token
 after the colon, nothing after it but an optional short reason.

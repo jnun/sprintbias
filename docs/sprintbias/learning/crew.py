@@ -4,8 +4,9 @@ SprintBias — a crew of named sessions, one lead keeping everyone rowing.
 
 A pretend, cinematic run: you add a lead and two members, start the lead on a
 plan, and watch it route tasks by role. Each member claims its task by moving it
-into doing/, the lead catches two members heading for the same file, and the
-board shows who holds what. Pure theater: it touches nothing in your project —
+into doing/, the lead catches two members heading for the same file, the board
+shows who holds what, and each landing releases the next task until you close
+the plan with one promote plan:N. Pure theater: it touches nothing in your project —
 no files written, no sessions started, no network.
 
 No dependencies. Just:  python3 crew.py
@@ -155,9 +156,9 @@ def act2():
     says("orcha", "Approach: fix the importer, then the count that reads it.")
     note("#41 importer flags duplicates     Crew: dill")
     note("#42 unique index on asset tag     Crew: devops")
-    note("#43 dashboard count reads clean   Crew: dill")
+    note("#43 dashboard count reads clean   Crew: dill  Depends on: #41")
     ok("plan 5 → ## Crew board written")
-    msg("orcha", "dill", "#41 is yours, then #43")
+    msg("orcha", "dill", "#41 is yours; #43 follows once it lands")
     msg("orcha", "devops", "#42 is yours — migration")
     beat("Messages nudge. The board and the Crew fields are the record.")
 
@@ -189,10 +190,27 @@ def act4():
     line(f"    {GREY}doing/  41  Importer flags duplicates{RESET}")
     line(f"    {GREY}next/  43  Dashboard count reads clean{RESET}")
     print()
-    says("dill", "#41 done, Completed filled in.")
-    moved("doing/41", "review/41")
-    msg("dill", "orcha", "#41 in review; starting #43")
-    nextstep("you review, commit, and ship — the crew never commits")
+    beat("Nobody guesses who is free: the files say it.")
+
+def act5():
+    act("ACT 5  ·  land, route, close",
+        "members report each landing; the lead routes what it releases.")
+    says("dill", "#41 done: targeted tests pass, proof line written.")
+    moved("doing/41", "review/41  · landed")
+    msg("dill", "orcha", "#41 landed — proof: bash tests/test_import.sh · pass")
+    says("orcha", "#41 landed in review/ with proof. That releases #43.")
+    msg("orcha", "dill", "#43 is yours — built on #41 (landed)")
+    moved("next/43", "doing/43  Crew: dill")
+    beat("Landed means review/ with a proof line. Dependents start then, not after your sign-off.")
+    says("devops", "#42 done: migration test passes, proof line written.")
+    moved("doing/42", "review/42  · landed")
+    says("dill", "#43 done: count test passes, proof line written.")
+    moved("doing/43", "review/43  · landed")
+    print()
+    says("orcha", "Every member landed. Running the full suite once.")
+    spinner("./sprint.sh promote plan:5 </dev/null", done="LANDED · full suite green")
+    says("orcha", "Plan 5 is LANDED. One sign-off for you: ./sprint.sh promote plan:5")
+    nextstep("./sprint.sh promote plan:5 — one approval closes the plan; the crew never commits")
 
 def outro():
     print()
@@ -205,6 +223,8 @@ def outro():
          f"{GREY}May touch keeps sessions out of each other's files{RESET}")
     line(f"    {PURPLE}•{RESET} {WHITE}the lead rows the boat{RESET}      "
          f"{GREY}holds the plan, routes, catches collisions, writes no code{RESET}")
+    line(f"    {PURPLE}•{RESET} {WHITE}landed releases the next{RESET}    "
+         f"{GREY}review/ with proof starts dependents; one promote plan:N closes{RESET}")
     print()
     line(f"  {DIM}read more:{RESET} {CYAN}docs/sprintbias/guides/crew.md{RESET}")
     print()
@@ -218,6 +238,7 @@ def main():
         act2()
         act3()
         act4()
+        act5()
         outro()
     except KeyboardInterrupt:
         sys.stdout.write(RESET + "\n" + DIM + "  …demo interrupted.\n" + RESET)

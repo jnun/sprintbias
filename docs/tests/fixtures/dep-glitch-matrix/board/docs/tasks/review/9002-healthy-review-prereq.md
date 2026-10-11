@@ -30,3 +30,5 @@ See docs/tests/fixtures/dep-glitch-matrix/MATRIX.md.
 
 ## Completed
 Synthetic review work.
+
+**Proof**: 2026-08-01 · bash docs/tests/test-dep-work.sh · pass

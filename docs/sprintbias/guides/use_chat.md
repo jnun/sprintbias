@@ -107,7 +107,7 @@ Verdict labels (not lifecycle folders):
 |--------|---------|
 | **COMPLETE** | Work may already be in the codebase — triage is advisory; **`[w]` still gates** |
 | **READY** | Clear enough to try; open **Depends on** means dependent / on hold (`work` holds) |
-| **BLOCKED** | Needs a decision or clarification on *this* task — **not** “has an open dep” |
+| **BLOCKED** | *This* task cannot start (no reasonable reading, or access or credentials only you hold) — **not** “has an open dep” or an open choice; names `./sprint.sh chat <id>` |
 | **UNDEFINED** | Too thin to act on yet — **not** “has an open dep” |
 | **STALE** | Low value / superseded |
 
@@ -116,7 +116,7 @@ shared workability gate** (READY → `next/`, BLOCKED → `blocked/` with a reas
 COMPLETE → `review/`). Never a raw promote into `next/`. From `next/`, `[w]`
 starts the task (`doing/`).
 
-A dep sitting in the **`blocked/` folder** (needs a decision or clarification)
+A dep sitting in the **`blocked/` folder** (cannot start yet)
 is called out separately — the dependent is on hold; the prerequisite is blocked.
 A dep still in backlog/next is ordinary sequencing, not a blocked condition.
 
@@ -132,11 +132,12 @@ when there's more to define, keeps the chain moving without ballooning context.
   in the body and the original question is deleted. When the question list is
   clear, `chat` runs the same workability promote as `plan start` / folder
   `[w]`. READY → `next/` and runnable with `./sprint.sh work`; otherwise the
-  gate returns BLOCKED. While a question is still open, the task stays in
-  `blocked/` and `chat` names what still needs answering.
+  gate returns BLOCKED. A question still open keeps its `(Suggestion: …)`,
+  which the gate takes as the answer; the task stays in `blocked/` only while
+  it cannot start, and `chat` names what it still lacks.
 
 - **The next dependency is picked up in a fresh context.** Defining one task
-  often reveals it depends on another task that still needs a decision. Rather than
+  often reveals it depends on another task that cannot start yet. Rather than
   keep chatting in the same session — where the whole conversation stays in
   context and burns tokens — `chat` writes a short **Context from chat** note
   into that next task's file (just the decisions that flow downstream), then

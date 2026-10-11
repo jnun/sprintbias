@@ -203,7 +203,7 @@ def act3():
     line(f"    {ORANGE}C{RESET} {DIM}┆{RESET} {GREY}73{RESET}  {WHITE}log blocked login attempts{RESET}   "
          f"{DIM}→{RESET} {CYAN}src/api/limits.py{RESET}  {ORANGE}← same file{RESET}")
     print()
-    held(f"{BOLD}73 waits{RESET} — held until 71 lands in review/, then it runs.")
+    held(f"{BOLD}73 waits{RESET} — held until 71 lands (review/ with a proof line), then it runs.")
     moved("next/73", "held · after 71")
     ok(f"71 finishes, {BOLD}then{RESET} 73 starts on the settled file. In order, on purpose.")
     nap(0.5)

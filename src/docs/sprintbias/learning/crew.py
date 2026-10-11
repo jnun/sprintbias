@@ -189,9 +189,9 @@ def act4():
     line(f"    {GREY}doing/  41  Importer flags duplicates{RESET}")
     line(f"    {GREY}next/  43  Dashboard count reads clean{RESET}")
     print()
-    says("dill", "#41 done, Completed filled in.")
-    moved("doing/41", "review/41")
-    msg("dill", "orcha", "#41 in review; starting #43")
+    says("dill", "#41 done: targeted tests pass, proof line written.")
+    moved("doing/41", "review/41  · landed")
+    msg("dill", "orcha", "#41 landed; starting #43")
     nextstep("you review, commit, and ship — the crew never commits")
 
 def outro():

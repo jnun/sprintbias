@@ -4,62 +4,63 @@
 **Created**: 2026-09-10
 **Docs**: none
 **Plan**: none
+**From plan**: none
 **Depends on**: none
 **Dependents**: none
 **Parent**: none
-**Tests**: none
-**Refined**: 0
+**Fixes**: none
+**Crew**: none
+**Tests**: docs/tests/test-audit-excellence.sh
+**Refined**: 1
 **Reworked**: 0
 
 ## Problem
 
-Task 387 added a `### Considered` coverage block to the excellence report
-contract so a reader can tell which altitude dimensions were actually examined —
-the plan's whole observability thesis. But that signal only lives in the
-ephemeral run output. The durable `## Excellence` section written to the task
-file carries Verdict + Summary and no coverage block, so a reader returning to
-the task file weeks later still cannot tell what was checked — exactly the
-problem #387 set out to solve, just relocated from the report to the record.
+The excellence judge's report has a `### Considered` block that lists every
+quality dimension it checked, so "checked, nothing found" reads differently
+from "never looked". The `## Excellence` section saved into the task file has
+no field for it. In emit mode the block is lost. In headless mode it survives
+only by accident, as raw text inside Summary. A person reading the task file
+later cannot reliably tell what the judge checked.
 
-## Why
+## Done when (automated)
 
-- The durable-record appender has no home for the coverage signal:
-  `sprintbias_excellence_block` (docs/sprintbias/lib.sh:2078) emits Date,
-  Verdict, Correctness, Tasks filed, Routing, Files reviewed, Context source,
-  Code state, then a single Summary body — no Considered field.
-- The two persistence paths disagree on whether coverage survives. The emit-mode
-  append step instructs the agent to write only a "2–5 sentence Summary"
-  (docs/sprintbias/scripts/polish-judge.sh:187-193), dropping the block. The
-  headless path extracts the Summary with a regex that grabs everything between
-  `## Summary` and `VERDICT:` (`sprintbias_extract_summary`,
-  docs/sprintbias/lib.sh:2252), so Considered + Findings survive there only as an
-  accidental side effect. A coverage signal that lands in the record on one path
-  and vanishes on the other is not a trustworthy record.
-- Plan 25's stated case (task 387 Plan Think) is that observability of the judge
-  is antifragile: silent under-examination becomes a detectable gap. That
-  guarantee is only realized for the durable record if the record carries it.
+- [ ] `sprintbias_excellence_block` writes a one-line `**Considered**:` field
+      naming each dimension the judge listed with `clear` or its finding count,
+      and an `N of M` total where M is the number of dimensions in
+      `ai/audit-excellence.md`'s `## Dimensions` section. Example:
+      `**Considered**: 6 of 6 — Efficiency 1 finding; others clear`.
+      `bash docs/tests/test-audit-excellence.sh` asserts the field for a stub
+      report.
+- [ ] A headless run fills the field from the report's `### Considered` block.
+      `bash docs/tests/test-audit-excellence.sh` asserts it in the task file.
+- [ ] The emit-mode append step shows the same field with a placeholder the
+      agent fills, so both paths write one format. `bash
+      docs/tests/test-audit-excellence.sh` asserts the emit prompt contains it.
+- [ ] A report with no `### Considered` block, or one missing a dimension,
+      shows the gap, e.g. `**Considered**: 4 of 6 — missing: Operability,
+      Antifragility`. `bash docs/tests/test-audit-excellence.sh` asserts it.
+- [ ] `bash docs/tests/run-all.sh` passes.
 
-## Success criteria
+## Signoff (human)
 
-- [ ] The durable `## Excellence` section written to a task file carries the
-      dimension-coverage signal (which dimensions were considered, distinct from
-      which produced findings), not just Verdict + Summary — so a reader of the
-      task file alone can tell what was checked.
-- [ ] Both persistence paths agree: emit-mode append and the headless extractor
-      produce the same coverage record for the same run — no path silently drops
-      it and no path captures it only by accident.
-- [ ] The coverage field follows the live Dimensions set (no hardcoded closed
-      list that rots when Dimensions changes), consistent with #387's contract.
-- [ ] No product code is edited by the judge; this adds record fidelity, not a
-      new gate. Decide and document how much of the block to persist (full
-      Considered list vs. a compact one-line coverage summary).
+None: the automated checks cover it.
 
 ## Notes
 
-- Coordinate with the runtime-prompt surface #388 syncs and the report contract
-  #387 owns — this task is the persistence layer neither of them touched. Reuse
-  the coverage the judge already emits; do not add a second coverage mechanism.
-- Confirm the full-block-vs-compact-summary decision before building.
+- Decided: one compact line, not the full block. Summary stays as it is today;
+  leave the summary extractor alone.
+- Read M from the live `## Dimensions` list in `ai/audit-excellence.md` (six
+  today). Hardcode no dimension names in shell.
+- The report contract (`### Considered`, one line per dimension marked
+  `— clear` or `— N finding(s)`) is in `ai/audit-excellence.md`'s Report
+  Format. Parse that; add no second coverage mechanism.
+- The emit append step in `polish-judge.sh` renders
+  `sprintbias_excellence_block` with placeholders; add the new argument
+  there.
+- Keep the `## Excellence` field list in step with any reader that parses it
+  (grep `sprintbias_excellence_block` and `**Routing**:` readers such as
+  `plan-polish.sh`).
 
 ## References
 

@@ -22,7 +22,7 @@ setup() {
 
 assert_contains() {
     local desc="$1" haystack="$2" needle="$3"
-    if echo "$haystack" | grep -qF "$needle"; then
+    if grep -qF "$needle" <<<"$haystack"; then
         echo "  PASS: $desc"
         PASS=$((PASS + 1))
     else
@@ -120,6 +120,35 @@ else
     FAIL=$((FAIL + 1))
 fi
 
+# Test 6b: the map's **Test:** line points at TEST_SUITE, which config defines
+echo "Test 6b: map Test line ties to TEST_SUITE"
+_test_line=$(grep -F '**Test:**' "$SCRIPT_UNDER_TEST" || true)
+assert_contains "Test line names TEST_SUITE" "$_test_line" "TEST_SUITE"
+assert_contains "Test line names the config file" "$_test_line" 'docs/sprintbias/config'
+assert_contains "Scan looks at TEST_SUITE" "$(grep -F 'TEST_SUITE' "$SCRIPT_UNDER_TEST" | grep -v '\*\*Test:\*\*' || true)" "TEST_SUITE"
+assert_contains "config defines TEST_SUITE" "$(grep -E '^TEST_SUITE=' "$SPRINTBIAS_SRC/config" || true)" "TEST_SUITE="
+
+# Breaker: the template lines are inside a double-quoted prompt, so every
+# backtick on them must be escaped or bash runs it as a command.
+_raw=$(grep -nE '^\*\*Test:\*\*|TEST_SUITE in$|docs/sprintbias/config \(run once' "$SCRIPT_UNDER_TEST" || true)
+if [ -n "$_raw" ] && ! sed 's/\\`//g' <<<"$_raw" | grep -q '`'; then
+    echo "  PASS: Breaker: TEST_SUITE template lines escape every backtick"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: Breaker: unescaped backtick on a TEST_SUITE template line ($_raw)"
+    FAIL=$((FAIL + 1))
+fi
+# Breaker: the rendered prompt (the string bash builds) reads the plain form.
+_rendered=$(bash -c 'eval "printf %s \"$(sed -n "/^\*\*Test:\*\*/p" "$1")\""' _ "$SCRIPT_UNDER_TEST" 2>&1)
+assert_contains "Breaker: rendered Test line reads plain backticks" "$_rendered" '**Test:** `...` — the full suite; set the same command as TEST_SUITE in `docs/sprintbias/config`'
+# Breaker: the config the hint names really reads TEST_SUITE (set, then read back).
+_cfgdir=$(mktemp -d); mkdir -p "$_cfgdir/docs/sprintbias"
+sed 's/^TEST_SUITE=.*/TEST_SUITE=make test/' "$SPRINTBIAS_SRC/config" > "$_cfgdir/docs/sprintbias/config"
+cp "$SPRINTBIAS_SRC/lib.sh" "$_cfgdir/docs/sprintbias/lib.sh"
+_val=$(cd "$_cfgdir" && bash -c "source docs/sprintbias/lib.sh >/dev/null 2>&1; sprintbias_cfg TEST_SUITE" 2>/dev/null || true)
+rm -rf "$_cfgdir"
+assert_contains "Breaker: TEST_SUITE set as the hint says reads back" "$_val" "make test"
+
 # Test 7: profile check (no AI)
 echo "Test 7: profile check"
 setup
@@ -150,7 +179,7 @@ rc=0
 output=$(bash "$TMPDIR/docs/sprintbias/scripts/profile.sh" check 2>&1) || rc=$?
 assert_exit_code "check with a missing path exits 1" "1" "$rc"
 assert_contains "Names the missing path" "$output" "openapi.yaml"
-if echo "$output" | grep -q 'make'; then
+if grep -q 'make' <<<"$output"; then
     echo "  FAIL: a ## Commands entry was treated as a path"
     FAIL=$((FAIL + 1))
 else
@@ -158,6 +187,21 @@ else
     PASS=$((PASS + 1))
 fi
 
+# Breaker: a map written from the template's **Test:** line (a config path after
+# the command) still checks clean; the Commands path is never path-checked,
+# even when docs/sprintbias/config is absent.
+_map_ok=$(sed 's|^\*\*Test:\*\* `make`$|**Test:** `make test` — the full suite; set the same command as TEST_SUITE in `docs/sprintbias/config`|' "$TMPDIR/docs/sprintbias/project.md")
+assert_contains "Breaker: fixture carries the template Test line" "$_map_ok" 'TEST_SUITE in `docs/sprintbias/config`'
+printf '%s\n' "$_map_ok" > "$TMPDIR/docs/sprintbias/project.md"
+rc=0
+output=$(bash "$TMPDIR/docs/sprintbias/scripts/profile.sh" check 2>&1) || rc=$?
+if grep -q 'sprintbias/config' <<<"$output"; then
+    echo "  FAIL: Breaker: the Test line's config path was path-checked ($output)"
+    FAIL=$((FAIL + 1))
+else
+    echo "  PASS: Breaker: the Test line's config path is not path-checked"
+    PASS=$((PASS + 1))
+fi
 touch "$TMPDIR/openapi.yaml"
 rc=0
 output=$(bash "$TMPDIR/docs/sprintbias/scripts/profile.sh" check 2>&1) || rc=$?
@@ -188,7 +232,7 @@ cat > "$TMPDIR/task.md" << 'EOF'
 EOF
 output=$(bash -c "source '$TMPDIR/docs/sprintbias/lib.sh'; sprintbias_grounding_conflicts '$TMPDIR/task.md'")
 assert_contains "Reads the conflict line" "$output" 'glossary says "plan"'
-if echo "$output" | grep -q 'not a conflict\|a named list'; then
+if grep -q 'not a conflict\|a named list' <<<"$output"; then
     echo "  FAIL: picked up lines outside **Conflicts:**"
     FAIL=$((FAIL + 1))
 else
@@ -236,6 +280,33 @@ else
     echo "  FAIL: re-run duplicated follow-ups ($output)"
     FAIL=$((FAIL + 1))
 fi
+# A resolved item stays filed: checked, with a note before the original text.
+sed -i.bak 's/^- \[ \] `GLOSSARY.md`/- [x] Already true: GLOSSARY.md has it. `GLOSSARY.md`/' "$_tracker" && rm -f "$_tracker.bak"
+output=$(_collect)
+if [ -z "$output" ] && [ "$(grep -c 'from #7' "$_tracker")" = "1" ]; then
+    echo "  PASS: a checked item is not filed again"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: checked item re-filed ($output)"
+    FAIL=$((FAIL + 1))
+fi
+# A struck item stays filed: `- [x] ~~text~~ reason (from #N)`.
+SB_STRUCK='- [x] ~~`GLOSSARY.md` — add "plan"~~ dropped: no glossary yet (from #7)' \
+    awk '/from #7\)/ { print ENVIRON["SB_STRUCK"]; next } { print }' "$_tracker" > "$_tracker.tmp" && mv "$_tracker.tmp" "$_tracker"
+assert_contains "Tracker line is struck" "$(cat "$_tracker")" '[x] ~~`GLOSSARY.md` — add "plan"~~ dropped'
+output=$(_collect)
+if [ -z "$output" ] && [ "$(grep -c 'from #7' "$_tracker")" = "1" ]; then
+    echo "  PASS: a struck item is not filed again"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: struck item re-filed ($output)"
+    FAIL=$((FAIL + 1))
+fi
+# The same text from #77 is a different follow-up: #7's line must not hide it.
+sed 's/^# Task 7:/# Task 77:/' "$TMPDIR/docs/tasks/review/7-add-plans.md" > "$TMPDIR/docs/tasks/review/77-add-plans.md"
+output=$(_collect)
+assert_contains "Same text from #77 is filed (not matched by #7)" "$output" "Filed 1 doc follow-up(s)"
+rm -f "$TMPDIR/docs/tasks/review/77-add-plans.md"
 _files=$(( $(awk '/^### Files changed/{f=1;next} /^#/{f=0} f && NF' "$TMPDIR/docs/tasks/review/7-add-plans.md" | wc -l) ))
 assert_exit_code "Files changed list stays separate" "1" "$_files"
 

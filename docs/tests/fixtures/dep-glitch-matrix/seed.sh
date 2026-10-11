@@ -148,7 +148,16 @@ write_task done 9001 "healthy-done-prereq" \
 write_task review 9002 "healthy-review-prereq" \
   "Healthy review prereq" "none" "9050,9066,9074,9080,9079" \
   "## Completed" \
-  "Synthetic review work."
+  "Synthetic review work." \
+  "" \
+  "**Proof**: 2026-08-01 · bash docs/tests/test-dep-work.sh · pass"
+
+# Reached review/ with no proof line (in review, unproven — plan 28): holds
+# its dependents until a human signs it off or records proof.
+write_task review 9021 "review-unproven-prereq" \
+  "Review prereq without a proof line" "none" "9090" \
+  "## Completed" \
+  "Synthetic review work, no proof recorded."
 
 write_task next 9003 "peer-next-ready" \
   "Peer in next READY" "none" "9051,9067,9074,9080"
@@ -442,6 +451,9 @@ write_task next 9084 "empty-depends-vs-none" \
 
 write_task next 9085 "depends-only-on-done" \
   "Depends only on healthy done" "9001" "none"
+
+write_task next 9090 "depends-on-unproven-review" \
+  "Depends on a review prereq without proof" "9021" "none"
 
 write_task next 9086 "blocks-lists-missing-id" \
   "Blocks lists missing reverse id" "none" "9199" \

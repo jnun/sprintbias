@@ -21,10 +21,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
 NEXT_DIR="docs/tasks/next"
 BLOCKED_DIR="docs/tasks/blocked"
 
-# Stages an OPEN (incomplete) task can occupy. A dependency found here is not yet
-# done; found nowhere here (review/done, or absent) it is satisfied — the exact
-# rule sprintbias_unmet_deps encodes. Reciprocity/cycle checks only look inward at
-# these, so an edge into an archived review/done task never raises hygiene noise.
+# Stages an OPEN (incomplete) task can occupy. Reciprocity/cycle checks only look
+# inward at these, so an edge into an archived review/done task never raises
+# hygiene noise. Whether a prerequisite is MET is sprintbias_unmet_deps' call
+# (done/, or review/ with a proof line); this list only scopes the hygiene walk.
 OPEN_STAGES="backlog next doing blocked"
 
 # ── Empty-sprint guard ───────────────────────────────────────────────
@@ -199,11 +199,11 @@ for id in $(board_ids); do
     if [ "$stage" = "next" ] && [ "$verdict" = "READY" ]; then
       add_finding 2 INTEGRITY "$id" "$file" \
         "is marked READY but still has an open question: \"$qshort\"" \
-        "answer it, write the answer as instruction in the body, delete the question, or 'chat $id'"
+        "answer it, write the answer as instruction in the body, delete the question, or ./sprint.sh chat $id"
     else
       add_finding 3 ORDERING "$id" "$file" \
         "has an open question: \"$qshort\"" \
-        "answer it, write the answer as instruction in the body, delete the question, or 'chat $id'"
+        "answer it, write the answer as instruction in the body, delete the question, or ./sprint.sh chat $id"
     fi
   done <<EOF
 $(open_questions "$file")
@@ -216,7 +216,7 @@ EOF
     if [ "$verdict" != "READY" ]; then
       add_finding 4 HYGIENE "$id" "$file" \
         "sits in next/ without a '**Status: READY**' stamp (work will skip it)" \
-        "run 'chat $id' to settle any open decisions, or 'gate' to vet it"
+        "vet it: ./sprint.sh gate, or define it: ./sprint.sh chat $id"
     fi
     # Dependency-stage violations — grade each unmet dep by where it sits.
     for u in $(sprintbias_unmet_deps "$file"); do
@@ -224,7 +224,7 @@ EOF
       case "$ustage" in
         blocked)
           add_finding 1 BLOCKER "$id" "$file" \
-            "is dependent (on hold): depends on $u, which still needs a decision or clarification in blocked/" \
+            "is dependent (on hold): depends on $u, which cannot start yet (in blocked/)" \
             "PATH A: resolve $u so it can leave blocked/ (hands off to 'chat $u'); or PATH B: demote this dependent task to backlog/ so the sprint holds no work waiting on $u" ;;
         backlog)
           add_finding 3 ORDERING "$id" "$file" \
@@ -417,14 +417,13 @@ For EACH finding:
 4. MOVE ON — note what is settled, then the next finding.
 
 OUTSTANDING QUESTIONS — answers become instructions
-Surface as: Task <id> has an open question: \"<question text>\". Let the user
-ANSWER or DECIDE; then in one edit:
+Surface as: Task <id> has an open question: \"<question text>\" with its
+(Suggestion: …). Let the user ANSWER or DECIDE; then in one edit:
    1. CONVERT the answer into clear instruction or guidance.
-   2. UPDATE the task body (Success criteria when it defines done; otherwise Notes).
+   2. UPDATE the task body (Done when (automated) when a test proves it; Signoff (human) when a person checks it; otherwise Notes).
    3. DELETE that question from '### Questions for the developer'.
 When the list is empty, set the subsection to 'None — task is fully defined.'
-and set '**Status:**' to READY when the brief is workable. While a question
-remains open, keep the task BLOCKED (or out of READY).
+and set '**Status:**' to READY when the brief is workable.
 If it needs deeper definition work, chain './sprint.sh chat <id>' instead.
 
 $NEXT_BLOCKED_RESOLUTION
@@ -433,7 +432,7 @@ RULES
 - One finding at a time; wait between findings; no parroting.
 - What and why, not how. No code snippets.
 - WRITES: task files under docs/tasks/ and stage moves only. Always move with: git mv SRC DEST || mv SRC DEST. Read anything; write nothing else.
-- Recap when done: fixed, chained to 'chat <id>', final frontier. Then stop."
+- Recap when done: fixed, chained to './sprint.sh chat <id>', final frontier. End with the next command: ./sprint.sh work."
 
 # ── Emit vs exec: same interactivity contract as chat.sh ─────────────
 # A live back-and-forth needs an interactive-capable provider on a real

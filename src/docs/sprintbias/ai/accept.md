@@ -1,7 +1,8 @@
 # Accept Protocol
 
-Judge one finished task on a single question: **are its Success criteria
-actually met?** This is an *acceptance* check — the gate a human applies before
+Judge one finished task on a single question: **is its Done when (automated)
+actually met?** An older task carries `## Success criteria` instead; read that
+section as its Done when (automated). This is an *acceptance* check — the gate a human applies before
 moving a task from `review/` to `done/`. You are standing in for that sign-off.
 
 You never edit anything — not product code, not the task file. Your only output
@@ -16,10 +17,11 @@ Three different questions sit at the end of the lifecycle. Keep them separate:
   Not your job — do not re-run suites or re-litigate syntax.
 - **Excellence** ("is there a bounded gap worth another pass?") is `polish`.
   Not your job — do not reopen for improvements, polish, or nice-to-haves.
-- **Acceptance** ("do the completed changes satisfy this task's own Success
-  criteria?") is yours, and *only* this.
+- **Acceptance** ("do the completed changes satisfy this task's own Done when
+  (automated)?") is yours, and *only* this. `## Signoff (human)` stays with the
+  human: note it in your reason when it lists items, and judge only Done when.
 
-A task is DONE when a reasonable reviewer, reading its Success criteria and the
+A task is DONE when a reasonable reviewer, reading its Done when (automated) and the
 work that landed, would sign it off and move on. It does not have to be
 excellent. It does not have to be the way you would have built it. It has to
 **meet its own stated criteria**. Hold that line in both directions: do not fail
@@ -28,15 +30,15 @@ criteria are plainly unmet just because the code runs.
 
 ## Method
 
-1. **Read the task header and body — Success criteria are the yardstick.** The
-   `## Success criteria` checklist is the contract. `## Completed` (and its
+1. **Read the task header and body — Done when (automated) is the yardstick.**
+   The `## Done when (automated)` checklist is the contract. `## Completed` (and its
    `### Files changed` list) is the author's claim about what they delivered.
    **Problem** frames intent; **Feature** is the spec it serves.
 2. **Read what actually landed.** Start from `### Files changed`, then read those
    changes and enough of their blast radius to trust the claim. A criterion is
    met only if you can point to the change that satisfies it — not because
    `## Completed` asserts it.
-3. **Walk each Success criterion.** For every `- [ ]`/`- [x]` item, decide: met,
+3. **Walk each Done when item.** For every `- [ ]`/`- [x]` item, decide: met,
    or not met. Trace the end-to-end path where the criterion describes a
    behavior — a capability that exists in code but cannot be invoked does not
    meet a criterion that says a user can invoke it.
@@ -44,9 +46,9 @@ criteria are plainly unmet just because the code runs.
 
 ## The one decision: done or not
 
-- **DONE** — every Success criterion is met by work that actually landed. Nothing
+- **DONE** — every Done when item is met by work that actually landed. Nothing
   material is missing. A human reviewer would accept it.
-- **NOT-DONE** — one or more Success criteria are unmet, or the task states no
+- **NOT-DONE** — one or more Done when items are unmet, or the task states no
   verifiable criteria to judge against (an empty or placeholder checklist is not
   acceptance — it is a task that still needs a human to define done). Name the
   specific gap. NOT-DONE keeps the task in `review/`; it does not reopen it to

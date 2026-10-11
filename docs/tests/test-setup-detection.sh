@@ -93,7 +93,7 @@ assert_eq() {
 
 assert_contains() {
     local desc="$1" haystack="$2" needle="$3"
-    if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+    if grep -qF -- "$needle" <<<"$haystack"; then
         echo "  PASS: $desc"
         PASS=$((PASS + 1))
     else
@@ -104,7 +104,7 @@ assert_contains() {
 
 assert_not_contains() {
     local desc="$1" haystack="$2" needle="$3"
-    if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+    if grep -qF -- "$needle" <<<"$haystack"; then
         echo "  FAIL: $desc (unexpectedly contained '$needle')"
         FAIL=$((FAIL + 1))
     else
@@ -682,6 +682,19 @@ printf '# Getting Started with sprint.md\n\nOld.\n' > GETSTARTED.md
 install_owned_doc src-getstarted.md GETSTARTED.md GETSTARTED.md
 assert_eq "no recognizer -> unmarked file left as theirs" "theirs" "$(classify_target GETSTARTED.md)"
 rm -f src-getstarted.md GETSTARTED.md
+
+echo "Test 33: the directory step creates an empty docs/history/ before the .gitkeep sweep"
+# Static check on setup.sh itself (task 421): safe_mkdir only creates a missing
+# folder, so records already in docs/history/ are never touched on re-run.
+_hist=$(grep -n 'safe_mkdir "docs/history"' "$SETUP_SH" | head -1 | cut -d: -f1)
+_keep=$(grep -n 'find docs -type d -empty -exec touch' "$SETUP_SH" | head -1 | cut -d: -f1)
+assert_true "setup.sh creates docs/history" test -n "$_hist"
+assert_true "docs/history is created before the .gitkeep sweep" test "${_hist:-0}" -lt "${_keep:-0}"
+eval "$(sed -n '/^safe_mkdir() {/,/^}/p' "$SETUP_SH")"
+mkdir -p docs/history && printf 'kept\n' > docs/history/2026-01-01-plan-1-a.md
+safe_mkdir "docs/history" >/dev/null
+assert_eq "safe_mkdir leaves an existing record alone" "kept" "$(cat docs/history/2026-01-01-plan-1-a.md)"
+rm -rf docs/history
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

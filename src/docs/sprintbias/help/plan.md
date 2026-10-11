@@ -1,4 +1,7 @@
 Decisive plan verbs — critique, commit, and retire. Authoring is `chat plan`.
+`chat plan` also creates and edits tasks and wires dependencies across plans;
+with fast on it can run `plan start` and `work` and build a missing piece
+itself (see `help chat`).
 
 **plan think [id] [--model <id>]** — think a plan into alignment. Two
 collaborating leaders (Platform Architect + Experience Officer) evaluate the
@@ -6,19 +9,21 @@ plan through three lenses — best practice, elegant design / coding standards,
 antifragility. Before rewriting anything it **reality-checks each unstarted
 member against the code**: is the problem real, is it already solved, and does
 the work serve the plan's Goal? Each gets a verdict — KEEP, TRIM (scope creep cut
-in place), or DONE ALREADY / NOT REAL / OFF GOAL (held for you, with file:line
-evidence, recommending it leave the plan). It then **applies** the improved plan to the plan file (Goal, Why,
-members, order) and **rewrites the Problem/Success of each unstarted member**
+in place), or DONE ALREADY / NOT REAL / OFF GOAL (taken out of the plan, with
+file:line evidence; the task file stays). It then **applies** the improved plan to the plan file (Goal, Why,
+members, order) and **rewrites the Problem/Done when of each unstarted member**
 (backlog/next) to fit it, appending a ## Plan Think note per member. A finished
 member (doing/review/done) is trusted as completed-as-defined and never
 reopened; if the plan needs more from it, a new delta task is filed with
 `newtask` (starting from the current code state) and added to the plan.
-Plan-level analysis lands in docs/tmp/plan-think-<id>.md. It applies every
-change it can settle on its own. Calls that are genuinely yours (a product or
-policy choice, a number only you can set, a cut you might contest) are held,
-not applied, in docs/tmp/plan-<id>_discuss.md. When the pass finishes it opens
-`chat plan <id>` (on a terminal; otherwise it prints that command), which raises
-those items one at a time with a suggested option and acts on each pick. It
+Plan-level analysis lands in docs/tmp/plan-think-<id>.md. It decides and applies
+every finding with a reasonable pick and lists each call under `## Decided` in
+the plan file (`- Decided: X, because Y`; change one with
+`./sprint.sh newtask "<the change you want>"`). Only a question whose answer
+changes the plan's goal is held, not applied, in docs/tmp/plan-<id>_discuss.md.
+When the pass finishes it opens `chat plan <id>` (on a terminal; otherwise it
+prints that command), which raises those one at a time with a suggested option
+and acts on each pick. It
 never runs `plan start` and never moves task files — commitment stays with
 `plan start`.
 Bare `plan think` picks a plan.
@@ -34,12 +39,13 @@ for `work`. Location-aware:
 
   backlog/  → gate in place, then:
                 READY   → stamp + move to next/
-                BLOCKED → move to blocked/ (needs decision/clarification; never visits next/)
+                BLOCKED → move to blocked/ (cannot start; never visits next/)
                 COMPLETE → move to review/ (work already in codebase; not done/)
   next/     → stamped READY → leave (idempotent)
               not READY     → demote to backlog/ (self-heal a bad/accidental mv),
                               then gate with the rest unless --commit-only
-  blocked/  → stop; run chat <id>, then re-run plan start
+  blocked/  → gate with the rest: READY → next/; still BLOCKED → stays, listed
+              with ./sprint.sh chat <id> (--commit-only leaves it in place)
   doing|review|done → skip with a notice
   missing   → hard error (dangling member)
 
@@ -53,11 +59,11 @@ message naming the missing dep. Definition clarity alone is not enough; bring
 the dep into the sprint first (add it to this plan, start its plan, or finish
 it). Co-members that depend on each other may enter `next/` together.
 
-A member already sitting in `blocked/` stops the start with a `chat <id>`
-pointer — `blocked/` means a decision or clarification is still needed, so the
-start does not silently re-spend AI budget re-gating work someone already
-flagged. Resolve it (`chat <id>`), re-queue it to `backlog/`, then re-run
-`plan start`.
+A member sitting in `blocked/` is gated with the others, so one blocked
+member never stops the plan. The gate takes any suggested answers; a member
+that can start now joins `next/`, and one that still cannot (no reasonable
+reading, or access only you hold) stays in `blocked/` and the summary names its
+command: `./sprint.sh chat <id>`.
 
 `--commit-only` skips the AI gate and does the pure, deterministic
 `backlog → next` move — for power users, tests, and non-AI environments.
@@ -82,7 +88,11 @@ switch. STARTED means "members committed to `next/`," not "members currently in
 (refill selects READY plans only).
 
 The run ends with a summary — ready → next/, blocked, done counts — and the next
-step is `./sprint.sh work`. Lifecycle moves use `git mv SRC DEST || mv SRC DEST`
+step is `./sprint.sh work`. When the plan or any member lists `## Signoff
+(human)` items, the start also makes the plan's **human test**: one
+`**Owner**: human` task in `review/`, listed last in the plan, holding every
+person-only check. Agents never work or wait on it; you run it once the plan
+lands, and `promote plan:N` refreshes it and turns its failures into fix tasks. Lifecycle moves use `git mv SRC DEST || mv SRC DEST`
 (git mv first; plain mv finishes when untracked). The developer owns commits.
 
 **plan check [id]** — read-only plan health report. Pure shell, **no AI, no
@@ -90,10 +100,18 @@ moves** — the inverse of `plan start` (gates + moves) and `plan done` (deletes
 It reads the plan and its members and prints one glance at where the plan stands,
 changing nothing:
 
-  - **Plan state** — `not started` (DRAFT/READY, no commit yet) · `started`
-    (STARTED, no member past `next/` yet) · `in process` (at least one member in
-    `doing/review/done`, but not all done) · `completed` (every member in
-    `done/` — the point `plan done` would retire it).
+  - **Plan state** — computed from the folders, never stamped into the plan
+    file (its **Status:** latch stays DRAFT/READY/STARTED): `STARTED` (work
+    open) · `LANDED` (every member landed: in `review/` with a **Proof**: line,
+    ready for the full suite and sign-off; the human test, which only you
+    run, never holds it) · `SIGNED OFF` (every member and the human test in
+    `done/` — the point `plan done` would retire it). `not started` while the
+    latch is not STARTED and no member has moved past `next/`.
+  - **Counts** — open (`backlog/next/doing/blocked`) · landed (`review/` with
+    proof) · signed off (`done/`). Flags name each `review/` member without
+    proof (in review, unproven), each held original (`review/` with proof and a
+    `**Held**:` fix not yet landed, shown `held: fix #N`) and each open fix task
+    (`**Fixes**: #N`); any of them keeps the plan out of LANDED.
   - **Lifecycle** — which folder each member sits in
     (`backlog/next/doing/blocked/review/done`), plus a count rollup so the
     spread is visible at a glance. A member listed in the plan with no task file
@@ -157,9 +175,10 @@ Family order:
   3. ./sprint.sh plan think [id]    # optional: improve plan + align its tasks
   4. ./sprint.sh plan start [id]    # gate members, commit READY → next/ (latches STARTED)
      ./sprint.sh plan start [id] --commit-only   # pure backlog→next, no AI gate
-  5. ./sprint.sh work · loop
+  5. ./sprint.sh work · loop        # members land in review/ with a proof line
   6. ./sprint.sh plan polish [id]    # optional: excellence-judge finished members (review/ + done/)
-  7. ./sprint.sh plan done [id]      # all members in done/ → delete the plan file
+  7. ./sprint.sh promote plan:[id]   # LANDED → full suite once, one approval → done/
+  8. ./sprint.sh plan done [id]      # all members in done/ → delete the plan file
 
   Anytime: ./sprint.sh plan check [id]   # read-only "where does this stand?" — no AI, no moves
 

@@ -102,17 +102,17 @@ artifact, never only in the chat.
 ### plan — compose the sprint
 
 Command		Does
-plan think [id] [--model]	Automated dual-persona critique of a plan; applies what it can settle, holds owner calls in docs/tmp/plan-<id>_discuss.md and hands off to chat plan <id>
-plan start [id] [--model]	Gate every workable member and commit into `next/` (deps must be in sprint or co-promoted; no hard size cap; warn over 10; latches STARTED; `--model` pins the gate model)
-plan check [id]	Read-only health report — plan state (not started / started / in process / completed), member lifecycle rollup, and per-member definition state (undefined / defined / in process / abandoned). No AI, no moves (`plan-check.sh`)
+plan think [id] [--model]	Automated dual-persona critique of a plan; decides and applies each finding (listed under ## Decided in the plan), holds only goal questions in docs/tmp/plan-<id>_discuss.md and hands off to chat plan <id>
+plan start [id] [--model]	Gate every workable member and commit into `next/` (deps must be in sprint or co-promoted; no hard size cap; warn over 10; latches STARTED; `--model` pins the gate model); gathers every Signoff (human) item into one human test (`**Owner**: human`, review/)
+plan check [id]	Read-only health report — computed plan state (STARTED / LANDED / SIGNED OFF), open · landed · signed off counts, flags for review/ without proof and open fix tasks, member lifecycle rollup, and per-member definition state (undefined / defined / in process / abandoned). No AI, no moves (`plan-check.sh`)
 plan polish [id] [--model]	Excellence-judge the plan's finished members (`review/` + `done/`) — routes each through the shared deep-judge (`polish-judge.sh`), files enhancements to `backlog/`, skips already-judged members unless `--force`
-plan done [id]	Retire — delete the plan once every member is in `done/`
+plan done [id]	Retire — write the plan's history record to `docs/history/` and remove the plan file once every member is in `done/`; prints a changelog line
 
 `next/` **is** the sprint. A plan file never moves; only member tasks do. A plan
 file carries its own `**Status:** DRAFT | READY | STARTED` — STARTED is a
 one-way latch set by `plan start` (members committed to `next/`), not a mirror
-of where members currently sit. Retirement is deletion via `plan done`, never a
-stored DONE status.
+of where members currently sit. `plan done` retires the plan into a history record
+in `docs/history/` and removes the file, never a stored DONE status.
 
 ### work — autonomous transform
 
@@ -123,17 +123,23 @@ Command		Does
 work			Execute all READY tasks in next/ → review/
 work \<id\>		Work ONE task by number; auto-gate into next/ if out of frame, else re-run
 work count N	Execute at most N READY tasks (replaces the old bare-number cap)
+work plan N	Work only plan N's tasks (runs plan start first for backlog/ members); the rest of next/ waits
+work --no-break	Skip the breaker for this run (a fresh agent that tests each landed task against edge cases; on by default, BREAK=off in config)
 work --model \<id\>	Pin the model for this run only (also chat / gate / polish / plan think|start|polish / loop)
 loop [--model \<id\>]	Autopilot: plan start refill + work drain (`--model` pins every AI leg — refill gate, retry gate, work drain)
 gate [folder]	READY-gate next/ (default), or quality report on another folder
-settle [id]	Accept (Suggestion: …) open questions; demote READY+openQ out of next/
 split \<path\>	One-shot: one large task → atomic children (no conversation)
-crew [name [id / plan:N]]	Named interactive sessions with roles (docs/crew/); bare = list who holds what (no AI); `add <name> "<role>" [--lead]`
+crew [name [id / plan:N]]	Named interactive sessions with roles (docs/crew/); bare = list who holds what (no AI); `setup` = guided build; `add <name> "<role>" [--lead]`
 agents [label]	Live view of every running AI session, here and on AGENT_HOSTS over ssh (no AI); `label` titles each terminal / tmux window with the session name. Reads Claude Code's ~/.claude/sessions registry + transcripts
 polish …		Post-work quality: sweep review/, deep-judge a task (id/file), or --code
+polish --break \<id/plan:N\>	The breaker alone on landed work (review/ or done/; plan:N = each landed member but the human test); prints each **Breaker** line and the next command
 			(sweep takes work's --parallel/--fast/--jobs N to fan judges out)
-promote [id]	Test-gated close: run each review/ task's **Tests**, all green → done/
-			--audit: AI acceptance judge (Success criteria → DONE/NOT-DONE); --move closes DONE → done/
+promote [id]	Test-gated close: the breaker once per task without a **Breaker** line (parallel; --steady/--jobs N; --no-break skips; a crash never blocks), then each review/ task's **Tests**, all green → done/
+promote plan N	Same as plan:N; a bare N with no task N reads as plan N (one plan-target reader: work, promote, polish, crew)
+promote --accept \<id\>	Your sign-off for one task with no **Tests** → done/ (named Tests still run; holds apply)
+			--audit: AI acceptance judge (Done when (automated) → DONE/NOT-DONE); --move closes DONE → done/
+			--reject <id> "what is wrong": file a linked fix task (**Fixes**), hold the original (**Held**), trace its dependents
+			plan:N: sign off a LANDED plan — files a fix task per `- fail:` line in the human test's ## Results first; full suite (config TEST_SUITE) once; failure files fix tasks; pass shows the human test, one y → every member and the human test done/; a green run on an unchanged tree is reused (--fresh re-runs)
 
 Happy path: `plan start` → `work`. `plan start` already gates on commit, so
 `gate` is off-spine — re-gate after edits, or report on backlog/doing/blocked.
@@ -158,7 +164,8 @@ edge gates entry, run, and close:
   (`review/` / `done/`), or co-promoted in that start. An outside-sprint dep
   (still in `backlog/` or `blocked/`) makes the dependent unworkable.
 - **`Depends on` gates `work`.** A task does not *run* until every prerequisite
-  reaches `review/` or `done/`. `work` holds a dependent until then.
+  has landed (`review/` with a `**Proof**:` line) or reached `done/`. `work`
+  holds a dependent until then; `review/` without proof holds it too.
 - **`Tests` gates `promote`.** A task does not *close* until the suite scripts
   named in its **Tests** field all pass **and** its `Depends on` prerequisites
   are already closed. `promote` is the one automated `review/ → done/` move; a
@@ -173,15 +180,33 @@ report-only **Tests**-field pass: a path that is a typo, missing, out-of-tree,
 or non-runnable is named with its task id, so a broken **Tests** path is loud,
 never a silent never-promote.
 
+`promote --reject <id> "what is wrong"` sends a `review/` task back without
+reworking it: `sprintbias_file_fix_task` files a fix task through `newtask`
+(`**Fixes**: #<id>`, the original's **Crew** and **Plan**, each reported item a
+test to add), stamps the original `**Held**: fix #<new>` in `review/`, and adds
+a re-check line to the ## Test log of every landed or signed-off dependent.
+A held original releases its dependents once the fix lands, and `promote`
+closes it once the fix is in `done/`.
+
+`promote plan:N` is the plan-close batch: on a LANDED plan it runs the
+project's full suite (`TEST_SUITE` in config) once, routes failures to fix
+tasks for the members whose files failed, and on a pass asks once for the
+plan's combined `## Signoff (human)` checklist before moving every member to
+`done/`. A green run leaves a pass stamp in `docs/tmp/`; the next `plan:N` on an
+unchanged working tree reuses it, and `--fresh` forces a re-run.
+
 When a plan's every member reaches `done/`, `promote` names it for retirement
-via `plan done` (which then deletes the plan file). See
+via `plan done` (which retires the plan into a history record). See
 `docs/guides/running-tests.md` for the suite ladder.
 
 ### look — read, don't mutate
 
 Command		Does
-status			Board counts, blocked/ (needs decision), in-progress, features, bugs
+status			Board counts, blocked/ (cannot start), in-progress, features, bugs, per-plan state and open · landed · signed off counts
 search \<kw\>		Find tasks by keyword
+history			Finished work from docs/history/ (plan records and tasks records), newest first, no AI
+history --since \<date|ref\>	Markdown release notes for the work finished since a date or git ref (oldest first; writes nothing)
+history record	Write every `done/` task no record names yet — planless, or in a retired plan — into `docs/history/YYYY-MM-DD-tasks.md` and stage it; open plans' members wait for `plan done`. The one `history` form that writes
 learn [name]	Watch the flow run — catalog (no name) or play a sandboxed demo by name
 align			Feature ↔ task alignment
 
@@ -208,6 +233,7 @@ model show		Print CLI, tier, and effective model per role with source
 model list		Models the current provider offers (Grok: `grok models`; Claude: known aliases)
 model set KEY VALUE	Write `MODEL_DEFAULT` or `MODEL_<ROLE>` into config
 config			Interactive: set AI provider + default model in config (no AI)
+fast			Show fast mode (bare) or set it for this machine: `fast on` / `fast off` write `FAST=` to `config.local` (no AI)
 shell			Terminal prompt status; guided `install` (asks zsh / bash / tmux, or `--zsh --bash --tmux`) / `remove` (no AI; one marked block per user file)
 
 ### Global launcher flags — not commands
@@ -220,11 +246,13 @@ without the short flag.
 Flag			Does
 -c / --claude	Claude Code for this run (`CLI=claude`, `PROVIDER=claude-code`)
 -g / --grok		Grok Build for this run (`CLI=grok`, `PROVIDER=grok-build`)
+--fast / --steady	Fast mode on / off for this run (`SPRINTBIAS_FAST`); `fast on|off` is the durable switch
 
 ```bash
 ./sprint.sh -g work              # Grok Build this run
 ./sprint.sh -c chat 12           # Claude Code this run
 ./sprint.sh --grok loop --refill
+./sprint.sh --fast chat 12       # fast mode this run
 sprint -g work                   # same, with the shell alias
 ```
 
@@ -232,6 +260,22 @@ Placement: **flag, not a command** (see rules below). Do not invent sibling
 commands like `work-grok` or a top-level `provider` verb for one-shot switches.
 Last leading flag wins if both are passed. Flags after the command name are
 command-local, not these.
+
+### `help` — find a command by plain words
+
+`help` lives in `sprint.sh`'s dispatcher, not the registry (`check-commands.sh`
+hides it). Forms:
+
+Form			Does
+help			Static list; at a terminal it ends with the prompt `What command would you like to understand better? (Enter to skip)`
+help <command>		That command's page (same as `<command> --help`)
+help <plain words>	Resolve with no AI: exact name → words joined (`new idea` → `newidea`) → keyword match over registry names + summaries. One hit → its page; several → short list, exit 0; none → one line + pointer, exit 1
+
+At the terminal prompt, an answer that finds no single command offers
+`Ask the AI instead? [y/N]`; yes runs `scripts/help-ask.sh` — a read-only session
+(read tools, plan permission mode, fast mode held off) guided by
+`ai/help-ask.md`, honoring `-c` / `-g`. Off a terminal (agents, pipes, CI) bare
+`help` prints the list and never prompts. Locked by `test-help-resolve.sh`.
 
 ### Per-command flags — `--help` and `--demo`
 
@@ -314,6 +358,7 @@ newepic			newplan					"epic" jargon → plan grouping
 audit			gate					task-quality is the gate
 excellence		polish					post-work quality unifies in polish
 review-code		polish --code			code-diff mode of polish
+settle			work \<id\> · chat \<id\>		gate and work take every (Suggestion: …) themselves
 
 A retired name never returns as a command.
 

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # work.sh — Execute tasks from next/. See: ./sprint.sh help work
 
+# Bash reads a script as it runs. A long run can outlive edits to this file
+# (an agent's task, or a setup.sh update), so the braces make bash parse the
+# whole script before running any of it.
+{
 set -euo pipefail
 
 # ── Argument parsing ────────────────────────────────────────────────
@@ -15,6 +19,8 @@ _NO_LIMITS=0
 _next_is_jobs=0
 _next_is_model=0
 _next_is_count=0
+_next_is_plan=0
+_STEADY=0
 VERBOSE=0
 # A bare number is now a TASK ID (work just that one task). The old
 # "run at most N" cap moved behind the `count` sub-word. _SINGLE latches
@@ -22,6 +28,9 @@ VERBOSE=0
 # drain are skipped for it.
 TASK_ID=""
 _SINGLE=0
+# `plan N` narrows the queue to plan N's members; the rest of next/ waits.
+PLAN_ID=""
+_JOBS=""
 for arg in "$@"; do
   if [ "$_next_is_jobs" -eq 1 ]; then
     # Validate like `count N`: a non-numeric --jobs would otherwise slip through
@@ -30,7 +39,7 @@ for arg in "$@"; do
     case "$arg" in
       ''|*[!0-9]*) echo "✗ --jobs needs a number: ./sprint.sh work --jobs N" >&2; exit 1 ;;
       0)           echo "✗ --jobs needs a number 1 or greater" >&2; exit 1 ;;
-      *)           MAX_JOBS="$arg" ;;
+      *)           PARALLEL=1; _JOBS="$arg" ;;
     esac
     _next_is_jobs=0
     continue
@@ -41,6 +50,14 @@ for arg in "$@"; do
     [ -n "$arg" ] || { echo "✗ --model needs a model id" >&2; exit 1; }
     export SPRINTBIAS_MODEL_DEFAULT="$arg"
     _next_is_model=0
+    continue
+  fi
+  if [ "$_next_is_plan" -eq 1 ]; then
+    case "$arg" in
+      ''|*[!0-9]*) echo "✗ plan needs a number: ./sprint.sh work plan N" >&2; exit 1 ;;
+      *) PLAN_ID="$arg" ;;
+    esac
+    _next_is_plan=0
     continue
   fi
   # `count N` restores the old "run at most N tasks" cap under a plain-language
@@ -58,13 +75,15 @@ for arg in "$@"; do
     --audit)      RUN_AUDIT=1 ;;
     --excellence) RUN_EXCELLENCE=1 ;;
     --parallel) PARALLEL=1 ;;
-    --fast)     PARALLEL=1; MAX_JOBS=4 ;;
+    --fast)     PARALLEL=1; MAX_JOBS=4; export SPRINTBIAS_FAST=on ;;
+    --steady)   export SPRINTBIAS_FAST=off; _STEADY=1 ;;
     --max)      _NO_LIMITS=1 ;;
     --force)    FORCE=1 ;;
     --assist)   _ASSIST=1 ;;
     --jobs)     _next_is_jobs=1 ;;
     --model)    _next_is_model=1 ;;
     --verbose)  VERBOSE=1 ;;
+    plan)       _next_is_plan=1 ;;
     count)      _next_is_count=1 ;;
     # A bare number is a TASK ID — work just that task. Two ids is a usage
     # error, not "work both"; the count cap now lives behind `count N`.
@@ -83,7 +102,9 @@ done
 [ "$_next_is_jobs" -eq 1 ] && { echo "✗ --jobs needs a number" >&2; exit 1; }
 [ "$_next_is_model" -eq 1 ] && { echo "✗ --model needs a model id" >&2; exit 1; }
 [ "$_next_is_count" -eq 1 ] && { echo "✗ count needs a number: ./sprint.sh work count N" >&2; exit 1; }
-unset _next_is_jobs _next_is_model _next_is_count
+[ "$_next_is_plan" -eq 1 ] && { echo "✗ plan needs a number: ./sprint.sh work plan N" >&2; exit 1; }
+[ -n "$PLAN_ID" ] && [ -n "$TASK_ID" ] && { echo "✗ work takes a task id or plan N, not both" >&2; exit 1; }
+unset _next_is_jobs _next_is_model _next_is_count _next_is_plan
 
 # ── Interactive assist mode ─────────────────────────────────────────
 if [ "${_ASSIST:-0}" -eq 1 ]; then
@@ -94,8 +115,8 @@ if [ "${_ASSIST:-0}" -eq 1 ]; then
   echo ""
   echo "  Pick a run mode:"
   echo ""
-  echo "  1) Standard              sequential"
-  echo "  2) Fast parallel         --fast (4 concurrent jobs)"
+  echo "  1) Steady                --steady (one task at a time)"
+  echo "  2) Fast mode             --fast (no permission prompts, 4 jobs)"
   echo "  3) Full quality          --max --audit --excellence (correctness + excellence)"
   echo "  4) Full quality + fast   --max --audit --excellence --fast"
   echo ""
@@ -103,23 +124,24 @@ if [ "${_ASSIST:-0}" -eq 1 ]; then
   read -r _choice </dev/tty 2>/dev/null || _choice="1"
   echo ""
   case "$_choice" in
-    1) set -- ;;
+    1) set -- --steady ;;
     2) set -- --fast ;;
     3) set -- --max --audit --excellence ;;
     4) set -- --max --audit --excellence --fast ;;
-    *) echo "  Invalid choice, running standard."; set -- ;;
+    *) echo "  Invalid choice, running steady."; set -- --steady ;;
   esac
 
   # Re-parse the selected flags
   MAX_TASKS=999; PARALLEL=0; MAX_JOBS=2; RUN_AUDIT=0; RUN_EXCELLENCE=0
-  _NO_LIMITS=0; SPRINTBIAS_SKIP_DRIFT_CHECK=1
+  _NO_LIMITS=0; SPRINTBIAS_SKIP_DRIFT_CHECK=1; _STEADY=0; _JOBS=""
   for arg in "$@"; do
     case "$arg" in
       --drift)      SPRINTBIAS_SKIP_DRIFT_CHECK=0 ;;
       --audit)      RUN_AUDIT=1 ;;
       --excellence) RUN_EXCELLENCE=1 ;;
       --parallel) PARALLEL=1 ;;
-      --fast)     PARALLEL=1; MAX_JOBS=4 ;;
+      --fast)     PARALLEL=1; MAX_JOBS=4; export SPRINTBIAS_FAST=on ;;
+      --steady)   export SPRINTBIAS_FAST=off; _STEADY=1 ;;
       --max)      _NO_LIMITS=1 ;;
     esac
   done
@@ -140,6 +162,13 @@ TO_FAIL=()
 
 # ── Config ───────────────────────────────────────────────────────────
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
+
+# Fast mode runs the queue in parallel at 4 jobs with no flag. --jobs N sets
+# the count (whatever its position); --steady runs one task at a time.
+[ -n "$_JOBS" ] && MAX_JOBS="$_JOBS"
+sprintbias_fast_parallel "$_STEADY"
+unset _STEADY _JOBS
+
 # Shared workability gate — same code `gate` and `plan start` run. `work N`
 # reuses it to screen-and-promote a named backlog/blocked task inline instead
 # of growing work's own argument surface.
@@ -203,6 +232,19 @@ _reset_completed() {
     skip && /^## / { skip=0 }
     !skip { print }
   ' "$file" > "$tmp" && mv "$tmp" "$file"
+}
+
+# _unproven_note [ID…] — one note per hold message, printed when any held-on
+# prerequisite sits in review/ without a **Proof**: line (in review, unproven).
+# Covers tasks that reached review/ before proof lines existed: the human signs
+# them off or records proof, and the dependents release. Silent with no ids.
+_unproven_note() {
+  [ "$#" -gt 0 ] || return 0
+  local ids
+  ids="$(printf '%s\n' "$@" | sort -un | tr '\n' ' ' | sed 's/ *$//')"
+  echo "   Note: review/ work releases its dependents only with a proof line ($ids)."
+  echo "   Sign it off with ./sprint.sh promote <id> (or move it to done/), or add"
+  echo "   '**Proof**: YYYY-MM-DD · <test commands> · pass' under its ## Completed."
 }
 
 # Strip any existing '## Outcome' block (heading to the next '## ' or EOF).
@@ -295,9 +337,21 @@ if [ -n "$TASK_ID" ]; then
   # prereq stays in backlog/; a next/ task stays queued in place.
   _unmet="$(sprintbias_unmet_deps "$_path")"
   if [ -n "$_unmet" ]; then
-    echo "⏳ held: waiting on $(printf '%s' "$_unmet" | tr ' ' ',')"
-    echo "   $TASK_ID depends on unfinished work — run that first, or work the"
+    _held_bits=""
+    _unproven=""
+    for _id in $_unmet; do
+      [ -n "$_held_bits" ] && _held_bits="$_held_bits, "
+      if [ "$(sprintbias_task_stage "$_id" 2>/dev/null || true)" = "review" ]; then
+        _held_bits="$_held_bits$_id ($SPRINTBIAS_UNPROVEN_LABEL)"
+        _unproven="$_unproven $_id"
+      else
+        _held_bits="$_held_bits$_id"
+      fi
+    done
+    echo "⏳ held: waiting on $_held_bits"
+    echo "   $TASK_ID depends on work that has not landed — run that first, or work the"
     echo "   sprint so the chain drains in order. Left in $_stage/ untouched."
+    _unproven_note $_unproven
     exit 0
   fi
 
@@ -313,13 +367,13 @@ if [ -n "$TASK_ID" ]; then
           echo "  Or run anyway:  ./sprint.sh work $TASK_ID --force"
           exit 0
         fi
-        if sprintbias_has_open_questions "$_path"; then
-          # Invariant: READY + open Q cannot stay in next/. Demote loudly.
-          sprintbias_demote_open_questions "$_path" "$BLOCKED_DIR" || true
+        # Suggested answers are taken; only a question with none demotes.
+        if sprintbias_has_open_questions "$_path" \
+             && sprintbias_demote_open_questions "$_path" "$BLOCKED_DIR"; then
           echo ""
-          echo "  Not worked — settle or answer, then promote back to next/:"
-          echo "    ./sprint.sh settle $TASK_ID"
+          echo "  Not worked — answer the question, then run it again:"
           echo "    ./sprint.sh chat $TASK_ID"
+          echo "    ./sprint.sh work $TASK_ID"
           echo "  Or run anyway (skips the check):  ./sprint.sh work $TASK_ID --force"
           exit 0
         fi
@@ -376,18 +430,41 @@ fi
 sprintbias_file_doc_followups
 
 if [ "$_SINGLE" -eq 0 ]; then
+# The queue: next/ in ID order. `work plan N` keeps only plan N's members
+# (space-padded id list for a whole-word match); the rest of next/ waits.
+_PLAN_MEMBERS=""
+if [ -n "$PLAN_ID" ]; then
+  _plan_file="$(sprintbias_find_plan "$PLAN_ID")" || {
+    echo "✗ No plan $PLAN_ID in $SPRINTBIAS_PLANS_DIR/" >&2; exit 1; }
+  _PLAN_MEMBERS=" $(sprintbias_plan_member_ids "$_plan_file" | tr '\n' ' ')"
+  echo "▸ Working plan $PLAN_ID: ${_plan_file##*/} (other next/ tasks wait)"
+  echo ""
+  unset _plan_file
+fi
+_queue_files() {
+  local f
+  ls -1 "$NEXT_DIR"/*.md 2>/dev/null | sed 's|.*/||' | sort -t- -k1,1n \
+    | while IFS= read -r f; do
+        if [ -n "$PLAN_ID" ]; then
+          case "$_PLAN_MEMBERS" in *" ${f%%-*} "*) ;; *) continue ;; esac
+        fi
+        printf '%s\n' "$NEXT_DIR/$f"
+      done
+}
+
 TASK_FILES=()
 while IFS= read -r f; do
   TASK_FILES+=("$f")
 done < <(
-  ls -1 "$NEXT_DIR"/*.md 2>/dev/null \
-    | sed 's|.*/||' \
-    | sort -t- -k1,1n \
-    | sed "s|^|$NEXT_DIR/|"
+  _queue_files
 )
 
 if [ ${#TASK_FILES[@]} -eq 0 ]; then
-  echo "No tasks in $NEXT_DIR"
+  if [ -n "$PLAN_ID" ]; then
+    echo "No plan $PLAN_ID tasks in $NEXT_DIR — start it first: ./sprint.sh plan start $PLAN_ID"
+  else
+    echo "No tasks in $NEXT_DIR"
+  fi
   exit 0
 fi
 fi
@@ -403,7 +480,7 @@ fi
 # Invariant: READY + open questions cannot stay in next/ — demote to blocked/
 # with a loud report (same path as work N). A dependency wait is separate:
 # unfinished **Depends on** keeps a fully-defined READY task in next/ until
-# prereqs reach review/ or done/. --force bypasses the gate entirely (work
+# prereqs land (review/ with a proof line) or reach done/. --force bypasses the gate entirely (work
 # whatever is queued). Skipped for work N: the single-task path already resolved
 # readiness (and demoted open-Q files).
 if [ "$FORCE" -ne 1 ] && [ "$_SINGLE" -eq 0 ]; then
@@ -416,10 +493,7 @@ if [ "$FORCE" -ne 1 ] && [ "$_SINGLE" -eq 0 ]; then
   while IFS= read -r f; do
     TASK_FILES+=("$f")
   done < <(
-    ls -1 "$NEXT_DIR"/*.md 2>/dev/null \
-      | sed 's|.*/||' \
-      | sort -t- -k1,1n \
-      | sed "s|^|$NEXT_DIR/|"
+    _queue_files
   )
 
   # Partition: already-READY (work them) vs. not-yet-gated (gate them first).
@@ -484,10 +558,7 @@ if [ "$FORCE" -ne 1 ] && [ "$_SINGLE" -eq 0 ]; then
   while IFS= read -r f; do
     [ "$(sprintbias_review_verdict "$f")" = "READY" ] && TASK_FILES+=("$f")
   done < <(
-    ls -1 "$NEXT_DIR"/*.md 2>/dev/null \
-      | sed 's|.*/||' \
-      | sort -t- -k1,1n \
-      | sed "s|^|$NEXT_DIR/|"
+    _queue_files
   )
   if [ ${#TASK_FILES[@]} -eq 0 ]; then
     echo "No ready tasks in $NEXT_DIR"
@@ -498,13 +569,14 @@ fi
 
 # ── Prerequisite resolution (stage-aware) ─────────────────────────────
 # For every READY next/ task, walk each unmet Depends-on id by stage:
-#   review/done → already complete (not unmet)
+#   done/ or review/ with proof → landed (not unmet)
+#   review/ without proof → "in review, unproven": hold, note promote/proof
 #   doing/      → resume this run (route to review if ## Completed already;
 #                 otherwise pull into the queue and re-run)
 #   next/       → frontier ordering; runs when READY and its own deps clear
 #   backlog/    → not auto-lifted (not fully vetted); surface chat <id>
 #   blocked/    → needs a decision; surface chat <id>
-# Dependents stay in next/ on hold until prereqs land in review/done.
+# Dependents stay in next/ on hold until prereqs land (review/ + proof) or reach done/.
 #
 # Format a single unmet dep id for human messages (stage + next action).
 _format_dep() {
@@ -546,8 +618,12 @@ _format_dep() {
         printf '%s (blocked/ — needs a decision; ./sprint.sh chat %s)' "$id" "$id"
       fi
       ;;
-    review|done)
-      printf '%s (%s/)' "$id" "$stage"
+    review)
+      # Unmet in review/ means no proof line: it releases nothing yet.
+      printf '%s (review/ — %s)' "$id" "$SPRINTBIAS_UNPROVEN_LABEL"
+      ;;
+    done)
+      printf '%s (done/)' "$id"
       ;;
     *)
       # No file resolves anywhere — classify via #328 rather than the old
@@ -594,8 +670,8 @@ _seen_broken=" "
 # on) so a missing or folded reference surfaces loudly instead of reading as a
 # silent green. sprintbias_unmet_deps drops missing/folded ids from the gate (a
 # stale ref must never wedge the queue); this pass names them for the human via
-# #328's sprintbias_classify_dep. Archived-complete (review/done) ids are truly
-# done and stay quiet.
+# #328's sprintbias_classify_dep. Landed (review/ + proof) and done/ ids are met
+# and stay quiet.
 _scan_broken_deps_from() {
   local file="$1" raw kind id target
   raw="$(sprintbias_meta_value "$file" "Depends on")"
@@ -721,6 +797,7 @@ unset _f _b _seen_broken
 
 # Dependency-waiting banner (informational — scheduler still holds them).
 _waiting=()
+_unproven=()
 for _f in "${TASK_FILES[@]}"; do
   # Skip resume paths under doing/ for the "on hold" banner — those execute.
   case "$_f" in
@@ -728,13 +805,18 @@ for _f in "${TASK_FILES[@]}"; do
   esac
   _clause="$(_needs_clause "$_f")"
   [ -n "$_clause" ] && _waiting+=("${_f##*/}  (needs: ${_clause})")
+  for _id in $(sprintbias_unmet_deps "$_f"); do
+    [ "$(sprintbias_task_stage "$_id" 2>/dev/null || true)" = "review" ] && _unproven+=("$_id")
+  done
 done
 if [ ${#_waiting[@]} -gt 0 ]; then
   echo "⏳ ${#_waiting[@]} dependent task(s) start on hold — released automatically"
-  echo "   as those prerequisites land in review/ during this run:"
+  echo "   as those prerequisites land (review/ with proof) during this run:"
   for _w in "${_waiting[@]}"; do echo "    ${_w}"; done
+  _unproven_note ${_unproven[@]+"${_unproven[@]}"}
   echo ""
 fi
+unset _unproven _id
 if [ ${#_PREREQ_ADVICE[@]} -gt 0 ]; then
   echo "⚠ Prerequisite(s) outside the sprint (not auto-lifted):"
   for _a in "${_PREREQ_ADVICE[@]}"; do echo "    ${_a}"; done
@@ -822,32 +904,81 @@ _task_tests_value() {
   printf '%s' "$v"
 }
 
-# After the queue: tell the human what needs eyes (and when promote can help).
+# Task title from the "# Task N: Title" heading (falls back to the file name).
+_task_title() {
+  local t
+  t=$(sed -n '1s/^# Task [0-9]*: *//p' "$1" 2>/dev/null)
+  printf '%s' "${t:-${1##*/}}"
+}
+
+# Every call made on the person's behalf in FILE, one "- " line each:
+# conflicts settled under ## Grounding, `Decided:` lines (gate Notes, worker
+# ### Assumptions) and the suggestions the gate took (its Settled block).
+_task_calls() {
+  {
+    sprintbias_grounding_conflicts "$1"
+    grep -E '^[[:space:]]*[-*][[:space:]]+(\*\*)?Decided:' "$1" 2>/dev/null \
+      | sed -E 's/^[[:space:]]*[-*][[:space:]]+/- /'
+    awk '
+      /Settled \(accept suggestions\)/ { s = 1; next }
+      s && /^  +- / { sub(/^ +- /, "- Decided: "); print; next }
+      { s = 0 }
+    ' "$1" 2>/dev/null
+  } | awk '!seen[$0]++'
+}
+
+# The calls for a task that did not finish, under INDENT. Nothing when none.
+_print_decisions() {
+  local path="$1" indent="$2" c
+  c="$(_task_calls "$path")"
+  [ -z "$c" ] && return 0
+  echo "${indent}The AI made $(printf '%s\n' "$c" | grep -c .) call(s) for you — check you agree:"
+  printf '%s\n' "$c" | sed "s/^/${indent}  /"
+}
+
+# After the queue: one numbered checklist per task waiting on the human —
+# check the decisions, try the change, close it (or send it back).
 _report_human_review() {
-  local name path tests id human=0 promo=0
-  [ ${#TO_REVIEW[@]} -eq 0 ] && return 0
+  local name path tests id step c
+  local present=0
+  for name in ${TO_REVIEW[@]+"${TO_REVIEW[@]}"}; do
+    [ -f "$REVIEW_DIR/$name" ] && present=$((present + 1))
+  done
+  [ "$present" -eq 0 ] && return 0
   echo ""
-  echo "▸ Requires human review (${#TO_REVIEW[@]} landed in $REVIEW_DIR/ this run):"
+  echo "▸ Your turn — $present task(s) built and waiting for you in $REVIEW_DIR/"
   for name in "${TO_REVIEW[@]}"; do
     path="$REVIEW_DIR/$name"
     [ -f "$path" ] || continue
     id=$(printf '%s' "$name" | grep -oE '^[0-9]+' || true)
     tests="$(_task_tests_value "$path")"
-    if [ -z "$tests" ] || [ "$(printf '%s' "$tests" | tr '[:upper:]' '[:lower:]')" = "none" ]; then
-      human=$((human + 1))
-      echo "    $name"
-      echo "      Tests: none — human sign-off before done/"
-      echo "      → git mv $REVIEW_DIR/$name docs/tasks/done/$name || mv $REVIEW_DIR/$name docs/tasks/done/$name"
+    [ "$(printf '%s' "$tests" | tr '[:upper:]' '[:lower:]')" = "none" ] && tests=""
+    step=1
+    echo ""
+    echo "  #${id:-?}  $(_task_title "$path")"
+    c="$(_task_calls "$path")"
+    if [ -n "$c" ]; then
+      echo "    $step. Check the $(printf '%s\n' "$c" | grep -c .) call(s) the AI made for you:"
+      printf '%s\n' "$c" | sed 's/^/         /'
+      echo "       Want one changed? → ./sprint.sh newtask \"<the change you want>\""
+      step=$((step + 1))
+    fi
+    if ! sprintbias_has_proof "$path"; then
+      echo "    $step. Its tests have not passed yet — read ## Test log in $path"
+      echo "       → ./sprint.sh work ${id:-$name}   # try again once you know why"
+      step=$((step + 1))
+    fi
+    echo "    $step. Try the change. Something wrong?"
+    echo "       → ./sprint.sh promote --reject ${id:-$name} \"what is wrong\""
+    step=$((step + 1))
+    if [ -n "$tests" ]; then
+      echo "    $step. Happy with it? Run its tests; green closes it:"
+      echo "       → ./sprint.sh promote ${id:-}"
     else
-      promo=$((promo + 1))
-      echo "    $name"
-      echo "      Tests: $tests"
-      echo "      → ./sprint.sh promote ${id:-}   # suite green → done/ (still your call to run)"
+      echo "    $step. Happy with it? Close it:"
+      echo "       → ./sprint.sh promote --accept ${id:-$name}"
     fi
   done
-  if [ "$human" -gt 0 ] || [ "$promo" -gt 0 ]; then
-    echo "  Review is not blocked/ — implementation is done; close is human (or promote)."
-  fi
   echo ""
 }
 
@@ -868,35 +999,11 @@ _report_failures() {
     [ -n "$reason" ] && echo "      Why:   $reason"
     echo "      Where: $dir/$name"
     [ "$result" = "failed" ] && echo "      Log:   $LOG_DIR/log-work-${name%.md}-*.json"
+    _print_decisions "$dir/$name" "      "
     echo "      → ./sprint.sh chat ${id:-$name}   # rework or redefine with AI assistance"
   done
-  echo "  Not review/ — these need a redefine or fix before they can re-run."
+  echo "  These need a fix or a clearer definition before they can run again."
   echo ""
-}
-
-# After the queue: every conflict a worker settled under ## Grounding, so the
-# human sees each call that was made on their behalf.
-_report_conflicts() {
-  local name rec result dir reason path c any=0
-  local paths=()
-  for name in ${TO_REVIEW[@]+"${TO_REVIEW[@]}"}; do paths+=("$REVIEW_DIR/$name"); done
-  for rec in ${TO_FAIL[@]+"${TO_FAIL[@]}"}; do
-    IFS="$FAIL_DELIM" read -r name result dir reason <<< "$rec"
-    paths+=("$dir/$name")
-  done
-  for path in ${paths[@]+"${paths[@]}"}; do
-    c="$(sprintbias_grounding_conflicts "$path")"
-    [ -z "$c" ] && continue
-    if [ "$any" -eq 0 ]; then
-      echo ""
-      echo "▸ Conflicts noted (settled before work — check you agree):"
-      any=1
-    fi
-    echo "    ${path##*/}"
-    printf '%s\n' "$c" | sed 's/^/      /'
-  done
-  [ "$any" -eq 1 ] && echo ""
-  return 0
 }
 
 _model_args=();  [ -n "$MODEL" ] && _model_args=(--model "$MODEL")
@@ -916,21 +1023,20 @@ _TASK_RULES="$(sprintbias_grounding_rule)
 
 $(sprintbias_doc_sync_rule)
 
-- Implement the Success criteria. Prefer project conventions and
-  clear best practice; pick a sensible default and finish. Prerequisites in
-  review/ or done/ are complete.
+- Implement ## Done when (automated) (an older ## Success criteria reads as
+  it) and run the tests it names, following project conventions.
+  Prerequisites in done/, or in review/ with a **Proof**: line, are complete.
+
+$(sprintbias_assume_rule)
+
 - Prior '## Outcome': fix its Reason, then finish.
 - Scope: files relevant to this task. Grep/Glob, Edit/Write, test what you touched.
 - Done: check off items; ## Completed with '### Files changed' (one repo-relative
-  path per product file you created or modified).
-- Product/scope fork that needs a human: one-line ## Outcome Reason, then stop.
-  Otherwise ## Completed.
-- git commit / ./ship.sh when the human asks in this conversation; otherwise
-  ## Completed and stop."
+  path per product file you created or modified)."
 
 # Emit orchestrator goal (fan-out + sequential).
-_WORKER_GOAL="Land each task ## Completed → review/. Choose best practice and finish.
-Product/scope fork that needs a human: ## Outcome, then blocked/."
+_WORKER_GOAL="Land each task ## Completed → review/. Workers decide, record and finish
+(the finishing rule each worker carries); only work that cannot start goes to blocked/."
 
 # Build the execution prompt for a task file at a given path (exec mode).
 _task_prompt() {
@@ -950,6 +1056,10 @@ Rules:
 $_TASK_RULES
 
 $(sprintbias_parallel_rule "$path")
+
+$(sprintbias_proof_rule)
+
+$(sprintbias_fast_rules)
 PROMPT
 }
 
@@ -961,6 +1071,12 @@ PROMPT
 if [ "$AI_MODE" = "emit" ]; then
   _orient="$(sprintbias_orient)"
   _parallel="$(sprintbias_parallel_rule)"
+  _proof="$(sprintbias_proof_rule)"
+  # Fast mode rides with the proof rule so every worker prompt carries it.
+  _fast="$(sprintbias_fast_rules)"
+  [ -n "$_fast" ] && _proof="${_proof}
+
+${_fast}"
 
   _task_list=""
   for ((i=0; i<COUNT; i++)); do
@@ -995,7 +1111,9 @@ if [ "$AI_MODE" = "emit" ]; then
 
   _dep_order_note="
 Dependency order: only start a task when every '**Depends on**' id is in
-review/ or done/ (or absent from disk). Prefer lowest-ID runnable first.
+done/, or in review/ with a '**Proof**:' line under ## Completed (or absent
+from disk). A review/ task without proof is in review, unproven and holds its
+dependents. Prefer lowest-ID runnable first.
 If a listed path is already under doing/, it is a RESUME — work it in place
 (do not move from next/). Prerequisites still in backlog/ or blocked/ are
 NOT auto-lifted; leave their dependents in next/ and tell the user to run
@@ -1012,16 +1130,25 @@ report whichever mode ran). Omit any section that has no tasks.
 
 ▸ Done: <N> completed, <N> failed, <N> incomplete, <N> skipped
 
-For each task now in review/ (implementation done — needs a human to close):
-▸ Requires human review (<N> landed in docs/tasks/review/ this run):
-    <name>
-      Tests: none — human sign-off before done/
-      → git mv docs/tasks/review/<name> docs/tasks/done/<name> || mv docs/tasks/review/<name> docs/tasks/done/<name>
-  (when that task's Tests field names suite scripts instead, replace the two
-   lines under it with:)
-      Tests: <path>
-      → ./sprint.sh promote <id>   # suite green → done/ (still your call to run)
-  Review is not blocked/ — implementation is done; close is human (or promote).
+For each task now in review/ (built — waiting on the human), one checklist:
+▸ Your turn — <N> task(s) built and waiting for you in docs/tasks/review/
+
+  #<id>  <title from the task's first heading>
+    1. Check the <N> call(s) the AI made for you:
+         - <each conflict line under ## Grounding, each '- Decided:' line, and each
+           suggestion the gate took (its 'Settled (accept suggestions)' block), as written>
+       Want one changed? → ./sprint.sh newtask \"<the change you want>\"
+    2. Try the change. Something wrong?
+       → ./sprint.sh promote --reject <id> \"what is wrong\"
+    3. Happy with it? Close it:
+       → ./sprint.sh promote --accept <id>
+  (when the task has no **Proof** line, add after step 1:
+    2. Its tests have not passed yet — read ## Test log in docs/tasks/review/<name>
+       → ./sprint.sh work <id>   # try again once you know why
+   drop step 1 and renumber when there are no calls. When the
+   task's Tests field names suite scripts, step 3 reads instead:)
+    3. Happy with it? Run its tests; green closes it:
+       → ./sprint.sh promote <id>
 
 For each task that did NOT complete (landed in blocked/, or a hard fail left in doing/):
 ▸ Needs your attention (<N> did not complete this run):
@@ -1029,12 +1156,7 @@ For each task that did NOT complete (landed in blocked/, or a hard fail left in 
       Why:   <the one-line Reason from that task's ## Outcome stamp>
       Where: <docs/tasks/blocked/<name>, or docs/tasks/doing/<name> for a hard fail>
       → ./sprint.sh chat <id>   # rework or redefine with AI assistance
-  Not review/ — these need a redefine or fix before they can re-run.
-
-For each task whose ## Grounding lists conflicts (other than 'None found.'):
-▸ Conflicts noted (settled before work — check you agree):
-    <name>
-      - <conflict line, as written in the task file>
+  These need a fix or a clearer definition before they can run again.
 
 When any task recorded '### Doc follow-ups', end with:
 ▸ Doc follow-ups recorded (<N>) — filed into one backlog task on the next
@@ -1062,18 +1184,22 @@ For EACH task file listed below (honor dependency order):
 $(sprintbias_subagent_no_nest)
 $_TASK_RULES
 
-$_parallel\"
+$_parallel
+
+$_proof\"
 3. When the subagent returns, read docs/tasks/doing/<name> and route it:
    a. contains a '## Completed' section → first DELETE any stale '## Outcome'
       block left by a prior failed attempt (a completed task must not carry a
       contradictory failure stamp into review/), then git mv it to
       docs/tasks/review/ || mv it to docs/tasks/review/
       Then tell the user: Requires human review (or ./sprint.sh promote when **Tests** is set).
-   b. otherwise → before moving, append a durable failure stamp to the file so
-      every dependent's hold line can name the reason:
+   b. otherwise → before moving, make sure the file ends with a durable
+      ## Outcome stamp so every dependent's hold line can name the reason (keep
+      one the worker wrote with **Result**: blocked; else append):
         ## Outcome
         **Result**: incomplete
-        **Reason**: <one line — product/scope fork for a human, or hard-stop cause>
+        **Reason**: <one line — why it could not finish: no reasonable reading,
+          access or credentials only the person holds, or the run ran out>
         **At**: <today, YYYY-MM-DD>
       then git mv it to docs/tasks/blocked/ || mv it to docs/tasks/blocked/${_audit_step}${_excellence_step}
 
@@ -1100,17 +1226,21 @@ For EACH task file listed below:
 $_TASK_RULES
 
 $_parallel
+
+$_proof
 3. Route it:
    a. you wrote a '## Completed' section → first DELETE any stale '## Outcome'
       block left by a prior failed attempt (a completed task must not carry a
       contradictory failure stamp into review/), then git mv it to
       docs/tasks/review/ || mv it to docs/tasks/review/
       Then tell the user: Requires human review (or ./sprint.sh promote when **Tests** is set).
-   b. otherwise → before moving, append a durable failure stamp to the file so
-      every dependent's hold line can name the reason:
+   b. otherwise → before moving, make sure the file ends with a durable
+      ## Outcome stamp so every dependent's hold line can name the reason (keep
+      one the worker wrote with **Result**: blocked; else append):
         ## Outcome
         **Result**: incomplete
-        **Reason**: <one line — product/scope fork for a human, or hard-stop cause>
+        **Reason**: <one line — why it could not finish: no reasonable reading,
+          access or credentials only the person holds, or the run ran out>
         **At**: <today, YYYY-MM-DD>
       then git mv it to docs/tasks/blocked/ || mv it to docs/tasks/blocked/${_audit_step}${_excellence_step}
 
@@ -1276,7 +1406,22 @@ _route_result() {
     _note_review "$name"
     _journal routed task "$name" dest review rc 0
     echo "  ✓ Complete → $REVIEW_DIR/$name"
+    # Landed means review/ plus a proof line (plan 28). Without one the task
+    # still lands here, but it releases nothing: say so instead of refusing it.
+    sprintbias_has_proof "$REVIEW_DIR/$name" \
+      || echo "    No **Proof**: line — $SPRINTBIAS_UNPROVEN_LABEL; its dependents wait."
     echo "    Requires human review (or ./sprint.sh promote when **Tests** is set)"
+  elif [ "$rc" -eq 0 ] && [ "$(sprintbias_meta_value "$cur" Result | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')" = "blocked" ]; then
+    # The worker stopped on a decision and wrote its own ## Outcome
+    # (sprintbias_proof_rule). Keep that Reason; it is the one a human needs.
+    local why
+    why="$(sprintbias_meta_value "$cur" Reason | head -1)"
+    move_file "$cur" "$BLOCKED_DIR/$name"
+    INCOMPLETE=$((INCOMPLETE + 1))
+    _note_fail "$name" blocked "$BLOCKED_DIR" "${why:-needs a decision (see ## Outcome)}"
+    _journal routed task "$name" dest blocked reason worker-blocked
+    echo "  ⚠ Blocked — ${why:-needs a decision (see ## Outcome)}"
+    echo "    → Moved to $BLOCKED_DIR/$name (## Outcome kept, with its ## Test log)"
   elif [ "$rc" -eq 0 ]; then
     # Ran to completion but never wrote ## Completed. Stamp only what we
     # observed — the section is missing — and name no cause, because nothing
@@ -1326,9 +1471,9 @@ _kill_tree() {
   kill "$pid" 2>/dev/null || true
 }
 
-# _is_runnable FILE -> 0 if every declared dependency is complete (has reached
-# review/ or done/, or was never a real task), 1 if it still waits on one. The
-# check is filesystem-based (sprintbias_unmet_deps scans backlog/next/doing/blocked),
+# _is_runnable FILE -> 0 if every declared dependency has landed (review/ with a
+# proof line), is in done/, or was never a real task; 1 if it still waits on one.
+# The check is filesystem-based (sprintbias_unmet_deps → sprintbias_dep_landed),
 # so it is always current: re-calling it after a task routes to review/ is how a
 # dependent releases mid-run. A task in doing/ (actively running) still reads as
 # incomplete, so a dependent correctly waits until its prerequisite finishes.
@@ -1351,7 +1496,7 @@ _ensure_in_doing() {
 # was hit. Positional-arg based — no bash-4 namerefs (this repo targets 3.2).
 # Hold lines name each prereq's stage and the action (chat / wait / resume).
 _report_held() {
-  local f unmet _held_dep=() _held_cap=() _held_advice=() id stage clause
+  local f unmet _held_dep=() _held_cap=() _held_advice=() _held_unproven=() id stage clause
   local _adv_seen=" "
   for f in "$@"; do
     # Resume entries under doing/ that never launched are still open work, not
@@ -1383,6 +1528,9 @@ _report_held() {
             _adv_seen="$_adv_seen x$id "
             _held_advice+=("This task depends on $id, which still needs a decision in blocked/. Consider: ./sprint.sh chat $id")
             ;;
+          review)
+            _held_unproven+=("$id")
+            ;;
         esac
       done
     else
@@ -1392,7 +1540,8 @@ _report_held() {
   if [ ${#_held_dep[@]} -gt 0 ]; then
     echo "⏳ ${#_held_dep[@]} dependent task(s) on hold (unfinished prerequisites) — left in $NEXT_DIR/:"
     for f in "${_held_dep[@]}"; do echo "    ${f}"; done
-    echo "  They run automatically once those dependencies reach review/ or done/."
+    echo "  They run automatically once those dependencies land (review/ with proof) or reach done/."
+    _unproven_note ${_held_unproven[@]+"${_held_unproven[@]}"}
     echo ""
   fi
   if [ ${#_held_advice[@]} -gt 0 ]; then
@@ -1688,10 +1837,11 @@ echo "▸ Done: $COMPLETED completed, $FAILED failed, $INCOMPLETE incomplete, $(
 unset _done_extra
 _report_human_review
 _report_failures
-_report_conflicts
 sprintbias_file_doc_followups
 # `if`, not `&&`: this is the script's last statement, and a false `[ ]` on a
 # blocker-free run would become the script's non-zero exit status.
 if [ "$BLOCKERS" -gt 0 ]; then
   echo "  ⚠ $BLOCKERS excellence blocker(s) recorded — inspect the '## Excellence' section in review/ before merging"
 fi
+exit
+}

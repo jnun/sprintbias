@@ -87,7 +87,8 @@ This creates a new task file in docs/tasks/backlog/ with the next available ID.
 
 After creating all sub-tasks, read each newly created file and fill the durable brief:
 - ## Problem — clear, simple, high-level (2-3 sentences); reference the parent task
-- ## Success criteria — 1-3 checkboxes; what done looks like (verifiable outcomes, not a build plan)
+- ## Done when (automated) — 1-3 checkboxes; what done looks like (verifiable outcomes, not a build plan), naming the test or command that proves them in backticks
+- ## Signoff (human) — what only a person can judge; leave empty when the tests prove everything
 - ## Notes — optional hints only (e.g. parent task number, constraints); leave empty if none
 - ## References — optional paths to related files; leave empty if none
 - Set **Depends on**: to the previous sub-task number if ordering matters, or 'none' if independent

@@ -29,20 +29,20 @@ newtest       | create   | <name>              | Create a test loop to validate 
 
 chat          | chat     | [target] [--model]  | id: define/refine/split one task · folder (blocked/next/backlog): sweep · plan [id]: author a plan · bugs: sweep inbox · nothing: walk sprint health (spine: chat → plan start → work) | chat
 
-plan          | plan     | think/start/check/polish/done [id] [--model] | think: improve the plan + align its member tasks (best-practice / elegant-design / antifragile lenses) · start: gate + commit workable members to next/ (deps in sprint or co-promoted), latches STARTED · check: read-only health report (plan state / lifecycle / definition; no AI, no moves) · polish: excellence-judge the plan's finished work (review/ + done/) · done: delete the plan once every member is in done/ — heads the spine → work | feature-plan
+plan          | plan     | think/start/check/polish/done [id] [--model] | think: improve the plan + align its member tasks (best-practice / elegant-design / antifragile lenses) · start: gate + commit workable members to next/ (deps in sprint or co-promoted), latches STARTED · check: read-only health report (plan state / lifecycle / definition; no AI, no moves) · polish: excellence-judge the plan's finished work (review/ + done/) · done: retire the plan into a history record (docs/history/) once every member is in done/ (sign off first: promote plan:N) — heads the spine → work | feature-plan
 
-work          | work     | [N] [count N] [--fast] [--model] | Execute — happy path: run READY tasks in next/ → review/ (after plan start). `work N` works one task by id; `count N` caps how many run | work
+work          | work     | [N] [count N] [plan N] [--fast] [--model] | Execute — happy path: run READY tasks in next/, each landing in review/ with a proof line (after plan start). `work N` works one task by id; `count N` caps how many run; `plan N` works one plan | work
 loop          | work     | [--refill] [--retry]| Autopilot spine — plan start refill (gates as it commits) then work drain | loop
 gate          | work     | [folder] [limit] [--model] | Off-spine quality gate — re-gate next/ (--force) or report on backlog/doing/blocked (not the happy path) | gate
-settle        | work     | [id] [--dry-run] [--blocked] | Accept (Suggestion: …) open questions — fold into Notes, clear list; demote next/ files that still need a human
-crew          | work     | [name] [ID / plan:N] | Run a crew of named AI sessions — bare: list who holds what · add <name> "<role>" [--lead]: add a member · <name>: start a session as one (a lead coordinates the rest) | crew
+crew          | work     | [name] [ID / plan:N] | Run a crew of named AI sessions — bare: list who holds what · setup: guided build (AI proposes a crew) · add <name> "<role>" [--lead]: add a member · <name>: start a session as one (a lead coordinates the rest) | crew
 split         | work     | <path>              | Off-spine — one-shot split of a large task into subtasks (no conversation) | split
-polish        | work     | [limit/id/file] [--code] [--model] | After work — quality sweep review/, deep-judge a task (by id or file), or --code audit | polish
-promote       | work     | [id] [--dry-run] [--audit [--move]] | Close review/ → done/: default runs each task's **Tests** (green → done/); --audit is an AI acceptance judge (add --move to close) | promote
+polish        | work     | [limit/id/file] [--code] [--break] [--model] | After work — quality sweep review/, deep-judge a task (by id or file), --code audit, or --break (the breaker on landed work, id or plan:N) | polish
+promote       | work     | [id] [--dry-run] [--audit [--move]] [--accept <id>] [--reject <id> "what is wrong"] [plan N [--fresh]] [--no-break] | Close review/ → done/: the breaker first checks each task not yet checked (--no-break skips), then default runs each task's **Tests** (green → done/); --accept <id> is your sign-off for a task with no Tests; --audit is an AI acceptance judge (add --move to close); --reject files a linked fix task and holds the original; plan:N signs off a LANDED plan — full suite once (a green run on an unchanged tree is reused; --fresh re-runs), one approval | promote
 
 status        | look     |                     | Show project status | status
 agents        | look     | [label] [--local] [--host H] [--json] | Every AI session running here and on your servers — name, state, terminal, project@branch, uptime, last activity, model, context, CPU/memory, topic; label titles each terminal with its name (no AI)
 search        | look     | <keyword>           | Search tasks by keyword | search
+history       | look     | [--since <date / ref>] / record | Finished work from docs/history/, newest first; --since prints Markdown release notes for the work finished since a date or git ref · record: write done/ tasks no plan record covers (planless or retired plan) into a dated record (no AI)
 learn         | look     | [demo]              | Watch the flow run — play a sandboxed demo (no name = list demos) | learn
 align         | look     |                     | Analyze feature alignment | align
 
@@ -57,4 +57,5 @@ cleanup       | keep     | [--force]           | Clean stale scratch files | cle
 deps          | keep     |                     | File a backlog task auditing outdated/vulnerable deps | deps
 model         | keep     | show/list/set [k v] | See the effective AI model per role, list provider models, or set a default (no AI)
 config        | keep     |                     | Interactively set the AI provider and default model in docs/sprintbias/config (no AI)
+fast          | keep     | [on / off]          | Fast mode for this machine — on: agents run autonomously at high throughput; off: steady. Bare shows the mode; --fast / --steady before any command sets it for one run (no AI)
 shell         | keep     | [install / remove]  | Cozy terminal prompt — guided setup for zsh, bash, and tmux: machine name (red over SSH), path, git branch, clock, slow-command timer (no AI)

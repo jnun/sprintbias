@@ -32,6 +32,7 @@ sync (#331) and status rollups can be exercised.
 - #9018 — Cycle participant A
 - #9019 — Cycle participant B
 - #9020 — Self-dependency
+- #9021 — Review prereq without a proof line
 - #9030 — Pushed back to backlog after demotion
 - #9031 — Never lifted but lists dependents
 - #9032 — Incomplete work routed to blocked
@@ -78,11 +79,16 @@ sync (#331) and status rollups can be exercised.
 - #9086 — Blocks lists missing reverse id
 - #9087 — Parent points at missing task
 - #9089 — READY stamp but open question remains
+- #9090 — Depends on a review prereq without proof
 
 ## Intentionally omitted members (drift cases)
 
-- #9082 — has **Plan**: 90 on the task but is omitted here
-- #9010, #9013, #9041, #9042 — missing files (dangling / fold / split / replace)
+Ids are code-quoted here so this prose does not itself parse as a member line
+(sprintbias_plan_member_ids reads only "- #ID" bullets) — otherwise #9082's
+"declared on the task, absent from the plan" drift case would silently heal.
+
+- `#9082` — has **Plan**: 90 on the task but is omitted here
+- `#9010`, `#9013`, `#9041`, `#9042` — missing files (dangling / fold / split / replace)
 
 ## Fold / split ledger (for classifiers)
 

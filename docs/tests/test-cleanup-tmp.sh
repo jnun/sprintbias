@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Test: cleanup-tmp.sh
-# Tests scratch file cleanup: dry-run, --force, --all, stale detection
+# Tests scratch file cleanup: dry-run, --force, confirm prompt, stale detection.
+# Every call feeds its answer or </dev/null so an open stdin never hangs the
+# suite at the [y/N] prompt.
 
 set -euo pipefail
 
@@ -27,7 +29,7 @@ setup() {
 
 assert_contains() {
     local desc="$1" haystack="$2" needle="$3"
-    if echo "$haystack" | grep -qF "$needle"; then
+    if grep -qF "$needle" <<<"$haystack"; then
         echo "  PASS: $desc"
         PASS=$((PASS + 1))
     else
@@ -77,7 +79,7 @@ echo "=== test-cleanup-tmp.sh ==="
 echo "Test 1: Empty tmp dir is clean"
 setup
 rc=0
-output=$(bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" 2>&1) || rc=$?
+output=$(bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" </dev/null 2>&1) || rc=$?
 assert_exit_code "Exits 0" "0" "$rc"
 assert_contains "Clean message" "$output" "clean"
 
@@ -86,7 +88,7 @@ echo "Test 2: Missing tmp dir exits 0"
 setup
 rm -rf "$TMPDIR/docs/tmp"
 rc=0
-output=$(bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" 2>&1) || rc=$?
+output=$(bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" </dev/null 2>&1) || rc=$?
 assert_exit_code "Exits 0" "0" "$rc"
 assert_contains "Not found message" "$output" "not found"
 
@@ -95,7 +97,7 @@ echo "Test 3: Dry run preserves stale files"
 setup
 # Create a file backdated 10 days
 touch -t 202601010000 "$TMPDIR/docs/tmp/old-file.txt"
-output=$(bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" 2>&1) || true
+output=$(bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" </dev/null 2>&1) || true
 assert_file_exists "Stale file preserved" "$TMPDIR/docs/tmp/old-file.txt"
 assert_contains "Shows stale file" "$output" "old-file.txt"
 
@@ -103,7 +105,7 @@ assert_contains "Shows stale file" "$output" "old-file.txt"
 echo "Test 4: --force deletes stale files"
 setup
 touch -t 202601010000 "$TMPDIR/docs/tmp/stale.txt"
-output=$(bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" --force 2>&1) || true
+output=$(bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" --force </dev/null 2>&1) || true
 assert_file_missing "Stale file deleted" "$TMPDIR/docs/tmp/stale.txt"
 assert_contains "Deleted message" "$output" "Deleted"
 
@@ -112,7 +114,7 @@ echo "Test 5: --force keeps recent files"
 setup
 touch -t 202601010000 "$TMPDIR/docs/tmp/stale.txt"
 echo "recent content" > "$TMPDIR/docs/tmp/fresh.txt"
-output=$(bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" --force 2>&1) || true
+output=$(bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" --force </dev/null 2>&1) || true
 assert_file_missing "Stale deleted" "$TMPDIR/docs/tmp/stale.txt"
 assert_file_exists "Recent kept" "$TMPDIR/docs/tmp/fresh.txt"
 
@@ -120,7 +122,7 @@ assert_file_exists "Recent kept" "$TMPDIR/docs/tmp/fresh.txt"
 echo "Test 6: log-*.json always stale"
 setup
 echo "{}" > "$TMPDIR/docs/tmp/log-session.json"
-output=$(bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" --force 2>&1) || true
+output=$(bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" --force </dev/null 2>&1) || true
 assert_file_missing "Log file deleted" "$TMPDIR/docs/tmp/log-session.json"
 
 # Test 7: .gitkeep is never deleted
@@ -128,17 +130,25 @@ echo "Test 7: .gitkeep preserved"
 setup
 touch "$TMPDIR/docs/tmp/.gitkeep"
 touch -t 202601010000 "$TMPDIR/docs/tmp/old.txt"
-bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" --force > /dev/null 2>&1 || true
+bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" --force </dev/null > /dev/null 2>&1 || true
 assert_file_exists ".gitkeep preserved" "$TMPDIR/docs/tmp/.gitkeep"
 
-# Test 8: --all with confirmation deletes everything (pipe y)
-echo "Test 8: --all deletes everything"
+# Test 8: answering y deletes only stale files; recent files are always kept.
+# Passing the retired --all flag deletes nothing extra.
+echo "Test 8: confirm y deletes stale only, even with --all"
 setup
 touch -t 202601010000 "$TMPDIR/docs/tmp/stale.txt"
 echo "recent" > "$TMPDIR/docs/tmp/fresh.txt"
 output=$(echo "y" | bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" --all 2>&1) || true
 assert_file_missing "Stale deleted" "$TMPDIR/docs/tmp/stale.txt"
-assert_file_missing "Recent also deleted" "$TMPDIR/docs/tmp/fresh.txt"
+assert_file_exists "Recent kept" "$TMPDIR/docs/tmp/fresh.txt"
+
+# Test 9: no answer (closed stdin) deletes nothing and returns promptly
+echo "Test 9: no answer at the prompt deletes nothing"
+setup
+touch -t 202601010000 "$TMPDIR/docs/tmp/stale.txt"
+output=$(bash "$TMPDIR/docs/sprintbias/scripts/cleanup-tmp.sh" </dev/null 2>&1) || true
+assert_file_exists "Stale kept without a y" "$TMPDIR/docs/tmp/stale.txt"
 
 # --- Summary ---
 echo ""

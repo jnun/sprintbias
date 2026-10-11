@@ -4,66 +4,60 @@
 **Created**: 2026-09-04
 **Docs**: none
 **Plan**: none
+**From plan**: none
 **Depends on**: none
 **Dependents**: none
 **Parent**: none
-**Tests**: none
-**Refined**: 0
+**Fixes**: none
+**Crew**: none
+**Tests**: docs/tests/test-work-budget.sh
+**Refined**: 1
 **Reworked**: 0
 
 ## Problem
 
-`work --max` today clears the per-task budget entirely
-(`work.sh:174-176` sets `SPRINTBIAS_BUDGET_WORK=""`), i.e. **truly unlimited**
-spend on a Claude run. That is the one place the runaway guard is fully removed —
-a wonky model that starts burning tokens on internal monologue under `--max` has
-no dollar backstop at all. The rare "this task really is huge" case wants
-*headroom*, not *no ceiling*. Give `--max` a high but bounded budget so the
-escape hatch keeps a backstop, consistent with the project stance that the
-per-task cap IS the runaway guard.
+`work --max` removes the per-task spending cap entirely, so a Claude run under
+`--max` has no dollar limit. A model stuck in a loop can spend without bound,
+and the interactive menu's "Full quality" options pass `--max` for every run.
+The rare huge task needs more room, but still needs a ceiling.
 
-## Success criteria
+## Done when (automated)
 
-<!-- sb:hint  What done looks like. When these are met, the task is done.
-     Observable checks anyone can verify. -->
+- [ ] `work --max` sets the per-task cap to `BUDGET_WORK_MAX` (config key,
+      `100.00` in `docs/sprintbias/config`, same fallback in `lib.sh`), in
+      place of clearing it. `bash docs/tests/test-work-budget.sh` asserts the
+      resolved budget is `100.00` with `--max`, the config value without it,
+      and a config override of `BUDGET_WORK_MAX` is honored.
+- [ ] On a tier with no spending caps (Grok, generic), `--max` still adds no
+      budget flag and prints nothing extra. `bash
+      docs/tests/test-work-budget.sh` asserts it.
+- [ ] `help/work.md` says `--max` raises the cap to `BUDGET_WORK_MAX`, and
+      states the real default (`BUDGET_WORK`, $10 in config).
+      `./sprint.sh validate --commands` and `./sprint.sh validate --docs`
+      pass.
+- [ ] `bash docs/tests/run-all.sh` passes.
 
-- [ ] `work --max` raises the per-task cap to a **high ceiling** (default
-      `$100`), sourced from a named, config-overridable key (e.g.
-      `BUDGET_WORK_MAX` in `docs/sprintbias/config`, with a lib.sh default), on
-      the budget-capable tier (Claude). It no longer clears the cap.
-- [ ] Truly-unlimited stays reachable, but only as an explicit power-user
-      override: `SPRINTBIAS_BUDGET_WORK=""` (env) still means no cap. Documented,
-      not the `--max` default.
-- [ ] On a capless tier (Grok / generic), `--max` remains a silent no-op on
-      budget — there is no cap to raise — exactly as today. No error, no warning.
-- [ ] `loop --max` is untouched: it already means "stop after N tasks" (numeric,
-      `loop.sh:35`). This change does not wire `--max` budget into `loop`; a
-      raised ceiling under `loop` is set via `BUDGET_WORK_MAX` / config, not a
-      flag.
-- [ ] Help and docs reflect the new meaning: `help/work.md` (currently
-      "`--max`  # clear the budget cap") now says it raises the cap to the
-      ceiling; command/doc surfaces stay in sync
-      (`./sprint.sh validate --commands` / `--docs`).
+## Signoff (human)
+
+None: the automated checks cover it.
 
 ## Notes
 
-<!-- sb:hint  Constraints, edge cases, gotchas. -->
-
-- Minimal change site: `work.sh:174-176` currently does
-  `if [ "$_NO_LIMITS" -eq 1 ]; then SPRINTBIAS_BUDGET_WORK=""; fi`. Replace the
-  clear with a raise to `BUDGET_WORK_MAX` (fall back to a literal `100.00` if the
-  key is unset), so the existing `_budget_args`/`sprintbias_budget_capable` path
-  at `work.sh:874-876` carries it unchanged.
-- Config + default live beside the existing ones: `BUDGET_WORK=10.00` in
-  `docs/sprintbias/config`, defaulted in `lib.sh` (~L2400). Add
-  `BUDGET_WORK_MAX=100.00` the same way.
-- Behavior note for the interactive menu: options 3 & 4 ("Full quality",
-  `work.sh:108-109`) pass `--max`. Under this change those full-quality runs get
-  the `$100` ceiling instead of unlimited — a safer default, and fine.
-- Sibling of task 382 (which owns the budget *disposition* — routing a
-  budget-exhausted run to `blocked/`). This task owns only the budget *value* of
-  `--max`. They touch adjacent code but are independent and either can ship
-  first.
+- Decided: no uncapped path. The cap is the runaway guard; a user who needs
+  more raises `BUDGET_WORK_MAX` in config.
+- The change site is the `_NO_LIMITS` block in `work.sh` that sets
+  `SPRINTBIAS_BUDGET_WORK=""`. The existing `--budget` pass-through carries the
+  new value unchanged.
+- Add `BUDGET_WORK_MAX` beside `BUDGET_WORK` in `config` and in `lib.sh`'s
+  defaults block, with the same env-then-config-then-default order.
+- `help/work.md` today says the default is $5; the shipped config sets
+  `BUDGET_WORK=10.00`. Fix that line in the same change.
+- `loop --max N` is a different flag (stop after N attempts). Leave `loop`
+  alone.
+- Add a `### Changed` bullet to `CHANGELOG.md`: `--max` now raises the cap to
+  a ceiling instead of removing it.
+- Sibling of #382, which owns what happens after a run hits its budget. This
+  task owns only the value. Either can land first.
 
 ## References
 

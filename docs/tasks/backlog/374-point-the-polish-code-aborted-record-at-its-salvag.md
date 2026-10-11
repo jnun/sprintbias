@@ -4,65 +4,58 @@
 **Created**: 2026-08-21
 **Docs**: none
 **Plan**: none
+**From plan**: none
 **Depends on**: none
 **Dependents**: none
 **Parent**: none
-**Tests**: none
-**Refined**: 0
+**Fixes**: none
+**Crew**: none
+**Tests**: docs/tests/test-audit-code.sh
+**Refined**: 1
 **Reworked**: 0
 
 ## Problem
 
-Task 371 taught `polish --code` to salvage an aborted run — keep the landed
-edits, run a bounded salvage verifier, and record the outcome honestly. But the
-aborted record dead-ends when someone needs to debug it. When the salvage
-verifier returns FAIL ("landed edits have open issues"), neither the task's
-`## Audit (aborted)` note nor the terminal ABORTED output points at the log
-where those issues are described — the record names the verdict and stops. Every
-other terminal branch in polish.sh surfaces a log (the sweep's `_route_refine`
-consistently prints `See $LOG_FILE`; the code-mode UNCLEAR branch says "Inspect
-the log tail in $LOG_DIR/"), so this is the one abort path with no debug trail.
-That directly undercuts the task's own stated thesis — honest observability and
-"what broke?" recovery.
+When `polish --code` aborts and salvages its landed edits, the record it leaves
+points at no log. The `## Audit (aborted ...)` note in the task and the ABORTED
+terminal report name the verifier's verdict and stop, so a person debugging a
+FAIL has no trail to follow. Every other polish exit names a log. Also, when a
+verifier step aborts after an earlier fixer step landed edits, the note says
+"Edits landed: yes" but drops the "Delta banked" pointer to that fixer's patch.
 
-A second, smaller completeness gap sits in the same note: when a *verifier* step
-aborts after an *earlier fixer* step already landed edits, `SALVAGE_PATCH` is
-empty (it is only assigned in the fixer-abort branch), so the note prints
-"Edits landed: yes" but omits the "Delta banked" pointer even though that
-earlier step did capture a delta patch. The landed work is real but its delta
-pointer silently drops.
+## Done when (automated)
 
-## Success criteria
+- [ ] On an aborted `--code` run, the ABORTED terminal report names the aborted
+      step's log, and also the salvage log when a salvage verifier ran.
+      `bash docs/tests/test-audit-code.sh` asserts both paths appear in output.
+- [ ] The `## Audit (aborted ...)` note written to the task carries a `Log:`
+      line naming the same log(s). `bash docs/tests/test-audit-code.sh` asserts
+      it in the task file.
+- [ ] When a verifier step aborts after an earlier fixer step landed edits, the
+      note's `Delta banked` line names that fixer's captured patch.
+      `bash docs/tests/test-audit-code.sh` asserts "Edits landed: yes" is
+      always followed by a `Delta banked` line.
+- [ ] `bash docs/tests/run-all.sh` passes.
 
-- [ ] On an aborted `--code` run, the ABORTED terminal output points the
-      operator at the relevant log(s) — the aborted step's `$LOG_FILE`, and the
-      `$SALVAGE_LOG` when a salvage verifier ran — so a FAIL or partial abort has
-      a trail to follow, matching the "Inspect the log tail" affordance the
-      UNCLEAR branch already offers (polish.sh:795-799).
-- [ ] The `## Audit (aborted)` note records a pointer to the salvage log (or the
-      aborted step log) alongside the verifier result, so the debug trail
-      survives in the task file, not just on a scrolled-away terminal.
-- [ ] When a verifier step aborts after an earlier fixer landed edits, the note's
-      "Delta banked" pointer resolves to that earlier step's captured patch
-      rather than being dropped — "Edits landed: yes" is never printed without
-      the delta it refers to.
-- [ ] Scope stays on the aborted record/recovery copy (the ABORTED terminal
-      branch and the `## Audit (aborted)` note). No change to salvage control
-      flow, the double-abort guard, or how a finished run's verdict is parsed.
+## Signoff (human)
+
+None: the automated checks cover it.
 
 ## Notes
 
-- The salvage log path already exists as `$SALVAGE_LOG` (polish.sh:602) and the
-  aborted step log as `$LOG_FILE` (polish.sh:552); this task threads them into
-  the existing ABORTED report (polish.sh:770-793) and aborted-note block
-  (polish.sh:729-746). No new machinery — it reuses the log paths already
-  captured.
-- The delta-pointer gap: `SALVAGE_PATCH` is assigned only in the fixer-abort
-  branch (polish.sh:581). The success-path fixer step captures `STEP_PATCH`
-  (polish.sh:657-662) but does not retain it for a later verifier abort — retain
-  the last captured patch so the aborted note can surface it.
-- Small, self-contained follow-on to 371; no dependency on the #367/#368
-  interpreter work.
+- Scope is the record only: the ABORTED report and the aborted note. Keep the
+  salvage control flow, the double-abort guard, and finished-run verdict parsing
+  as they are.
+- Log paths already exist: `LOG_FILE` (step log) and `SALVAGE_LOG` (salvage
+  verifier log) in `polish.sh`. The UNCLEAR branch's "Inspect the log tail in
+  $LOG_DIR/" line is the model to match.
+- Delta gap: `SALVAGE_PATCH` is set only in the fixer-abort branch, and
+  `_capture_step_delta` resets `STEP_PATCH` on every call. Keep the last
+  captured patch in its own variable so a later verifier abort can name it.
+- `test-audit-code.sh` has no abort case yet. Its stub CLI prints one fixed
+  JSON result. Add a stub that edits a file and then returns a max-turns result
+  (`{"is_error":true,"subtype":"error_max_turns",...}`, the shape
+  `test-run-interpret.sh` uses) to drive the abort and salvage path.
 
 ## References
 

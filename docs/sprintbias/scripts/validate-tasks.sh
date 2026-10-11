@@ -5,7 +5,7 @@
 # Default path checks what the runtime actually needs — numeric filename IDs,
 # title/filename ID match, unique IDs across stages, and well-formed
 # **Depends on** / **Dependents** tokens. Template-stamped presence checks
-# (**Feature**, ## Problem, ## Success criteria) are not re-checked; those are
+# (**Feature**, ## Problem, ## Done when (automated)) are not re-checked; those are
 # guaranteed by create-task.sh from .TEMPLATE-task.md.
 #
 # Cycle detection among Depends-on edges is intentionally out of scope (v1).

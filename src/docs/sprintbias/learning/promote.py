@@ -3,7 +3,7 @@
 SprintBias — close only what's proven: Tests green and deps closed → done/.
 
 A pretend, cinematic run: `promote` walks review/ — green Tests close to done/,
-no Tests stays for human sign-off, open Depends on holds, a red suite stays put.
+no Tests waits for your one-line sign-off, open Depends on holds, a red suite stays put.
 Nothing closes unproven. Pure theater: it touches nothing in your project — no
 files written, no tasks moved, no network.
 
@@ -160,17 +160,17 @@ def act2():
     moved("review/71", "done/71")
     print()
 
-    # #74 no Tests → skip
-    note(f"#74  no **Tests** — stays in review/ for human sign-off")
-    line(f"      {DIM}promote never invents proof; empty Tests is a deliberate skip{RESET}")
+    # #74 no Tests → waits for your sign-off
+    note(f"#74  no **Tests** — waits for your sign-off:  ./sprint.sh promote --accept 74")
+    line(f"      {DIM}promote never invents proof; no Tests means you are the judge{RESET}")
     print()
 
     # #83 green Tests but open Depends on → held
     spinner("Tests  #83  " + f"{DIM}docs/tests/bill-downgrade.sh{RESET}",
             ticks=8, done="green")
-    held(f"#83 held in review/ — **Depends on** prerequisite not yet closed:")
+    held(f"#83 held in review/ — a prerequisite or fix is not yet closed:")
     line(f"        {CYAN}#80{RESET}  cache the pricing lookup  "
-         f"{DIM}(still in review/ — needs review/ or done/){RESET}")
+         f"{DIM}(needs review/ with proof, or done/){RESET}")
     line(f"      {DIM}green suite is not enough; deps gate the close the same way they gate the run{RESET}")
     print()
 
@@ -187,6 +187,11 @@ def act2():
     nap(0.4)
     beat("One task closed. Three stayed for three different honest reasons — "
          "none of them a silent move to done/.")
+    nap(0.3)
+    beat("You tried #74 and it works. No suite to run, so your sign-off closes it.")
+    prompt_and_type("./sprint.sh promote --accept 74")
+    ok(f"#74  accepted → done/  {DIM}(your sign-off){RESET}")
+    moved("review/74", "done/74")
     nap(0.5)
 
 def act3():
@@ -195,16 +200,16 @@ def act3():
 
     line(f"  {CYAN}done/{RESET}", delay=0.08)
     ok(f"{BLUE}71{RESET}  rate-limit the login endpoint   {GREEN}proven{RESET}")
+    ok(f"{BLUE}74{RESET}  add Retry-After header          {GREEN}your sign-off{RESET}")
     print()
     line(f"  {CYAN}review/{RESET} {DIM}— still open for cause{RESET}", delay=0.08)
-    note(f"{GREY}74{RESET}  no Tests — human sign-off or attach a suite")
     note(f"{RED}80{RESET}  suite red — fix pricing-cache, re-promote")
-    note(f"{ORANGE}83{RESET}  waits on #80 — close 80 first, then 83")
+    note(f"{ORANGE}83{RESET}  waits on #80 — 80 lands first, then 83")
     print()
     note("optional: when every member of a plan sits in done/ —")
     nextstep("./sprint.sh plan done <id>   → retire a fully closed plan")
     print()
-    nextstep("fix #80's suite, promote again — #83 will unhold once #80 is done/")
+    nextstep("fix #80's suite, promote again — #83 unholds once #80 lands")
     nap(0.4)
     beat("Closing is earned. Tests green and deps closed — that's the whole gate. "
          "Everything else waits where you can still see it.")
@@ -218,8 +223,8 @@ def outro():
     line(f"  {DIM}what you just watched:{RESET}")
     line(f"    {PURPLE}•{RESET} {WHITE}Tests green → done/{RESET}    "
          f"{GREY}suite scripts under docs/tests/ must pass{RESET}")
-    line(f"    {PURPLE}•{RESET} {WHITE}no Tests → skip{RESET}       "
-         f"{GREY}stays in review/ for human sign-off{RESET}")
+    line(f"    {PURPLE}•{RESET} {WHITE}no Tests → your call{RESET}  "
+         f"{GREY}promote --accept <id> closes it in one line{RESET}")
     line(f"    {PURPLE}•{RESET} {WHITE}open Depends on → hold{RESET} "
          f"{GREY}dependent never closes ahead of its prereq{RESET}")
     line(f"    {PURPLE}•{RESET} {WHITE}red suite → stay{RESET}      "

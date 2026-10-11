@@ -45,8 +45,8 @@ DISPATCH_CMDS=$(awk '/^[[:space:]]*[a-z][a-z-]*\)[[:space:]]/ && /cmd_/ {
     }' "$DISPATCH" | sort -u)
 
 is_hidden()   { case "$HIDDEN" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
-in_dispatch() { printf '%s\n' "$DISPATCH_CMDS" | grep -qxF "$1"; }
-in_registry() { printf '%s\n' "$REG_CMDS" | grep -qxF "$1"; }
+in_dispatch() { grep -qxF "$1" <<<"$DISPATCH_CMDS"; }
+in_registry() { grep -qxF "$1" <<<"$REG_CMDS"; }
 
 fail=0
 

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # loop.sh — Continuous task runner. See: ./sprint.sh help loop
 
+# Bash reads a script as it runs. A long run can outlive edits to this file
+# (an agent's task, or a setup.sh update), so the braces make bash parse the
+# whole script before running any of it.
+{
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -74,7 +78,7 @@ TOTAL_START=$SECONDS
 _RETRY_USED=0
 
 # Snapshot pre-existing blocked/ tasks so retry only touches ones that landed
-# this run (need a decision or clarification)
+# this run (cannot start, or an incomplete run)
 _INITIAL_BLOCKED=$(mktemp)
 trap 'rm -f "$_INITIAL_BLOCKED"' EXIT
 ls "$BLOCKED_DIR"/*.md 2>/dev/null | while read -r f; do basename "$f"; done > "$_INITIAL_BLOCKED" 2>/dev/null || true
@@ -282,7 +286,8 @@ while true; do
     [ -f "$f" ] || continue
     name="${f##*/}"
     move_file "$f" "$BLOCKED_DIR/$name"
-    echo "  ⚠ $name incomplete → blocked/ (needs decision or clarification)"
+    echo "  ⚠ $name incomplete → blocked/ (incomplete run)"
+    echo "    ./sprint.sh work $(task_id "$name")"
   done
 
   AFTER_REVIEW=$(count_tasks "$REVIEW_DIR")
@@ -325,3 +330,5 @@ echo "  Retried:   $RETRIED"
 echo "  Refills:   $REFILLS"
 printf '  Duration:  %dh %dm %ds\n' "$((TOTAL_ELAPSED/3600))" "$(((TOTAL_ELAPSED%3600)/60))" "$((TOTAL_ELAPSED%60))"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+exit
+}

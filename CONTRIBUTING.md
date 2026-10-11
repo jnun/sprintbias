@@ -51,6 +51,7 @@ the answer is no.
 | `src/CLAUDE.md`, `src/AGENTS.md`, `src/.cursorrules`, `src/.windsurfrules`, `src/.github/` | yes, edit in `src/` | AI pointer files and GitHub templates; no `docs/` copy |
 | `docs/tasks/`, `docs/plans/`, `docs/bugs/`, `docs/features/`, `docs/ideas/`, `docs/crew/` | folder only | Our own work; users get these folders empty |
 | `docs/tests/`, `docs/guides/` | folder only | Our test suite (`bash docs/tests/run-all.sh`) and maintainer guides; users get these folders empty |
+| `docs/history/` | folder only | Our own plan records (written by `plan done`); users get the folder empty |
 | `setup.sh`, `install.sh`, `ship.sh` | no | Installer, curl bootstrap, mirror tool |
 | `CLAUDE.md`, `README.md`, `CONTRIBUTING.md`, `CHANGELOG.md` | no | Development support |
 

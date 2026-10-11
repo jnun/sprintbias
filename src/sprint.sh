@@ -200,6 +200,11 @@ cmd_status() {
     echo -e "${CYAN}=== Project Status ===${NC}"
     echo ""
 
+    local fast_state
+    fast_state=$( cd "$root" && source docs/sprintbias/lib.sh && sprintbias_fast_state ) || fast_state="off"
+    echo -e "${BLUE}Mode:${NC}   fast: ${fast_state}  (./sprint.sh fast on|off)"
+    echo ""
+
     echo -e "${BLUE}Tasks:${NC}"
     local review_count
     review_count=$(count_files "$tasks/review")
@@ -285,59 +290,68 @@ cmd_status() {
     status_plans "$root"
 }
 
-# Resolve a member task ID to its current lifecycle folder name, or "" if no
-# task file exists anywhere (member completed-and-archived, or a bare reference).
-_task_folder() {
-    local id="$1" root="$2" stage
-    for stage in backlog next doing blocked review done; do
-        if compgen -G "$root/docs/tasks/$stage/${id}-*.md" >/dev/null 2>&1; then
-            printf '%s' "$stage"; return 0
-        fi
-    done
-    return 1
-}
-
 # Roll up docs/plans/*.md as GROUPINGS, never as tasks: for each plan file,
-# resolve its "- #ID" member lines to their current folders and report progress
-# (review+done counted complete). The plan file is a relational index — it is
-# listed here and never added to the task tallies above.
+# list its "- #ID" members with their folder and standing, then the computed
+# plan state and the three counts — open, landed (review/ with proof), signed
+# off (done/) — through lib.sh's shared plan rollup (the same one plan check
+# uses). The plan file is a relational index: it is listed here, never added to
+# the task tallies above, and nothing is stamped into it.
 status_plans() {
     local root="$1"
-    local sdir="$root/docs/plans"
-    [ -d "$sdir" ] || return 0
+    [ -d "$root/docs/plans" ] && [ -f "$root/docs/sprintbias/lib.sh" ] || return 0
+    (
+        cd "$root" || exit 0
+        # shellcheck source=/dev/null
+        source docs/sprintbias/lib.sh
+        local printed=0 sf title id stage standing state unproven held
+        local open landed signed nproven missing total fixes moved nheld
+        for sf in docs/plans/*.md; do
+            [ -f "$sf" ] || continue
+            case "$(basename "$sf")" in .TEMPLATE-*|TEMPLATE-*) continue ;; esac
 
-    local printed=0 sf
-    for sf in "$sdir"/*.md; do
-        [ -f "$sf" ] || continue
-        case "$(basename "$sf")" in .TEMPLATE-*|TEMPLATE-*) continue ;; esac
+            if [ "$printed" -eq 0 ]; then
+                echo ""
+                echo -e "${BLUE}Plans:${NC}  (relational groupings — not a lifecycle stage)"
+                printed=1
+            fi
 
-        if [ "$printed" -eq 0 ]; then
-            echo ""
-            echo -e "${BLUE}Plans:${NC}  (relational groupings — not a lifecycle stage)"
-            printed=1
-        fi
+            title="$(grep -m1 '^# ' "$sf" | sed 's/^# *//; s/^Plan [0-9]*: *//')"
+            echo -e "  ${CYAN}$(basename "$sf" .md)${NC}  ${title}"
 
-        local title id folder total=0 done=0 ids
-        title="$(grep -m1 '^# ' "$sf" | sed 's/^# *//; s/^Plan [0-9]*: *//')"
-        echo -e "  ${CYAN}$(basename "$sf" .md)${NC}  ${title}"
-
-        ids=$(grep -oE '^- (\[[ xX]\] )?#[0-9]+' "$sf" 2>/dev/null | grep -oE '[0-9]+')
-        for id in $ids; do
-            total=$((total + 1))
-            if folder=$(_task_folder "$id" "$root"); then
-                case "$folder" in review|done) done=$((done + 1)) ;; esac
-                echo "      #$id  $folder/"
-            else
-                done=$((done + 1))   # no file left = completed/archived
-                echo "      #$id  (done or archived)"
+            unproven=""
+            held=""
+            for id in $(sprintbias_plan_member_ids "$sf"); do
+                standing=$(sprintbias_member_standing "$id")
+                if [ "$standing" = "missing" ]; then
+                    echo "      #$id  (no task file)"
+                    continue
+                fi
+                stage=$(sprintbias_task_stage "$id")
+                [ "$standing" = "unproven" ] && unproven="$unproven #$id"
+                if [ "$standing" = "held" ]; then
+                    standing=$(sprintbias_held_label "$id")
+                    held="$held #$id ($standing)"
+                fi
+                printf '      #%-5s %-8s %s\n' "$id" "$stage/" "${standing/-/ }"
+            done
+            read -r open landed signed nproven missing total fixes moved nheld <<EOF
+$(sprintbias_plan_counts "$sf")
+EOF
+            if [ "$total" -eq 0 ]; then
+                echo "      (no members yet)"
+                continue
+            fi
+            state=$(sprintbias_plan_state "$sf")
+            echo "      → $state · open $open · landed $landed · signed off $signed (of $total)"
+            [ -n "$held" ] && echo "      ⚠ held, waiting on its fix:$held"
+            [ -n "$unproven" ] && echo "      ⚠ $SPRINTBIAS_UNPROVEN_LABEL:$unproven"
+            if [ "$fixes" -gt 0 ]; then
+                sprintbias_plan_open_fixes "$sf" | while read -r _fid _tid; do
+                    echo "      ⚠ open fix #$_fid for #$_tid"
+                done
             fi
         done
-        if [ "$total" -eq 0 ]; then
-            echo "      (no members yet)"
-        else
-            echo "      → $done/$total complete"
-        fi
-    done
+    )
 }
 
 cmd_newbug() {
@@ -377,11 +391,6 @@ cmd_gate() {
     run_script "gate.sh" "$@"
 }
 
-# settle: accept (Suggestion: …) open questions; fold + clear (no AI).
-cmd_settle() {
-    run_script "settle.sh" "$@"
-}
-
 # work: execute the READY queue.
 cmd_work() {
     run_script "work.sh" "$@"
@@ -409,6 +418,11 @@ cmd_deps() {
 # model: show/list/set the AI model per role (keep family, no AI).
 cmd_model() {
     run_script "model.sh" "$@"
+}
+
+# fast: show or flip fast mode in docs/sprintbias/config.local (keep family, no AI).
+cmd_fast() {
+    run_script "fast.sh" "$@"
 }
 
 # config: interactive provider + default-model configurator (no AI).
@@ -455,10 +469,12 @@ cmd_learn() {
     run_script "learn.sh" "$@"
 }
 
-# Global provider flags (leading only). This-run env override — does not rewrite
-# docs/sprintbias/config. lib.sh prefers SPRINTBIAS_CLI / SPRINTBIAS_PROVIDER over config.
+# Global flags (leading only). This-run env override — does not rewrite
+# docs/sprintbias/config or config.local. lib.sh prefers SPRINTBIAS_CLI /
+# SPRINTBIAS_PROVIDER / SPRINTBIAS_FAST over config.
 #   ./sprint.sh -g work          # Grok Build for this run
 #   ./sprint.sh --claude chat 12 # Claude Code for this run
+#   ./sprint.sh --fast chat 12   # fast mode for this run (--steady = off)
 while [ $# -gt 0 ]; do
     case "$1" in
         -c|--claude)
@@ -471,13 +487,21 @@ while [ $# -gt 0 ]; do
             export SPRINTBIAS_PROVIDER=grok-build
             shift
             ;;
+        --fast)
+            export SPRINTBIAS_FAST=on
+            shift
+            ;;
+        --steady)
+            export SPRINTBIAS_FAST=off
+            shift
+            ;;
         -h|--help)
             # Leave for the main dispatcher (help with or without a command).
             break
             ;;
         -*)
             echo -e "${RED}Unknown option: $1${NC}" >&2
-            echo "Global provider flags: -c/--claude, -g/--grok" >&2
+            echo "Global flags: -c/--claude, -g/--grok, --fast/--steady" >&2
             echo "Run ./sprint.sh help for commands." >&2
             exit 1
             ;;
@@ -540,7 +564,6 @@ case "$CMD" in
     chat)          shift; cmd_chat "$@" ;;
     plan)          shift; cmd_plan "$@" ;;
     gate)          shift; cmd_gate "$@" ;;
-    settle)        shift; cmd_settle "$@" ;;
     work)          shift; cmd_work "$@" ;;
     loop)          shift; cmd_loop "$@" ;;
     split)         shift; cmd_split "$@" ;;
@@ -549,6 +572,7 @@ case "$CMD" in
     deps)          shift; cmd_deps "$@" ;;
     model)         shift; cmd_model "$@" ;;
     config)        shift; cmd_config "$@" ;;
+    fast)          shift; cmd_fast "$@" ;;
     shell)         shift; cmd_shell "$@" ;;
     polish)        shift; cmd_polish "$@" ;;
     promote)       shift; cmd_promote "$@" ;;

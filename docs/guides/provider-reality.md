@@ -23,6 +23,7 @@ Peers: [command-matrix.md](./command-matrix.md) (command catalog),
 | Prove or disprove a known unknown (smoke, live probe, unit test) | Stamp it; if still open, keep the owner path |
 | Surface something new in smoke or a real project | Append under **Surfaced unknowns** (do not invent a fake catalog of UU) |
 | Close a follow-up task that owned a KU | Re-stamp that KU from COVERED → RESOLVED / WONT / DEFER |
+| Ship a provider CLI release, prove a KU about sessions / messaging / subagents, or pass 90 days since a **Tuned** date | Re-tune that provider's section of `docs/sprintbias/ai/crew-setup.md` (what `crew setup` recommends) and bump its **Tuned** date. `test-crew.sh` warns when a date is over 90 days old |
 
 Stamps: `RESOLVED — works` | `RESOLVED — does not / WONT` | `COVERED by #N` |
 `STILL OPEN` | `DEFER`. Honesty over fake certainty.
@@ -69,6 +70,8 @@ the burn log; **this guide is the living home**.
 | KK-16 | Grok `--disallowed-tools Agent` blocks subagent spawn | RESOLVED — works | Different surface from Claude allowlists |
 | KK-17 | Emit mode discards `--tools` / permissions / budget from the printed prompt | RESOLVED — works | Surrounding agent keeps its toolset |
 | KK-18 | Budget caps are gated by `sprintbias_budget_capable` (today `claude-code` only) and omitted at source elsewhere; profile drop-with-warning stays as fallback | RESOLVED — works | Do not invent USD flags; add a tier to the capability `case` when it ships a real cap |
+| KK-18b | Fast mode skips permission prompts: `sprintbias_run` / `sprintbias_run_interactive` lead with neutral `--skip-permissions` when `sprintbias_fast_on`, which wins over the call site's `--permissions`. Claude → `--dangerously-skip-permissions`; Grok → `--always-approve`; default profile and emit consume it | RESOLVED — works | Fast off keeps `--permission-mode auto`. Human-owned actions stay walled by rule, not prompt. Locked by `test-fast.sh` (2026-10-10) |
+| KK-18c | Read-only interactive session (`help` AI fallback, `scripts/help-ask.sh`): `--permissions plan` + `--tools Read,Grep,Glob`, with `SPRINTBIAS_FAST=off` so `--skip-permissions` never outranks plan mode. Claude → `--permission-mode plan` (+ `--allowedTools`, which pre-approves, not restricts); Grok → `--permission-mode plan` (interactive TUI drops `--tools`, so plan mode alone holds read-only) | RESOLVED — works | Both CLIs list `plan` as a `--permission-mode` value (2026-10-10 `--help`). Args locked by `test-help-resolve.sh` with stub CLIs; the live read-only behavior is the task 440 human signoff |
 | KK-19 | Canonical shell id is `run_terminal_command`; map accepts `run_terminal_cmd` too | RESOLVED — works | Locked by #291 + `grok-provider-tier.md` |
 | KK-19b | Neutral `stream-json` contract for headless progress | RESOLVED — works | Call sites (esp. `work`) pass `--output-format stream-json` only. Claude profile: keep `stream-json` and auto-add `--verbose`. Grok profile: map → `streaming-messages-json` (Anthropic Messages NDJSON; work progress filter), drop `--verbose`. Never forward Claude-only flags from call sites. Locked by `test-grok-provider.sh` Test 15 (2026-08-07) |
 
@@ -140,6 +143,7 @@ shorten the note — keep the row for grep stability.
 | KU-17 | Claude still passes `Agent` in TOOLS=; Grok map strips it | RESOLVED — works | Emit ignores tools |
 | KU-18 | Unsolicited child spawn on single headless work? | COVERED by #296 | |
 | KU-19 | Can parallel agents message each other? Claude Code interactive: `ListAgents` / `SendMessage`. Headless exec workers: TOOLS has no messaging tool, and a `-p` session's visibility to `ListAgents` is unproven. Grok Build: no inter-session messaging found; `--name` is dropped | OPEN | `sprintbias_parallel_rule` coordinates through doing/ task files (**Touching:**) and asks for messages only "when your tools can". Prove before adding messaging tools to work's TOOLS |
+| KU-19a | Can `./sprint.sh agents` list Grok Build sessions? `agents.py` reads Claude Code session records only: `~/.claude/sessions/<pid>.json` (or `$CLAUDE_CONFIG_DIR/sessions`) plus the matching transcript under `projects/`. Whether Grok Build writes a comparable per-session record is unknown | OPEN | Claude Code: works (#396). Grok Build sessions do not appear; find a session record before adding a Grok reader |
 
 ### Models
 

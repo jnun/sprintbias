@@ -30,7 +30,8 @@ SCAN_INSTRUCTION="Start by scanning the project to auto-detect what you can:
   a few source files for error handling and patterns.
 - Code: the top-level layout — what lives where, and where new code goes.
 - Commands: how to run, test, lint, and build (manifest scripts, Makefile,
-  justfile, README, CI steps).
+  justfile, README, CI steps). The full test command is also TEST_SUITE in
+  docs/sprintbias/config (run once at plan sign-off); note when the two differ.
 - Sources of truth: documents that hold authority — README, CONTRIBUTING,
   architecture notes, decision records (docs/adr, decisions/), glossary /
   lexicon / taxonomy files, API specs (openapi, graphql schema, proto), design
@@ -168,7 +169,7 @@ Sources of truth for any other authority document you confirm.
 
 ## Commands
 **Run:** \`...\`
-**Test:** \`...\`
+**Test:** \`...\` — the full suite; set the same command as TEST_SUITE in \`docs/sprintbias/config\`
 **Lint:** \`...\`
 **Build:** \`...\`
 
@@ -185,11 +186,17 @@ Sources of truth for any other authority document you confirm.
 **CI:** \`...\` — ...
 **Deploy:** \`...\` — who may deploy (default: human-owned)
 
+## Known edges
+- <class>: <the concrete case that broke> (#id)
+
 $_CHECKED_LINE
 \`\`\`
 
 RULES:
 - Pointers and one-line facts only; never copy a document's content into the map.
+- ## Known edges: cases that broke before (promote --reject adds them; agents
+  test those their change touches). Keep its cases on update, merging lines
+  of one class, at ~15 lines. Leave the section out when there are none.
 - Record variable NAMES, never secret values. Do not open .env files that hold real values.
 - End the file with exactly this line: $_CHECKED_LINE
 - You may only write to $PROFILE_REL. Do not modify any other files.

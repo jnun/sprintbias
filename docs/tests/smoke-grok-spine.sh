@@ -38,12 +38,12 @@ assert_eq() {
 }
 assert_contains() {
   local desc="$1" haystack="$2" needle="$3"
-  if printf '%s' "$haystack" | grep -qF -- "$needle"; then pass "$desc"
+  if grep -qF -- "$needle" <<<"$haystack"; then pass "$desc"
   else fail "$desc (expected to contain '$needle')"; fi
 }
 assert_not_contains() {
   local desc="$1" haystack="$2" needle="$3"
-  if printf '%s' "$haystack" | grep -qF -- "$needle"; then fail "$desc (expected NOT to contain '$needle')"
+  if grep -qF -- "$needle" <<<"$haystack"; then fail "$desc (expected NOT to contain '$needle')"
   else pass "$desc"; fi
 }
 
@@ -134,7 +134,7 @@ assert_not_contains "work emit never says Claude Task tool" "$work_emit" "Task t
 # ── 5. Multi-member gate path ────────────────────────────────────────
 echo "5. Emit — gate multi-member parallel review wording"
 gate_emit="$(cd "$ROOT" && SPRINTBIAS_MODE=emit ./sprint.sh -g gate --force 2>&1)"
-if printf '%s' "$gate_emit" | grep -qiF "already reviewed"; then
+if grep -qiF "already reviewed" <<<"$gate_emit"; then
   skip "gate found nothing to review; --force expected to orchestrate (state-dependent)"
 else
   assert_contains "gate emit orchestrates via spawn_subagent" "$gate_emit" "spawn_subagent"
@@ -149,7 +149,7 @@ if [ -f "$SPRINTBIAS/scripts/model.sh" ]; then
   if command -v grok >/dev/null 2>&1; then
     mlist="$(cd "$ROOT" && SPRINTBIAS_MODE= timeout 30 ./sprint.sh -g model list 2>&1 || true)"
     assert_contains "model list names grok-build provider" "$mlist" "grok-build"
-    if printf '%s' "$mlist" | grep -qF "grok-4.5"; then
+    if grep -qF "grok-4.5" <<<"$mlist"; then
       pass "model list surfaces grok-4.5 (live \`grok models\` or known aliases)"
     else
       skip "model list returned no grok-4.5 (grok not logged in?) — aliases path"

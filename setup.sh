@@ -532,6 +532,10 @@ ensure_task_folders
 # .TEMPLATE-plan.md lands via the src/ walk below.
 safe_mkdir "docs/plans"
 
+# History — one record per retired plan (plan done writes it). Created empty;
+# records already here are the project's and are never touched.
+safe_mkdir "docs/history"
+
 # Crew — one file per named AI session (role, what it may touch). Created
 # empty; .TEMPLATE-crew.md lands via the src/ walk below.
 safe_mkdir "docs/crew"
@@ -1656,6 +1660,9 @@ RETIRED_FRAMEWORK_FILES=(
     "docs/sprintbias/help/review-code.md"
     "docs/sprintbias/scripts/review-sprint.sh"
     "docs/sprintbias/help/review-sprint.md"
+    # settle → work · chat (gate and work take suggestions themselves)
+    "docs/sprintbias/scripts/settle.sh"
+    "docs/sprintbias/help/settle.md"
     # consolidated / removed guidance
     "docs/sprintbias/ai/task-writing-rules.md"
     "docs/sprintbias/ai/sprint-review.md"

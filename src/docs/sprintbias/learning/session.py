@@ -153,8 +153,8 @@ def act1():
     claude("The title says \"reject empty password.\" Empty only, or also all-"
            "whitespace? And do you want a specific message back to the user?")
     you("both — empty and whitespace-only. return a 400 with \"password required\".")
-    claude("Clear and testable. Writing that into Success criteria and screening "
-           "it for readiness.")
+    claude("Clear and testable. Writing that into Done when (automated), with the "
+           "test that proves it, and screening it for readiness.")
     print()
     nap(0.4)
     spinner("gate: judging workability", done="READY")

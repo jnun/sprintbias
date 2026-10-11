@@ -30,7 +30,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-if printf '%s' "$prompt" | grep -q 'Excellence audit'; then
+if grep -q 'Excellence audit' <<<"$prompt"; then
   mkdir -p docs/tasks/backlog
   printf '# Task 900: filed by the excellence pass\n' \
     > docs/tasks/backlog/900-filed-by-excellence.md
@@ -85,7 +85,7 @@ TASKEOF
 
 assert_contains() {
     local desc="$1" haystack="$2" needle="$3"
-    if echo "$haystack" | grep -qF "$needle"; then
+    if grep -qF "$needle" <<<"$haystack"; then
         echo "  PASS: $desc"
         PASS=$((PASS + 1))
     else
@@ -96,7 +96,7 @@ assert_contains() {
 
 assert_missing() {
     local desc="$1" haystack="$2" needle="$3"
-    if echo "$haystack" | grep -qF "$needle"; then
+    if grep -qF "$needle" <<<"$haystack"; then
         echo "  FAIL: $desc (did NOT expect '$needle')"
         FAIL=$((FAIL + 1))
     else
@@ -189,6 +189,10 @@ output=$(cd "$TMPDIR" && SPRINTBIAS_MODE=exec SPRINTBIAS_CLI="$STUB" NO_COLOR=1 
     bash "$SCRIPT_UNDER_TEST" 2>&1) || rc=$?
 assert_exit_code "Exits 0" "0" "$rc"
 assert_missing "Excellence audit did not run" "$output" "Running excellence audit"
+# The breaker is a separate step that runs by default (task 443); the code and
+# excellence audits stay opt-in.
+assert_contains "Breaker runs by default" "$output" "Breaker: trying to break the change"
+assert_missing "Code audit did not run" "$output" "Running code audit"
 assert_no_file "No enhancement was filed" \
     "$TMPDIR/docs/tasks/backlog/900-filed-by-excellence.md"
 

@@ -21,6 +21,10 @@
 # resolves to no task is a sweep limit. A bare path is the deep judge; the
 # same path with --code is the code audit. See: ./sprint.sh help polish
 
+# Bash reads a script as it runs. A long run can outlive edits to this file
+# (an agent's task, or a setup.sh update), so the braces make bash parse the
+# whole script before running any of it.
+{
 set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
@@ -39,13 +43,15 @@ FORCE=0
 # is a headless-only knob and is never threaded into the emit prompt).
 PARALLEL=0
 MAX_JOBS=2
+_JOBS=""
+_STEADY=0
 MAX_PASSES="${SPRINTBIAS_AUDIT_MAX_PASSES:-3}"
 POSITIONAL=()
 
 _usage() {
   cat >&2 <<'EOF'
 Usage:
-  ./sprint.sh polish [limit] [--rounds N] [--parallel|--fast|--jobs N] [--max] [--force]
+  ./sprint.sh polish [limit] [--rounds N] [--parallel|--fast|--steady|--jobs N] [--max] [--force]
       Sweep review/: reopen tasks worth another execution pass.
       --parallel/--fast/--jobs N fan the independent judges out concurrently.
 
@@ -69,10 +75,11 @@ while [ $# -gt 0 ]; do
     --max)   _NO_LIMITS=1; shift ;;
     --force) FORCE=1; shift ;;
     --parallel) PARALLEL=1; shift ;;
-    --fast)     PARALLEL=1; MAX_JOBS=4; shift ;;
+    --fast)     PARALLEL=1; MAX_JOBS=4; export SPRINTBIAS_FAST=on; shift ;;
+    --steady)   export SPRINTBIAS_FAST=off; _STEADY=1; shift ;;
     --jobs)
       [ $# -lt 2 ] && { echo "✗ --jobs needs a number" >&2; exit 1; }
-      PARALLEL=1; MAX_JOBS="$2"; shift 2
+      PARALLEL=1; _JOBS="$2"; shift 2
       ;;
     --model)
       # Pin the model for THIS run only via the resolver's per-run lever
@@ -95,6 +102,9 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+# --jobs N sets the count whatever its position (after --fast, too).
+[ -n "$_JOBS" ] && MAX_JOBS="$_JOBS"
 
 if ! [[ "$MAX_ROUNDS" =~ ^[0-9]+$ ]]; then
   echo "✗ --rounds needs a number (got: $MAX_ROUNDS)" >&2
@@ -178,6 +188,10 @@ if [ "$PARALLEL" -eq 1 ] && [ "$MODE" != "sweep" ]; then
   echo "▸ --parallel/--fast/--jobs apply to the review/ sweep only — ignored for $MODE mode" >&2
   PARALLEL=0
 fi
+# Fast mode fans the sweep out at 4 jobs with no flag; --steady runs it one
+# judge at a time.
+[ "$MODE" = "sweep" ] && sprintbias_fast_parallel "$_STEADY"
+unset _STEADY _JOBS
 
 # Honest bail when no changed-file manifest can be built for a finished task.
 # By design polish never audits an unscoped tree — when it cannot tell which
@@ -711,7 +725,7 @@ VERDICT: PASS    (landed edits hold up)   or   VERDICT: FAIL   (issues remain)"
         ;;
       BLOCKED)
         VERDICT="BLOCKED"
-        echo "  ✗ Blocked — needs human intervention"
+        echo "  ✗ Blocked — the fixer could not finish this pass"
         break
         ;;
       *)
@@ -768,6 +782,8 @@ VERDICT: PASS    (landed edits hold up)   or   VERDICT: FAIL   (issues remain)"
   case "$VERDICT" in
     PASS)
       echo "✓ Code audit passed ($STEP step(s): $FIXER_COUNT fixer + $VERIFY_COUNT verifier)"
+      _pid="$(basename "${TASK_FILE:-}" | grep -oE '^[0-9]+' || true)"
+      echo "  Next: ./sprint.sh promote${_pid:+ $_pid}   # close it when its Tests pass"
       exit 0
       ;;
     ABORTED)
@@ -783,7 +799,8 @@ VERDICT: PASS    (landed edits hold up)   or   VERDICT: FAIL   (issues remain)"
       fi
       case "$ABORT_OUTCOME" in
         no_start)
-          echo "  Confirm the '$SPRINTBIAS_CLI' CLI is installed and authenticated, then re-run." ;;
+          echo "  Confirm the '$SPRINTBIAS_CLI' CLI is installed and authenticated, then re-run:"
+          echo "    ./sprint.sh polish --code ${TASK_FILE:-<files>}" ;;
         *)
           # --code IS the edit-now lever: re-run it to push the banked work
           # forward — it picks up from what already landed. Raising the turn
@@ -803,8 +820,8 @@ VERDICT: PASS    (landed edits hold up)   or   VERDICT: FAIL   (issues remain)"
       ;;
     *)
       echo "⚠ Code audit completed with warnings after $STEP step(s)"
-      echo "  Final verdict: $VERDICT"
-      echo "  Review audit logs in $LOG_DIR/"
+      echo "  Final verdict: $VERDICT — the audit logs are in $LOG_DIR/"
+      echo "  Read the last one, then push the work forward:  ./sprint.sh polish --code ${TASK_FILE:-<files>}"
       exit 1
       ;;
   esac
@@ -857,6 +874,8 @@ AI_MODE="$(sprintbias_ai_mode)"
 
 TASK_FILES=()
 while IFS= read -r f; do
+  # A plan's human test is the person's to run, not work to polish.
+  sprintbias_is_human_task "$f" && continue
   TASK_FILES+=("$f")
 done < <(
   ls -1 "$REVIEW_DIR"/*.md 2>/dev/null \
@@ -866,7 +885,7 @@ done < <(
 )
 
 if [ ${#TASK_FILES[@]} -eq 0 ]; then
-  echo "No tasks in $REVIEW_DIR — nothing to polish"
+  echo "No tasks in $REVIEW_DIR — nothing to polish. Build some:  ./sprint.sh work"
   exit 0
 fi
 
@@ -930,7 +949,7 @@ fi
 
 TASK_FILES=(${ELIGIBLE[@]+"${ELIGIBLE[@]}"})
 if [ ${#TASK_FILES[@]} -eq 0 ]; then
-  echo "No eligible tasks to polish in $REVIEW_DIR"
+  echo "No eligible tasks to polish in $REVIEW_DIR. Re-polish anyway:  ./sprint.sh polish --force"
   exit 0
 fi
 
@@ -999,7 +1018,7 @@ Steps:
    $task_file per the protocol — a short Why plus an '**Improve:**' list where
    each unchecked '- [ ]' item is a bold short title + one-line done-look (the
    only remaining-work list; scannable outcomes, not line-specific edit recipes).
-   Do not alter the task's existing Success criteria, ## Completed section, or
+   Do not alter the task's existing Done when (automated), ## Completed section, or
    its '**Status: READY**' stamp.
 5. Output the report per the protocol. Your VERY LAST line must be the verdict
    and nothing after it:
@@ -1026,8 +1045,8 @@ second execution pass would close a real, bounded gap; otherwise PASS. If you
 reopen, APPEND a '## Rework (round N)' section (use the next-round number shown
 for that task) with a short Why plus an '**Improve:**' list — each unchecked
 '- [ ]' item a bold short title + one-line done-look (scannable outcomes, not
-edit recipes; the only remaining-work list). Leave the task's existing Success
-criteria, ## Completed, and '**Status: READY**' stamp untouched. End with:
+edit recipes; the only remaining-work list). Leave the task's existing Done when
+(automated), ## Completed, and '**Status: READY**' stamp untouched. End with:
 VERDICT: PASS | REOPEN — <n> | BLOCKER — <reason>."
 
   if sprintbias_orchestration_capable; then
@@ -1071,7 +1090,9 @@ $_dispatch
 Tasks (in order):$_task_list
 
 When every task is routed, report a one-line summary: how many reopened to
-next/ (gate READY) vs left in review/ (and any blockers)."
+next/ (gate READY) vs left in review/ (and any blockers, each with its command:
+./sprint.sh polish --code <file> or ./sprint.sh chat <id>). End with the next
+command: ./sprint.sh work when any reopened, else ./sprint.sh promote."
   else
     sprintbias_run -p "You are running the SprintBias polish queue: $COUNT finished
 task(s) in review/ to judge.
@@ -1097,12 +1118,15 @@ $_RULES
 Tasks (in order):$_task_list
 
 When every task is routed, report a one-line summary: how many reopened to
-next/ (gate READY) vs left in review/ (and any blockers)."
+next/ (gate READY) vs left in review/ (and any blockers, each with its command:
+./sprint.sh polish --code <file> or ./sprint.sh chat <id>). End with the next
+command: ./sprint.sh work when any reopened, else ./sprint.sh promote."
   fi
   exit 0
 fi
 
 REOPENED=0
+declare -a BLOCKER_IDS=()
 PASSED=0
 BLOCKED=0
 UNCLEAR=0
@@ -1174,12 +1198,13 @@ _route_refine() {
           *)
             echo "  ⚠ Rework written but gate did not promote: $(sprintbias_promote_summary "$TASK_NAME")"
             [ -n "${SPRINTBIAS_GATE_LOG:-}" ] && echo "    Log: $SPRINTBIAS_GATE_LOG"
+            echo "    Retry the gate and run it:  ./sprint.sh work ${TASK_NAME%%-*}"
             ;;
         esac
       else
         PASSED=$((PASSED + 1))
         echo "  ⚠ Verdict REOPEN but no '## Rework' section was written — left in review/"
-        echo "    Log: $LOG_FILE"
+        echo "    Log: $LOG_FILE — re-judge:  ./sprint.sh polish $TASK_FILE"
       fi
       ;;
     PASS)
@@ -1188,8 +1213,10 @@ _route_refine() {
       ;;
     BLOCKER)
       BLOCKED=$((BLOCKED + 1))
-      echo "  ✗ BLOCKER — needs a human, not a re-run. Left in review/"
-      echo "    See $TASK_FILE (or $LOG_FILE)"
+      BLOCKER_IDS+=("${TASK_NAME%%-*}")
+      echo "  ✗ BLOCKER — left in review/ (reason in $LOG_FILE)"
+      echo "    A defect found while correctness is unproven:  ./sprint.sh polish --code $TASK_FILE"
+      echo "    The work misses its goal:                      ./sprint.sh chat ${TASK_NAME%%-*}"
       ;;
     *)
       UNCLEAR=$((UNCLEAR + 1))
@@ -1199,12 +1226,13 @@ _route_refine() {
           max_turns)
             echo "    Re-run with more room:  SPRINTBIAS_AUDIT_MAX_TURNS=60 ./sprint.sh polish --force" ;;
           no_start)
-            echo "    Confirm the '$SPRINTBIAS_CLI' CLI is installed and authenticated." ;;
+            echo "    Confirm the '$SPRINTBIAS_CLI' CLI is installed and authenticated, then:  ./sprint.sh polish $TASK_FILE" ;;
           *)
-            echo "    See $LOG_FILE" ;;
+            echo "    See $LOG_FILE, then re-judge:  ./sprint.sh polish $TASK_FILE" ;;
         esac
       else
         echo "  ? Judge finished but its final line held no VERDICT token — left in review/. See $LOG_FILE"
+        echo "    Re-judge:  ./sprint.sh polish $TASK_FILE"
       fi
       ;;
   esac
@@ -1283,6 +1311,13 @@ fi
 TOTAL_ELAPSED=$((SECONDS - TOTAL_START))
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "▸ Done: $REOPENED reopened → next/, $PASSED passed, $BLOCKED blocker(s), $UNCLEAR unclear — total $((TOTAL_ELAPSED / 60))m $((TOTAL_ELAPSED % 60))s"
+for _bid in ${BLOCKER_IDS[@]+"${BLOCKER_IDS[@]}"}; do
+  echo "  ✗ #$_bid blocker — see the lines above it for its command"
+done
 if [ "$REOPENED" -gt 0 ]; then
   echo "  ↩ Run ./sprint.sh work to re-execute the $REOPENED reopened task(s)."
+else
+  echo "  Next: ./sprint.sh promote   # close what passed (Tests green → done/)"
 fi
+exit
+}

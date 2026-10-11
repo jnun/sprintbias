@@ -59,7 +59,8 @@ bash docs/tests/fixtures/dep-glitch-matrix/check-inventory.sh
 | ID | Case | Stage | Depends on | Blocks / Dependents | Expected when a next/ task depends on this |
 |----|------|-------|------------|---------------------|-----------------------------------------------|
 | 9001 | Healthy done prereq | DN | none | 9050 | **met** — dependent runnable |
-| 9002 | Healthy review prereq | RV | none | 9050 | **met** — dependent runnable |
+| 9002 | Healthy review prereq (has `**Proof**:` line) | RV | none | 9050 | **met** — landed, dependent runnable |
+| 9021 | Review prereq without proof | RV | none | 9090 | **hold** — "in review, unproven" + promote/proof note |
 | 9003 | Peer in next READY | NX | none | 9051 | **wait** then run 9003 first in same pass |
 | 9004 | Peer in next unstamped | NU | none | 9052 | **hold** + gate/chat 9004 (not READY) |
 
@@ -183,6 +184,7 @@ bash docs/tests/fixtures/dep-glitch-matrix/check-inventory.sh
 |----|------|----------|
 | 9084 | Empty Depends on field vs `none` | both mean no deps |
 | 9085 | Depends on done task only | runnable |
+| 9090 | Depends on 9021 (review/, no proof) | **hold** — in review, unproven |
 | 9086 | Blocks lists missing id 9199 | reverse dangling finding |
 | 9087 | Parent: 9198 missing | orphaned parent finding |
 | 9088 | Duplicate id files (if seeded conflict) | validate fail — seed avoids true dupes |

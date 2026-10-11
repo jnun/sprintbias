@@ -266,8 +266,7 @@ fi
 # (a plan references tasks wherever they currently sit); an ID that resolves
 # to no file is kept as a reference — a plan lists IDs, not paths, and a
 # member that was completed and archived is still a member.
-sed_inplace '/^- #ID — short title$/d' "$DEST"
-
+MEMBER_LINES="$(mktemp "${TMPDIR:-/tmp}/sprintbias-plan.XXXXXX")"
 {
     for id in ${MEMBER_IDS[@]+"${MEMBER_IDS[@]}"}; do
         if hit=$(sprintbias_find_task "$id" \
@@ -279,7 +278,13 @@ sed_inplace '/^- #ID — short title$/d' "$DEST"
             printf -- '- #%s — (no task file found — completed or archived)\n' "$id"
         fi
     done
-} >> "$DEST"
+} > "$MEMBER_LINES"
+# The lines land where the placeholder sat, under ## Member tasks.
+_tmp="$(mktemp "${TMPDIR:-/tmp}/sprintbias-plan.XXXXXX")"
+awk -v f="$MEMBER_LINES" '
+    /^- #ID — short title$/ { while ((getline l < f) > 0) print l; next }
+    { print }' "$DEST" > "$_tmp" && mv "$_tmp" "$DEST"
+rm -f "$MEMBER_LINES"
 
 # ── Refresh each member's **Plan** reverse index ─────────────────────
 # The plan file (now written) is the membership authority; mirror it onto each

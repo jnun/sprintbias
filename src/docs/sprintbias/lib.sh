@@ -19,7 +19,11 @@
 #   kebab_case STRING          — lowercase, hyphenated slug
 #   sprintbias_slug NAME [MAX]    — kebab_case + length cap + empty guard (returns 1)
 #   sprintbias_cfg KEY            — read a value: config.local overrides config
-#   sprintbias_cfg_set KEY VALUE  — update or append a value in the tracked config
+#   sprintbias_cfg_set KEY VALUE [FILE] — update or append a value (default: tracked config)
+#   sprintbias_fast_on            — true when fast mode is on for this run
+#   sprintbias_fast_parallel      — fast mode's parallel default for work/polish
+#   sprintbias_fast_rules         — what fast mode adds to the finishing rule
+#       (subagents, cross-plan reach); prints nothing when fast is off
 #   sprintbias_resolve_model SFX  — model resolution: env > config > default;
 #       provider-foreign ids remapped (opus on grok → grok-4.5, etc.)
 #   sprintbias_coerce_model MODEL — remap Claude/Grok-only ids for active tier
@@ -45,6 +49,8 @@
 #   sprintbias_task_path ID         — path to the task file (or empty)
 #   sprintbias_review_verdict FILE — READY/BLOCKED/COMPLETE stamp from a gate review
 #   sprintbias_open_questions / sprintbias_has_open_questions FILE
+#   sprintbias_done_when FILE — a task's ## Done when (automated) body (old
+#     ## Success criteria reads as it); _heading names it, _testable checks it
 #   sprintbias_set_review_status FILE STATUS — rewrite stamp in last ## Questions
 #   sprintbias_accept_suggestions FILE — fold (Suggestion: …) into Notes; clear Qs
 #   sprintbias_demote_open_questions FILE [BLOCKED_DIR] — READY+openQ → blocked/
@@ -71,6 +77,8 @@
 #       for interactive CLI handoffs; falls back to /dev/tty
 #   sprintbias_run_interactive A… — like sprintbias_run, but the exec path is a live
 #       back-and-forth session (inherits the terminal) instead of one-shot
+#   sprintbias_proof_rule         — worker test loop: targeted tests, ## Test log,
+#       the **Proof**: line that lands a task (work + crew prompts)
 #   sprintbias_change_manifest TASK_FILE [FILE…] — build audit change manifest;
 #       sets SPRINTBIAS_CHANGED_FILES and SPRINTBIAS_CONTEXT_SOURCE
 #   sprintbias_parse_verdict TOKENS — (stdin) last VERDICT token, case/format tolerant
@@ -81,6 +89,16 @@
 #     sprintbias_fold_target FILE   — id a task was folded into, or empty
 #     sprintbias_classify_dep ID [MISSING_AS] — one token:
 #         review|done|doing|next|backlog|blocked|folded|missing (policy knob)
+#     sprintbias_has_proof FILE     — 0 when ## Completed carries a passing **Proof**: line
+#     sprintbias_dep_landed ID      — 0 when ID is in done/, or review/ with proof
+#         (the one "is this prerequisite met" rule; review/ without proof is
+#         $SPRINTBIAS_UNPROVEN_LABEL and holds its dependents; a review/ task
+#         with **Held**: fix #N counts only once fix #N lands)
+#     sprintbias_held_fixes FILE    — fix ids named on FILE's **Held** line
+#     sprintbias_add_test_log FILE LINE — append LINE under FILE's ## Test log
+#     sprintbias_file_fix_task ID "report" — file a linked fix task for a
+#         rejected review/ task (**Fixes**, Crew, Plan, Held, dependent trace)
+#     sprintbias_unmet_deps FILE    — dep ids not yet landed (missing = archived)
 #     sprintbias_deps_not_sprint_ready FILE — dep ids still in backlog/ or blocked/
 #         (empty = every dep is next/doing/review/done, folded, or archived)
 #     sprintbias_dependents_of ID   — ids that depend on ID (forward + reverse edges)
@@ -95,6 +113,12 @@
 #     sprintbias_plan_index_drift [--fix] — report/repair Plan drift both ways
 #     sprintbias_find_plan ID — path to docs/plans/ID-*.md or fail
 #     sprintbias_list_plans — one line per plan: id, title, [STATUS], done/total
+#     sprintbias_member_standing ID — open | landed | held | unproven | signed-off | missing
+#     sprintbias_held_open_fixes ID — fix ids on ID's **Held** line not yet landed
+#     sprintbias_held_label ID — 'held: fix #N' (one spelling for every listing)
+#     sprintbias_plan_counts PLAN_FILE — open landed signed unproven missing total fixes moved held human
+#     sprintbias_plan_state PLAN_FILE — SIGNED OFF | LANDED | STARTED | not started (computed)
+#     sprintbias_plan_open_fixes PLAN_FILE — open **Fixes**: tasks aimed at the plan
 
 _SPRINTBIAS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -388,22 +412,70 @@ sprintbias_cfg() {
 }
 
 # ── Config writer ────────────────────────────────────────────────────
-# Updates a key in-place, or appends it if not present.
+# Updates a key in-place, or appends it if not present. FILE defaults to the
+# tracked config; pass "$SPRINTBIAS_CONFIG_LOCAL_FILE" for a per-machine pin.
 sprintbias_cfg_set() {
-    local key="$1" value="$2"
-    if [ ! -f "$SPRINTBIAS_CONFIG_FILE" ]; then
-        echo "${key}=${value}" > "$SPRINTBIAS_CONFIG_FILE"
+    local key="$1" value="$2" file="${3:-$SPRINTBIAS_CONFIG_FILE}"
+    if [ ! -f "$file" ]; then
+        echo "${key}=${value}" > "$file"
         return
     fi
-    if grep -q "^${key}=" "$SPRINTBIAS_CONFIG_FILE"; then
+    if grep -q "^${key}=" "$file"; then
         # Escape the replacement for a |-delimited sed s-command: a literal
         # |, &, or \ in the value would otherwise corrupt the substitution.
         local esc_value
         esc_value=$(printf '%s' "$value" | sed 's/[\\&|]/\\&/g')
-        sed_inplace "s|^${key}=.*|${key}=${esc_value}|" "$SPRINTBIAS_CONFIG_FILE"
+        sed_inplace "s|^${key}=.*|${key}=${esc_value}|" "$file"
     else
-        echo "${key}=${value}" >> "$SPRINTBIAS_CONFIG_FILE"
+        echo "${key}=${value}" >> "$file"
     fi
+}
+
+# ── Fast mode ────────────────────────────────────────────────────────
+# sprintbias_fast_on — true when this run is in fast mode (autonomous, high
+# throughput); false means steady. The one place scripts read the mode.
+# Precedence, highest first:
+#   env SPRINTBIAS_FAST   per-run: a leading ./sprint.sh --fast / --steady, or
+#                       work / polish --fast, exports it for that one run
+#   config.local FAST     per-machine switch, written by ./sprint.sh fast on|off
+#   config FAST           tracked default
+#   off                   when nothing above is set
+sprintbias_fast_on() {
+    local v="${SPRINTBIAS_FAST:-$(sprintbias_cfg FAST)}"
+    case "$v" in on|ON|On|1|true|yes) return 0 ;; esac
+    return 1
+}
+
+# sprintbias_fast_parallel [STEADY] — settle the caller's PARALLEL / MAX_JOBS
+# for work and polish. STEADY=1 (a --steady flag) runs sequentially; with no
+# parallel flag and fast on, run in parallel at 4 jobs; otherwise the flags
+# stand (--jobs N keeps its count).
+sprintbias_fast_parallel() {
+    if [ "${1:-0}" -eq 1 ]; then
+        PARALLEL=0
+    elif [ "${PARALLEL:-0}" -eq 0 ] && sprintbias_fast_on; then
+        PARALLEL=1; MAX_JOBS=4
+    fi
+}
+
+# sprintbias_fast_state — prints "on" or "off" (for banners and status).
+sprintbias_fast_state() {
+    if sprintbias_fast_on; then printf 'on'; else printf 'off'; fi
+}
+
+# sprintbias_fast_rules — what fast mode adds to the finishing rule
+# (sprintbias_assume_rule, every mode): reach. Subagents build missing pieces,
+# and a goal may touch another plan's task. Prints nothing when fast is off, so
+# callers splice it in unconditionally. Loads in every fast session: keep it short.
+sprintbias_fast_rules() {
+    sprintbias_fast_on || return 0
+    cat <<'EOF'
+Fast mode adds reach:
+- Start a subagent to build a missing piece the goal needs; it lands in
+  review/ with a proof line like any task.
+- Touching another plan's task: read that plan's Goal first, serve both goals,
+  and add to that plan: Touched by plan N: #id — what and why
+EOF
 }
 
 # ── Model resolver ───────────────────────────────────────────────────
@@ -572,8 +644,8 @@ task vs the current code, and the task vs the SprintBias framework itself (its
 folders, rules, or commands). Settle each one here, before work, choosing the
 path that keeps the sources of truth intact. A term the glossary lacks is a
 conflict line: the reading you use, and a suggestion to add it. A conflict that
-changes scope or what done means is a product/scope fork for the human. A
-conflict that leaves a source wrong or incomplete (a missing term, an outdated
+changes scope or what done means is decided like any call: the most reasonable
+reading, recorded as a Decided: line. A conflict that leaves a source wrong or incomplete (a missing term, an outdated
 section) becomes a Doc follow-up when the task completes.
 EOF
 }
@@ -641,6 +713,58 @@ EOF
     return 0
 }
 
+# The test-and-proof loop (plan 28 Policy): targeted tests per task, a
+# ## Test log of failures, and the **Proof**: line that lands the task (the
+# format sprintbias_has_proof reads). Used by work (exec + emit) and crew next
+# to sprintbias_parallel_rule. Sent with every task, so keep it short.
+sprintbias_proof_rule() {
+    cat <<'EOF'
+Test loop:
+- Build the smallest testable outcome first, then grow it.
+- Run targeted tests: the ones ## Done when (automated) names, plus the tests
+  for code your **Touching:** files feed. The full suite runs once, at plan close.
+- Log each failure under ## Test log (command, failing test, error excerpt).
+  Audit the test first (a wrong test gets corrected, with why), fix any clear
+  cause, and re-run until green. Still unexplained: land without **Proof**.
+- Work that cannot start (no reasonable reading, or access or credentials
+  only the person holds): add ## Outcome with **Result**: blocked and a
+  one-line **Reason**:. Stop.
+- To land, end ## Completed with the tests you ran, then move to review/:
+  **Proof**: YYYY-MM-DD · <targeted test commands> · pass
+  Without it the task is "in review, unproven" and holds its dependents.
+EOF
+}
+
+# sprintbias_assume_rule -> the finishing rule, one string for every mode:
+# decide and record, ask only goal questions in a live conversation, keep
+# blocked/ for work that cannot start. Spliced by work (exec + emit), the gate,
+# plan think and crew: the places that make best-practice calls. The chat
+# sessions (chat, chat plan, the sprint walk) leave it out: chat is where
+# questions get dug into with the person. Fast mode adds sprintbias_fast_rules.
+sprintbias_assume_rule() {
+    cat <<'EOF'
+Finish the work:
+- Decide each open call by best practice, good security, elegant code and the
+  best UX. Record each call as one bullet in the file you work on (a task's
+  ## Notes before work, its ### Assumptions under ## Completed during work, a
+  plan's ## Decided section):
+  - Decided: X, because Y
+  The person sees every call at the end and changes one with
+  ./sprint.sh newtask "<the change you want>".
+- A check only a person can make (real hardware, a live device or account,
+  look and feel) goes under ## Signoff (human); build to the most reasonable
+  assumption, prove what a test can reach (simulate, stub, fake it), and land.
+  These gather into the plan's one human test.
+- Ask the person only in a live conversation, and only when the answer changes
+  the goal or the result: yes/no, or 1/2/3 with one marked (suggested). Go on
+  with the suggested option meanwhile. Without a conversation, decide.
+- blocked/ is for work that cannot start: no reasonable reading of the task,
+  or access or credentials only the person holds.
+- A tool or process idea becomes ./sprint.sh newtask "…"; then back to the goal.
+- Commit, push and ./ship.sh stay the person's.
+EOF
+}
+
 # Print the bullets under '### Doc follow-ups' in FILE (one per line, "- "
 # kept). Stops at the next heading. Nothing when absent.
 sprintbias_doc_followups() {
@@ -687,9 +811,9 @@ sprintbias_file_doc_followups() {
             echo "▸ Could not file ${#new[@]} doc follow-up(s): task creation failed" >&2
             return 0
         fi
-        awk -v m="$marker" '
+        awk -v m="$marker" -v dw="## $(sprintbias_done_when_heading "$tracker")" '
             /^## Problem/ { print; print ""; print "Landed work changed what project documents describe, or found gaps in"; print "them (a missing term, a moved source). Each item under ## Follow-ups names"; print "the document, what must change, and the task it came from."; print ""; skip = 1; next }
-            /^## Success criteria/ { print; print ""; print "- [ ] Every item under ## Follow-ups is resolved: the named document states"; print "      the current facts, or the item is struck with a one-line reason."; print "- [ ] Project-map items are settled with ./sprint.sh profile (profile check is clean)."; print ""; skip = 1; next }
+            index($0, dw) == 1 { print; print ""; print "- [ ] Every item under ## Follow-ups is resolved: the named document states"; print "      the current facts, or the item is struck with a one-line reason."; print "- [ ] Project-map items are settled: `./sprint.sh profile check` is clean."; print ""; skip = 1; next }
             /^## / { skip = 0 }
             skip { next }
             { print }
@@ -697,7 +821,11 @@ sprintbias_file_doc_followups() {
         ' "$tracker" > "$tracker.tmp" && mv "$tracker.tmp" "$tracker"
     fi
     printf '%s\n' "${new[@]}" >> "$tracker"
-    echo "▸ Filed ${#new[@]} doc follow-up(s) → $tracker"
+    local tid
+    tid=$(basename "$tracker" | grep -oE '^[0-9]+' || true)
+    echo "▸ Filed ${#new[@]} doc follow-up(s) into task #${tid:-?} ($tracker)"
+    echo "    Docs to bring in step with this work. When you're ready:"
+    echo "    → ./sprint.sh work ${tid:-$tracker}"
     return 0
 }
 
@@ -807,8 +935,8 @@ sprintbias_conversation_method() {
     cat "$f"
 }
 
-# Decision checklist for a chat subject (task-<id>, plan-<id>, …): the user's calls,
-# raised one at a time (ai/conversation.md → Many decisions). One path, named
+# Question checklist for a chat subject (task-<id>, plan-<id>, …): the goal
+# questions for the user, raised one at a time (ai/conversation.md → Many decisions). One path, named
 # once, so the writer and the walker cannot drift. plan think writes the plan
 # checklist; chat plan works it.
 sprintbias_discuss_file() {
@@ -843,7 +971,7 @@ sprintbias_checklist_line() {
 # ── Shared walkthrough: dependent in next/ held on an undefined task in blocked/ ──
 # Lexicon: <D> is DEPENDENT (on hold) — not blocked. <B> is BLOCKED (needs a
 # decision or clarification). The executor HOLDS <D> until every Depends-on
-# prerequisite leaves blocked/ and reaches review/ or done/. Both the no-id
+# prerequisite leaves blocked/ and lands (review/ with proof, or done/). Both the no-id
 # sprint walk (chat-sprint.sh) and the folder walk (chat next) surface this
 # edge the same way. Written once here so neither reimplements — and drifts
 # from — the other.
@@ -859,19 +987,19 @@ sprintbias_checklist_line() {
 sprintbias_next_blocked_resolution() {
     local path_a
     if [ "$(sprintbias_ai_mode)" = "emit" ] && sprintbias_orchestration_capable; then
-        path_a="Hand this off to a FRESH context — do NOT resolve the dependency inline here. $(sprintbias_subagent_spawn_phrase "the dependency that needs a decision (in blocked/)" chain), aimed at the MOST-UPSTREAM one first (the dependency whose own '**Depends on**' has no unresolved blocked deps left; break ties by lowest id). Its entire instruction: 'Run ./sprint.sh chat <dep-id> and carry that task as far toward READY as you can on your own — read any *Context from chat* note in its file, refine it, and for each answered question convert the answer into body instruction and delete the question; leave only still-open questions under ### Questions for the developer and report those back.' Tell the user you spun up a fresh agent for <dep-id> and say in one line what it is picking up."
+        path_a="Hand this off to a FRESH context — do NOT resolve the dependency inline here. $(sprintbias_subagent_spawn_phrase "the dependency that needs a decision (in blocked/)" chain), aimed at the MOST-UPSTREAM one first (the dependency whose own '**Depends on**' has no unresolved blocked deps left; break ties by lowest id). Its entire instruction: 'Run ./sprint.sh chat <dep-id> and carry that task as far toward READY as you can on your own — read any *Context from chat* note in its file, refine it, decide each open question by the finishing rule, write the pick into the body, record it as - Decided: X, because Y, and report those calls back.' Tell the user you spun up a fresh agent for <dep-id> and say in one line what it is picking up."
     else
         path_a="Hand this off — do NOT resolve the dependency inline here. Tell the user the exact command to run in a FRESH window:  ./sprint.sh chat <dep-id>  (for the most-upstream dependency still in blocked/). Keeping each session's context small is the point of chaining out."
     fi
     printf '%s' "─── DEPENDENT ON HOLD: <D> in next/ depends on <B> still in blocked/ ───
-Lexicon: <D> is DEPENDENT (on hold until its prerequisite is done) — not blocked. <B> is BLOCKED (a decision or clarification is needed on <B>). The executor ('work') HOLDS <D> in next/ until every '**Depends on**' prerequisite reaches review/ or done/. Do not merely report this — close the loop. Present the TWO REAL paths as an explicit choice and act on the one the user picks. Do NOT frame 'drop the Depends on line' as a way out of a genuine prerequisite — that only makes <D> LOOK runnable while the work it needs is still undone (the folder-satisfaction trap).
+Lexicon: <D> is DEPENDENT (on hold until its prerequisite is done) — not blocked. <B> is BLOCKED (<B> cannot start yet). The executor ('work') HOLDS <D> in next/ until every '**Depends on**' prerequisite has landed (in review/ with a **Proof**: line) or is in done/. Do not merely report this — close the loop. Pick the path best practice supports (A when the dependency is real and still needed, B when <D> should leave the sprint), say which and why in one line, and act on it; the user can redirect with one keystroke. Do NOT frame 'drop the Depends on line' as a way out of a genuine prerequisite — that only makes <D> LOOK runnable while the work it needs is still undone (the folder-satisfaction trap).
 
 PATH A — RESOLVE THE BLOCKED DEPENDENCY <B> (choose when the dependency is real and still needed):
 ${path_a}
-Either way, chat's own close-the-loop branch re-enters the sprint only through the shared gate (bash docs/sprintbias/scripts/promote-to-sprint.sh <B-file>) — READY → next/, BLOCKED stays when a decision or clarification is still needed — which releases <D> from hold when gate grades READY. You do not rebuild that machinery here; you point at chat <B>.
+Either way, chat's own close-the-loop branch re-enters the sprint only through the shared gate (bash docs/sprintbias/scripts/promote-to-sprint.sh <B-file>) — READY → next/, BLOCKED stays when it still cannot start — which releases <D> from hold when gate grades READY. You do not rebuild that machinery here; you point at chat <B>.
 
 PATH B — DEMOTE THE DEPENDENT TASK <D> BACK TO backlog/ (choose to pull it out of the sprint):
-On the user's OK, action this INLINE: move <D> out of the sprint so next/ holds no work waiting on a task that still needs a decision —  git mv docs/tasks/next/<D-file> docs/tasks/backlog/<D-file> || mv docs/tasks/next/<D-file> docs/tasks/backlog/<D-file>. THEN RE-SCAN next/ for any OTHER task that also depends on <B>: the preflight already emitted a SEPARATE finding for each (next dependent, dep in blocked/) pair, so <B>'s other dependents are already in the findings list — recognize them by the same blocked id <B>, do not run a fresh board scan. Only when NONE remain may you say 'the sprint no longer contains work waiting on <B>.' If siblings remain, name them and offer to resolve each in turn (A or B).
+Action this INLINE: move <D> out of the sprint so next/ holds no work waiting on a task that cannot start yet —  git mv docs/tasks/next/<D-file> docs/tasks/backlog/<D-file> || mv docs/tasks/next/<D-file> docs/tasks/backlog/<D-file>. THEN RE-SCAN next/ for any OTHER task that also depends on <B>: the preflight already emitted a SEPARATE finding for each (next dependent, dep in blocked/) pair, so <B>'s other dependents are already in the findings list — recognize them by the same blocked id <B>, do not run a fresh board scan. Only when NONE remain may you say 'the sprint no longer contains work waiting on <B>.' If siblings remain, name them and offer to resolve each in turn (A or B).
 
 THE DROP PATH — a metadata correction for a STALE or SPURIOUS edge ONLY, and only after an on-the-spot audit:
 Dropping the '**Depends on**:' line is NOT one of the two resolution paths above. It is reserved for an edge that is not a genuine dependency. Before you may even offer it, AUDIT THE EDGE on the spot — a bounded, READ-ONLY reasoning step, NOT a gate pass: read WHY <D> needed <B> (what <D>'s Problem/Success actually required from <B>) and check whether that need is already satisfied elsewhere or has become obsolete. ONLY an edge that FAILS this audit (need already met / no longer needed) may be dropped from <D>'s Depends on line. An edge whose need still stands IS a real dependency: route to A or B, never drop. No audit, no drop."
@@ -1007,6 +1135,62 @@ sprintbias_has_open_questions() {
     local qs
     qs="$(sprintbias_open_questions "$1")"
     [ -n "$qs" ]
+}
+
+# ── Task done-when sections ──────────────────────────────────────────
+# A task proves done under '## Done when (automated)' (outcomes plus the tests
+# or commands that prove them) and lists what a person checks under
+# '## Signoff (human)'. Older tasks carry '## Success criteria' instead; it reads
+# as Done when (automated). The heading text is a contract: every reader goes
+# through these helpers, so the fallback lives in one place.
+SPRINTBIAS_DONE_WHEN_HEADING="Done when (automated)"
+SPRINTBIAS_SIGNOFF_HEADING="Signoff (human)"
+SPRINTBIAS_DONE_WHEN_LEGACY_HEADING="Success criteria"
+
+# sprintbias_done_when_heading FILE -> the heading text (no '## ') that holds
+# FILE's automated done-when: the new heading when present, else the old one.
+# With neither, prints the new heading (what a writer should create) and
+# returns 1.
+sprintbias_done_when_heading() {
+    local f="$1"
+    if grep -qE '^## Done when \(automated\)[[:space:]]*$' "$f" 2>/dev/null; then
+        printf '%s' "$SPRINTBIAS_DONE_WHEN_HEADING"
+    elif grep -qE '^## Success criteria[[:space:]]*$' "$f" 2>/dev/null; then
+        printf '%s' "$SPRINTBIAS_DONE_WHEN_LEGACY_HEADING"
+    else
+        printf '%s' "$SPRINTBIAS_DONE_WHEN_HEADING"
+        return 1
+    fi
+}
+
+# sprintbias_done_when FILE -> body of the task's automated done-when section
+# (stdout), HTML comments such as the template's sb:hint scaffold removed.
+# Empty when the task has neither heading.
+sprintbias_done_when() {
+    local f="$1" h
+    h="$(sprintbias_done_when_heading "$f")" || return 0
+    awk -v h="## $h" '
+        !cap {
+            line = $0; sub(/[[:space:]]+$/, "", line)
+            if (line == h) cap = 1
+            next
+        }
+        /^## / { exit }
+        incom { if (index($0, "-->")) incom = 0; next }
+        {
+            gsub(/<!--.*-->/, "")
+            if (index($0, "<!--")) { sub(/<!--.*/, ""); incom = 1 }
+            print
+        }
+    ' "$f" 2>/dev/null
+}
+
+# sprintbias_done_when_testable FILE -> exit 0 when the automated done-when
+# names at least one test or command, written in backticks
+# (`bash docs/tests/test-x.sh`, `npm test`). A backticked heading such as
+# `## Problem` does not count. The gate keeps a task out of next/ until this holds.
+sprintbias_done_when_testable() {
+    sprintbias_done_when "$1" | grep -qE '`[^`#[:space:]][^`]*`'
 }
 
 # sprintbias_set_review_status FILE STATUS
@@ -1176,17 +1360,23 @@ PY
 }
 
 # sprintbias_demote_open_questions FILE [BLOCKED_DIR]
-# Invariant enforcer: READY/COMPLETE + still-open questions must not stay in
-# next/. Rewrites stamp to BLOCKED, ensures a ## BLOCKED section, moves the
+# Invariant enforcer: first takes each (Suggestion: …) as its answer; a
+# question with none left keeps READY/COMPLETE out of next/. Rewrites stamp to BLOCKED, ensures a ## BLOCKED section, moves the
 # file into BLOCKED_DIR (default docs/tasks/blocked). Loud report on stderr.
-# Exit 0 if demoted, 1 if not applicable (no open Qs, or already blocked path
-# without READY/COMPLETE stamp needing fix).
+# Exit 0 if demoted, 1 if not applicable (no open Qs, every Q settled by its
+# suggestion, or already blocked path without READY/COMPLETE stamp needing fix).
 sprintbias_demote_open_questions() {
     local file="$1"
     local blocked_dir="${2:-docs/tasks/blocked}"
     local name id qs verdict dest
     [ -f "$file" ] || return 1
     sprintbias_has_open_questions "$file" || return 1
+    # Speed first: a question with a (Suggestion: …) is answered by it.
+    sprintbias_accept_suggestions "$file" >/dev/null 2>&1 || true
+    if ! sprintbias_has_open_questions "$file"; then
+        printf '▸ %s: took the suggested answer to each open question (## Notes)\n' "$(basename "$file" | cut -d- -f1)" >&2
+        return 1
+    fi
     verdict="$(sprintbias_review_verdict "$file")"
     name="$(basename "$file")"
     id="${name%%-*}"
@@ -1220,10 +1410,9 @@ sprintbias_demote_open_questions() {
             echo ""
             echo "## BLOCKED"
             echo ""
-            echo "Open questions remain — cannot stay READY in next/."
-            echo "Answer each, write the answer as instruction in the body,"
-            echo "delete the question, then: ./sprint.sh settle $id  or  ./sprint.sh chat $id"
-            echo "Or accept every (Suggestion: …) with: ./sprint.sh settle $id"
+            echo "A question below has no reasonable answer yet, so the task cannot start."
+            echo "Give it one (write the answer into the body and delete the question):"
+            echo "./sprint.sh chat $id — then run it: ./sprint.sh work $id"
             echo ""
             echo "$qs" | sed 's/^/- /'
         } >> "$file"
@@ -1232,10 +1421,9 @@ sprintbias_demote_open_questions() {
     printf '⊘ %s: READY/COMPLETE + open questions — demoted to blocked/\n' "$id" >&2
     printf '  Open questions still pending:\n' >&2
     printf '%s\n' "$qs" | sed 's/^/    • /' >&2
-    printf '  Fix:  ./sprint.sh settle %s   # accept all (Suggestion: …) and clear them\n' "$id" >&2
-    printf '    or  ./sprint.sh chat %s     # answer with a human, fold into body\n' "$id" >&2
-    printf '  Then re-enter: bash docs/sprintbias/scripts/promote-to-sprint.sh %s\n' "$file" >&2
     printf '  File: %s\n' "$file" >&2
+    printf '  Answer it:  ./sprint.sh chat %s   # turn the answer into body instruction\n' "$id" >&2
+    printf '  Then run:   ./sprint.sh work %s   # gates it back into next/ and works it\n' "$id" >&2
     return 0
 }
 
@@ -1261,8 +1449,7 @@ sprintbias_sweep_ready_open_questions() {
     if [ "$n" -gt 0 ]; then
         printf '\n▸ Integrity sweep: demoted %s next/ task(s) with open questions → blocked/\n' "$n" >&2
         printf '  A READY stamp with open questions is invalid — work will not run them.\n' >&2
-        printf '  Bulk-clear suggested answers:  ./sprint.sh settle\n' >&2
-        printf '  Or answer one task:            ./sprint.sh chat <id>\n\n' >&2
+        printf '  Answer each listed task:  ./sprint.sh chat <id>, then ./sprint.sh work <id>\n\n' >&2
     fi
     return 0
 }
@@ -1335,10 +1522,244 @@ sprintbias_iter_id_list() {
     return 0
 }
 
+# sprintbias_has_proof FILE -> 0 when FILE records passing test proof: a
+# '**Proof**:' line under its column-0 '## Completed' heading, in the plan 28
+# format '**Proof**: YYYY-MM-DD · <targeted test commands> · pass'. The line
+# must start with a date and end in 'pass'; a proof line that records a
+# failure, or one outside ## Completed (template hints, Notes), does not count.
+sprintbias_has_proof() {
+    local file="$1"
+    [ -f "$file" ] || return 1
+    awk '
+        /^## Completed[[:space:]]*$/ { inc = 1; next }
+        /^## / { inc = 0 }
+        inc && /^\*\*Proof\*\*:[[:space:]]*[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ \
+            && /[[:space:]]pass[[:space:]]*$/ { found = 1; exit }
+        END { exit found ? 0 : 1 }
+    ' "$file"
+}
+
+# The hold reason for a review/ prerequisite with no proof line. One spelling
+# so every hold line (work, promote) reads the same.
+# shellcheck disable=SC2034
+SPRINTBIAS_UNPROVEN_LABEL="in review, unproven"
+
+# sprintbias_dep_landed ID -> 0 when prerequisite ID is met: its file is in
+# done/ (signed off), or in review/ with a proof line (landed). 1 for every
+# other stage, and for review/ without proof ("in review, unproven"). An ID
+# with no file returns 1 here; each caller applies its own missing-id policy
+# (sprintbias_unmet_deps reads it as archived-complete, promote holds on it).
+# The one rule for "is this prerequisite met": work, loop (through work),
+# promote's close gate and the queue prompts all route through it.
+sprintbias_dep_landed() {
+    local path fix
+    path=$(sprintbias_task_path "$1") || return 1
+    case "$path" in
+        docs/tasks/done/*)   return 0 ;;
+        docs/tasks/review/*)
+            sprintbias_has_proof "$path" || return 1
+            # A rejected original (**Held**: fix #N) releases nothing until
+            # every fix it names has landed.
+            for fix in $(sprintbias_held_fixes "$path"); do
+                sprintbias_dep_landed "$fix" || return 1
+            done
+            return 0 ;;
+        *)                   return 1 ;;
+    esac
+}
+
+# sprintbias_held_fixes FILE -> the fix task ids named on FILE's '**Held**:'
+# line ('**Held**: fix #412' or, after a second rejection, 'fix #412, fix
+# #415'), one per line. Empty when the task carries no hold.
+sprintbias_held_fixes() {
+    sprintbias_meta_value "$1" "Held" | { grep -oE '[0-9]+' || true; }
+}
+
+# sprintbias_add_test_log FILE LINE -> append LINE to FILE's '## Test log'
+# section, creating the section (before ## Completed, else at the end of the
+# file) when it is missing.
+sprintbias_add_test_log() {
+    local file="$1" line="$2" tmp
+    [ -f "$file" ] || return 1
+    tmp=$(mktemp "${TMPDIR:-/tmp}/sprintbias-testlog.XXXXXX") || return 1
+    SB_LINE="$line" awk '
+        BEGIN { l = ENVIRON["SB_LINE"] }
+        function flush() { if (pend != "") { printf "%s", pend; pend = "" } }
+        /^## Test log[[:space:]]*$/ { intl = 1; have = 1; print; next }
+        intl && /^## / { print l; print ""; flush(); intl = 0; done = 1; print; next }
+        intl && /^[[:space:]]*$/ { pend = pend $0 "\n"; next }
+        intl { flush(); print; next }
+        !have && !done && /^## Completed[[:space:]]*$/ {
+            print "## Test log"; print ""; print l; print ""; done = 1
+        }
+        { print }
+        END {
+            if (intl) { print l; done = 1 }
+            else if (!done) { print ""; print "## Test log"; print ""; print l }
+        }
+    ' "$file" > "$tmp" && cat "$tmp" > "$file"
+    rm -f "$tmp"
+}
+
+# sprintbias_file_fix_task ORIGINAL_ID "report" [TITLE] -> file a linked fix
+# task for a rejected review/ task (TITLE defaults to "Fix #ID: <its title>"). One shared path for promote --reject and for failing
+# suite output (plan sign-off). The fix task goes through create-task.sh, so its
+# id is drawn under the id lock, and carries:
+#   **Fixes**: #ORIGINAL_ID, plus the original's **Crew**, **Plan** and **Tests**
+#     (and a member line on that plan, right under the original's)
+#   ## Done when (automated) — one "add a test" line per reported item; an item
+#     marked 'human:' / 'signoff:', or one about look, feel or wording, goes
+#     under ## Signoff (human) instead
+#   ## Test log — the report verbatim
+# Items: each '- ' / '* ' / 'N. ' bullet, else each blank-line paragraph (a
+# multi-line error excerpt stays one item). The original stays in review/ with
+# '**Held**: fix #NEW' and a Test log line. Each dependent of the original that
+# is landed (review/ + proof) or signed off (done/) gets a re-check line in its
+# ## Test log; done/ dependents are flagged in the output and never moved.
+# Sets SPRINTBIAS_FIX_ID / SPRINTBIAS_FIX_TASK. Returns 1 (message on stderr)
+# when ORIGINAL_ID is not in review/, the report is empty, or creation fails.
+sprintbias_file_fix_task() {
+    local orig_id="$1" report="$2" orig title out fix fid today
+    local crew plan tests held items item first testable="" human="" proofcmd=""
+    local dep dpath stage p kind
+    SPRINTBIAS_FIX_ID=""; SPRINTBIAS_FIX_TASK=""
+    orig=$(sprintbias_task_path "$orig_id") || orig=""
+    case "$orig" in
+        docs/tasks/review/*) ;;
+        "") echo "✗ No task #$orig_id found." >&2; return 1 ;;
+        *)  echo "✗ #$orig_id is in ${orig#docs/tasks/}; only a review/ task can be rejected." >&2
+            echo "  ${orig%/*}/ is not review/ — reject works on landed work waiting for sign-off." >&2
+            return 1 ;;
+    esac
+    if [ -z "$(printf '%s' "$report" | tr -d '[:space:]')" ]; then
+        echo "✗ Say what is wrong: the report becomes the fix task's tests." >&2
+        return 1
+    fi
+    today="${SPRINTBIAS_TODAY:-$(date +%Y-%m-%d)}"
+    title=$(task_title "$orig")
+    out=$(bash "$_SPRINTBIAS_LIB_DIR/scripts/create-task.sh" "${3:-Fix #$orig_id: $title}" 2>&1) || {
+        printf '%s\n' "$out" >&2; return 1; }
+    fix=$(printf '%s\n' "$out" | grep -oE 'docs/tasks/backlog/[^ ]+\.md' | tail -1)
+    [ -n "$fix" ] && [ -f "$fix" ] || { printf '%s\n' "$out" >&2; return 1; }
+    fid=$(task_id "$fix")
+
+    crew=$(sprintbias_meta_value "$orig" "Crew")
+    plan=$(sprintbias_meta_value "$orig" "Plan")
+    tests=$(sprintbias_meta_value "$orig" "Tests")
+    _sprintbias_write_field "$fix" "Fixes" "#$orig_id" || true
+    [ -n "$crew" ] && _sprintbias_write_field "$fix" "Crew" "$crew"
+    [ -n "$tests" ] && _sprintbias_write_field "$fix" "Tests" "$tests"
+    case "$tests" in ""|none|None) ;; *)
+        for p in $(printf '%s' "$tests" | tr ',' ' '); do
+            proofcmd="${proofcmd:+$proofcmd, }\`bash $p\`"
+        done ;;
+    esac
+
+    # Each reported item → a test to add, or a human check.
+    items=$(printf '%s\n' "$report" | awk '
+        function emit() { if (cur != "") print cur; cur = "" }
+        /^[[:space:]]*$/ { emit(); next }
+        /^[[:space:]]*([-*]|[0-9]+[.)])[[:space:]]+/ {
+            emit(); sub(/^[[:space:]]*([-*]|[0-9]+[.)])[[:space:]]+/, ""); cur = $0; bul = 1; next }
+        { sub(/^[[:space:]]+/, ""); cur = (cur == "") ? $0 : cur " " $0 }
+        END { emit() }')
+    while IFS= read -r item; do
+        [ -n "$item" ] || continue
+        first="$item"
+        [ "${#first}" -gt 160 ] && first="${first:0:157}..."
+        if printf '%s' "$item" | grep -qiE '^(human|signoff):'; then
+            human="$human- [ ] $(printf '%s' "$first" | sed -E 's/^[A-Za-z]+:[[:space:]]*//')
+"
+        elif printf '%s' "$item" | grep -qiE '(^|[^a-z])(looks?|feels?|wording|tone|ugly|confusing|hard to read)([^a-z]|$)'; then
+            human="$human- [ ] $first
+"
+        else
+            testable="$testable- [ ] Add a test that fails on this, then make it pass: $first${proofcmd:+ ($proofcmd)}
+"
+        fi
+    done <<EOF
+$items
+EOF
+    [ -n "$proofcmd" ] && testable="$testable- [ ] The original's tests still pass: $proofcmd
+"
+    [ -n "$testable" ] || testable="- [ ] Name the test that proves #$orig_id is fixed, in backticks.
+"
+
+    SB_DW="$testable" SB_SO="$human" SB_REP="$report" \
+    awk -v oid="$orig_id" -v otitle="$title" -v opath="$orig" -v today="$today" '
+        BEGIN { dw = ENVIRON["SB_DW"]; so = ENVIRON["SB_SO"]; rep = ENVIRON["SB_REP"] }
+        /^## Problem[[:space:]]*$/ {
+            print; print ""
+            print "Task #" oid " (" otitle ") was sent back from review on " today "."
+            print "The reported problems are under ## Test log. Fix them in this task; #" oid
+            print "stays in review/ (Held) and releases its dependents once this lands."
+            print ""; skip = 1; next }
+        /^## Done when \(automated\)[[:space:]]*$/ { print; print ""; printf "%s", dw; print ""; skip = 1; next }
+        /^## Signoff \(human\)[[:space:]]*$/ { print; print ""; if (so != "") { printf "%s", so; print "" } ; skip = 1; next }
+        /^## References[[:space:]]*$/ {
+            print; print ""; print opath; print ""
+            print "## Test log"; print ""
+            print "- " today " · sent back from review (#" oid "):"; print ""
+            print "```"; print rep; print "```"; print ""
+            skip = 1; next }
+        /^## / { skip = 0 }
+        /^<!-- sb:hint  After work only/ || /^<!-- sb:hint[[:space:]]*$/ { skip = 0 }
+        skip { next }
+        { print }
+    ' "$fix" > "$fix.tmp" && mv "$fix.tmp" "$fix"
+
+    # **Plan**: list the fix on the original's plan (the plan file is the
+    # membership authority), right under the original's member line.
+    case "$plan" in ""|none|None) ;; *)
+        p=$(sprintbias_find_plan "$plan" 2>/dev/null || true)
+        if [ -n "$p" ] && [ -f "$p" ]; then
+            SB_LINE="- #$fid — $(task_title "$fix")" awk -v oid="$orig_id" '
+                BEGIN { line = ENVIRON["SB_LINE"] }
+                { print }
+                !ins && $0 ~ ("^- (\\[[ xX]\\] )?#" oid "([^0-9]|$)") { print line; ins = 1 }
+            ' "$p" > "$p.tmp" && mv "$p.tmp" "$p"
+        fi
+        sprintbias_set_task_plan "$fix" "$plan" >/dev/null || true ;;
+    esac
+
+    # The original stays in review/ and holds its dependents until the fix lands.
+    held=$(sprintbias_meta_value "$orig" "Held")
+    _sprintbias_write_field "$orig" "Held" "${held:+$held, }fix #$fid" || true
+    sprintbias_add_test_log "$orig" "- $today · sent back: $(printf '%s\n' "$report" | head -1) → fix #$fid"
+
+    SPRINTBIAS_FIX_ID="$fid"; SPRINTBIAS_FIX_TASK="$fix"
+    echo "✓ Filed fix task #$fid → $fix"
+    echo "  **Fixes**: #$orig_id · **Crew**: ${crew:-none} · **Plan**: ${plan:-none}"
+    echo "  #$orig_id stays in review/ with **Held**: fix #$fid"
+
+    # Dependent trace.
+    for dep in $(sprintbias_dependents_of "$orig_id"); do
+        dpath=$(sprintbias_task_path "$dep") || continue
+        stage=$(sprintbias_task_stage "$dep")
+        kind=""
+        case "$stage" in
+            done)   kind="signed off" ;;
+            review) sprintbias_has_proof "$dpath" && kind="landed" ;;
+        esac
+        if [ -z "$kind" ]; then
+            echo "  · #$dep ($stage) waits on #$orig_id — held until fix #$fid lands"
+            continue
+        fi
+        sprintbias_add_test_log "$dpath" "- $today · re-check: prerequisite #$orig_id was sent back (fix #$fid); re-run this task's tests once #$fid lands"
+        if [ "$stage" = "done" ]; then
+            echo "  ⚑ #$dep is signed off (done/) and builds on #$orig_id — re-check line added, not moved"
+        else
+            echo "  ↺ #$dep ($kind) builds on #$orig_id — re-check line added to its ## Test log"
+        fi
+    done
+    return 0
+}
+
 # sprintbias_unmet_deps FILE -> prints the space-separated dependency task IDs that
-# are NOT yet complete: those still sitting in backlog/, next/, doing/, or
-# blocked/. Empty output means every declared dependency is complete (has reached
-# review/ or done/) or none were declared — so the task is clear to run.
+# are NOT yet met: those still in backlog/, next/, doing/, or blocked/, and
+# those in review/ without a proof line (in review, unproven). Empty output
+# means every declared dependency has landed (review/ with proof) or is signed
+# off (done/), or none were declared — so the task is clear to run.
 #
 # Reads the '**Depends on**:' metadata field via sprintbias_iter_id_list. 'none',
 # an empty value, or a missing field all mean no dependencies. An ID that
@@ -1346,8 +1767,8 @@ sprintbias_iter_id_list() {
 # and was archived), so a stale reference can never wedge a queue. Malformed
 # tokens are ignored here (queue gating); validate-tasks.sh reports them.
 # Lexicon: unmet deps put the task on hold (dependent) — they do not make it
-# blocked. Self-clearing: as each dependency lands in review/, the dependent
-# becomes runnable on the next pass with no human action.
+# blocked. Self-clearing: as each dependency lands in review/ with proof, the
+# dependent becomes runnable on the next pass with no human action.
 sprintbias_unmet_deps() {
     local file="$1" raw id unmet=""
     raw=$(sprintbias_meta_value "$file" "Depends on")
@@ -1355,8 +1776,8 @@ sprintbias_unmet_deps() {
     while read -r kind tok; do
         [ "$kind" = "id" ] || continue
         id="$tok"
-        if find docs/tasks/backlog docs/tasks/next docs/tasks/doing docs/tasks/blocked \
-              -maxdepth 1 -name "${id}-*.md" 2>/dev/null | grep -q .; then
+        # Missing → archived-complete; otherwise the shared landed rule decides.
+        if [ -n "$(sprintbias_task_stage "$id")" ] && ! sprintbias_dep_landed "$id"; then
             unmet="$unmet $id"
         fi
     done <<EOF
@@ -1651,6 +2072,73 @@ sprintbias_plan_member_ids() {
         | { grep -oE '[0-9]+' || true; } | awk '!seen[$0]++'
 }
 
+# sprintbias_plan_waves PLAN_FILE -> the plan's open members laid out in waves
+# for parallel work: wave 1 has no open in-plan prerequisite, wave N waits only
+# on earlier waves. Each line names the task, its stage, its **Crew** holder,
+# and what it waits on. Finished members (review/, done/) are left out. A
+# dependency cycle is listed as Unordered rather than looping. bash 3.2: plain
+# space-padded strings, no associative arrays. Always returns 0.
+sprintbias_plan_waves() {
+    local plan="$1" id path stage open=" " deps=" " remaining wave=0 ready line
+    local d crew after outside
+    for id in $(sprintbias_plan_member_ids "$plan"); do
+        stage="$(sprintbias_task_stage "$id" 2>/dev/null || true)"
+        case "$stage" in backlog|next|doing|blocked) open="$open$id " ;; esac
+    done
+    [ "$open" = " " ] && { echo "Every member is finished (review/ or done/)."; return 0; }
+    # deps: "id:dep,dep;" pairs, in-plan open prerequisites only.
+    for id in $open; do
+        path="$(sprintbias_task_path "$id" 2>/dev/null || true)"
+        d=""
+        while read -r kind tok; do
+            [ "$kind" = id ] && case "$open" in *" $tok "*) d="$d$tok," ;; esac
+        done <<EOF
+$(sprintbias_iter_id_list "$(sprintbias_meta_value "$path" "Depends on")")
+EOF
+        deps="$deps$id:$d; "
+    done
+    remaining="$open"
+    while [ -n "${remaining// /}" ]; do
+        ready=""
+        for id in $remaining; do
+            d="${deps#* $id:}"; d="${d%%;*}"
+            local blocked=0 x
+            for x in ${d//,/ }; do
+                case "$remaining" in *" $x "*) blocked=1 ;; esac
+            done
+            [ "$blocked" -eq 0 ] && ready="$ready$id "
+        done
+        if [ -z "$ready" ]; then
+            echo "Unordered (a dependency cycle holds these; settle it first):"
+            for id in $remaining; do echo "- #$id"; done
+            break
+        fi
+        wave=$((wave + 1))
+        if [ "$wave" -eq 1 ]; then
+            echo "Wave 1 (start together):"
+        else
+            echo "Wave $wave (each starts when its own prerequisites land in review/ with proof):"
+        fi
+        for id in $ready; do
+            path="$(sprintbias_task_path "$id" 2>/dev/null || true)"
+            stage="$(sprintbias_task_stage "$id" 2>/dev/null || true)"
+            line="- #$id $(task_title "$path") [$stage/]"
+            crew="$(sprintbias_meta_value "$path" Crew)"
+            case "$crew" in ''|[Nn]one) ;; *) line="$line crew: $crew" ;; esac
+            d="${deps#* $id:}"; d="${d%%;*}"; d="${d%,}"
+            [ -n "$d" ] && line="$line, after #${d//,/, #}"
+            outside=""
+            for x in $(sprintbias_unmet_deps "$path"); do
+                case "$open" in *" $x "*) ;; *) outside="$outside #$x" ;; esac
+            done
+            [ -n "$outside" ] && line="$line, waits outside the plan on$outside"
+            echo "$line"
+            remaining="${remaining/ $id / }"
+        done
+    done
+    return 0
+}
+
 # sprintbias_plan_file_id PLAN_FILE -> the numeric plan id from its filename.
 sprintbias_plan_file_id() {
     local b="${1##*/}"
@@ -1775,6 +2263,334 @@ sprintbias_plan_member_rollup() {
 $(sprintbias_plan_member_ids "$f")
 EOF
     printf '%s/%s' "$done" "$total"
+}
+
+# sprintbias_member_standing ID -> where a plan member stands, by plan 28's
+# policy: open (backlog/next/doing/blocked) · landed (review/ with proof) ·
+# held (review/ with proof, a **Held**: fix not yet landed — show it with
+# sprintbias_held_label) · unproven (review/ without proof, held or not —
+# $SPRINTBIAS_UNPROVEN_LABEL) · signed-off (done/) · missing (no task file) ·
+# human (the plan's human test, not yet in done/ — the person's turn, never
+# agent work, so it never keeps a plan from LANDED).
+# The landed test is sprintbias_dep_landed, the one rule dependents use;
+# nothing is stamped.
+sprintbias_member_standing() {
+    local path
+    path=$(sprintbias_task_path "$1") || { printf 'missing'; return 0; }
+    case "$path" in
+        docs/tasks/done/*)   printf 'signed-off'; return 0 ;;
+    esac
+    sprintbias_is_human_task "$path" && { printf 'human'; return 0; }
+    case "$path" in
+        docs/tasks/review/*)
+            if ! sprintbias_has_proof "$path"; then printf 'unproven'
+            elif sprintbias_dep_landed "$1"; then printf 'landed'
+            else printf 'held'
+            fi ;;
+        *)                   printf 'open' ;;
+    esac
+}
+
+# sprintbias_held_open_fixes ID -> the fix ids on ID's **Held**: line that
+# have not landed yet, one per line. Empty when ID holds on nothing.
+sprintbias_held_open_fixes() {
+    local path fix
+    path=$(sprintbias_task_path "$1") || return 0
+    for fix in $(sprintbias_held_fixes "$path"); do
+        sprintbias_dep_landed "$fix" || printf '%s\n' "$fix"
+    done
+    return 0
+}
+
+# sprintbias_held_label ID -> how a held member reads everywhere (plan check,
+# status, promote plan:N): 'held: fix #412', or 'held: fix #412, fix #415'.
+sprintbias_held_label() {
+    local fixes
+    fixes=$(sprintbias_held_open_fixes "$1" | sed 's/^/fix #/' | paste -sd, - | sed 's/,/, /g')
+    printf 'held: %s' "$fixes"
+}
+
+# sprintbias_plan_open_fixes PLAN_FILE -> "FIX_ID TARGET_ID" per open fix task:
+# a task in backlog/next/doing/blocked carrying '**Fixes**: #N', where N or the
+# fix task itself is a member of the plan. An open fix is open plan work.
+sprintbias_plan_open_fixes() {
+    local members stage f fid target
+    members=" $(sprintbias_plan_member_ids "$1" | tr '\n' ' ') "
+    for stage in "${SPRINTBIAS_OPEN_STAGES[@]}"; do
+        for f in docs/tasks/"$stage"/[0-9]*.md; do
+            [ -f "$f" ] || continue
+            target=$(sprintbias_meta_value "$f" "Fixes" | grep -oE '[0-9]+' | head -1) || true
+            [ -n "$target" ] || continue
+            fid=$(task_id "$f")
+            case "$members" in
+                *" $target "*|*" $fid "*) printf '%s %s\n' "$fid" "$target" ;;
+            esac
+        done
+    done
+    return 0
+}
+
+# sprintbias_plan_counts PLAN_FILE -> one line of counts from live folders:
+#   "open landed signed unproven missing total fixes moved held human"
+# The plan's human test is not agent work: until it reaches done/ it counts
+# only as human (an open human test), never in total.
+# open/landed/signed are plan 28's three counts; unproven = review/ without
+# proof; fixes = open fix tasks (sprintbias_plan_open_fixes); moved = members
+# past next/ (doing/review/done); held = review/ with proof and a fix not yet
+# landed. held and human come last so readers of the first eight fields stay
+# correct.
+sprintbias_plan_counts() {
+    local f="$1" mid st open=0 landed=0 signed=0 unproven=0 missing=0 total=0 moved=0 held=0 human=0 fixes
+    while IFS= read -r mid; do
+        [ -n "$mid" ] || continue
+        total=$((total + 1))
+        st=$(sprintbias_member_standing "$mid")
+        case "$st" in
+            open)       open=$((open + 1))
+                        [ "$(sprintbias_task_stage "$mid")" = "doing" ] && moved=$((moved + 1)) ;;
+            landed)     landed=$((landed + 1)); moved=$((moved + 1)) ;;
+            unproven)   unproven=$((unproven + 1)); moved=$((moved + 1)) ;;
+            held)       held=$((held + 1)); moved=$((moved + 1)) ;;
+            signed-off) signed=$((signed + 1)); moved=$((moved + 1)) ;;
+            human)      total=$((total - 1)); human=$((human + 1)) ;;
+            *)          missing=$((missing + 1)) ;;
+        esac
+    done <<EOF
+$(sprintbias_plan_member_ids "$f")
+EOF
+    fixes=$(sprintbias_plan_open_fixes "$f" | grep -c . || true)
+    printf '%s %s %s %s %s %s %s %s %s %s\n' "$open" "$landed" "$signed" "$unproven" \
+        "$missing" "$total" "${fixes:-0}" "$moved" "$held" "$human"
+}
+
+# sprintbias_plan_state PLAN_FILE -> the plan state, computed from the folders
+# and never stamped into the file (the **Status:** latch stays DRAFT/READY/
+# STARTED):
+#   SIGNED OFF  every member in done/ — plan done can retire it
+#   LANDED      every member landed or signed off, none open, no open fix —
+#               ready for the full suite and sign-off (and the human test,
+#               which stays open until the batch closes it)
+#   STARTED     work open
+#   not started latch not STARTED and no member past next/
+#   empty       no members
+sprintbias_plan_state() {
+    local f="$1" open landed signed unproven missing total fixes moved held human latch
+    read -r open landed signed unproven missing total fixes moved held human <<EOF
+$(sprintbias_plan_counts "$f")
+EOF
+    latch=$({ grep -m1 -E '^\*\*Status:\*\*' "$f" 2>/dev/null || true; } \
+        | sed 's/.*\*\*Status:\*\*[[:space:]]*//' | tr -d '[:space:]')
+    if [ "$total" -eq 0 ]; then printf 'empty'
+    elif [ "$signed" -eq "$total" ] && [ "$human" -eq 0 ]; then printf 'SIGNED OFF'
+    elif [ $((landed + signed)) -eq "$total" ] && [ "$fixes" -eq 0 ]; then printf 'LANDED'
+    elif [ "$latch" != "STARTED" ] && [ "$moved" -eq 0 ] && [ "$fixes" -eq 0 ]; then printf 'not started'
+    else printf 'STARTED'
+    fi
+}
+
+# ── The human test: one per plan ─────────────────────────────────────
+# Agents build a plan on reasonable assumptions and land each task in review/
+# without waiting on a person. What only a person can check (real hardware,
+# the live product, look and feel) gathers in ONE task per plan, the human
+# test: **Owner**: human, listed last in the plan, parked in review/ (the
+# human's folder). Agents never work it. Its ## Signoff (human) collects the
+# plan's and every member's Signoff (human) items and each member's
+# ### Assumptions; the human writes '- fail: <what you saw>' under ## Results,
+# and promote plan:N turns each into a fix task the agents build. It moves to
+# done/ with the plan's batch.
+
+# sprintbias_is_human_task FILE -> exit 0 when the task is **Owner**: human.
+sprintbias_is_human_task() {
+    [ "$(sprintbias_meta_value "$1" "Owner" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')" = "human" ]
+}
+
+# sprintbias_plan_human_test PLAN_FILE -> path of the plan's human test (the
+# first member marked **Owner**: human), or nothing.
+sprintbias_plan_human_test() {
+    local mid path
+    for mid in $(sprintbias_plan_member_ids "$1"); do
+        path=$(sprintbias_task_path "$mid") || continue
+        sprintbias_is_human_task "$path" && { printf '%s' "$path"; return 0; }
+    done
+    return 0
+}
+
+# _sprintbias_items FILE MODE -> one item per line, bullet and checkbox
+# stripped, comments dropped; a wrapped bullet joins its first line.
+#   MODE signoff  the ## Signoff (human) body
+#   MODE assumed  the ### Assumptions body under ## Completed
+_sprintbias_items() {
+    awk -v mode="$2" '
+        function flush() { if (cur != "") print cur; cur = "" }
+        mode == "signoff" && /^## Signoff \(human\)[[:space:]]*$/ { cap = 1; next }
+        mode == "assumed" && /^## Completed[[:space:]]*$/ { inc = 1; next }
+        mode == "assumed" && inc && /^### Assumptions[[:space:]]*$/ { cap = 1; next }
+        cap && /^#/ { flush(); exit }
+        mode == "assumed" && /^## / { inc = 0 }
+        !cap { next }
+        incom { if (index($0, "-->")) incom = 0; next }
+        {
+            gsub(/<!--.*-->/, "")
+            if (index($0, "<!--")) { sub(/<!--.*/, ""); incom = 1 }
+            if ($0 !~ /[^[:space:]]/) { flush(); next }
+            if ($0 ~ /^[[:space:]]*[-*][[:space:]]/) {
+                flush(); line = $0
+                sub(/^[[:space:]]*[-*][[:space:]]+(\[[ xX]\][[:space:]]*)?/, "", line)
+                cur = line
+            } else if (cur != "") {
+                line = $0; sub(/^[[:space:]]+/, "", line); cur = cur " " line
+            }
+        }
+        END { flush() }
+    ' "$1" 2>/dev/null | { grep -E '[^[:space:]]' || true; }
+}
+
+# sprintbias_plan_human_checks PLAN_FILE -> the human test's checklist, one
+# '- [ ] …' line per check: the plan's own Signoff (human) items, then each
+# agent member's, tagged '#ID:', then its assumptions, tagged '#ID assumed:'.
+sprintbias_plan_human_checks() {
+    local plan="$1" mid path item
+    while IFS= read -r item; do
+        [ -n "$item" ] && printf -- '- [ ] %s\n' "$item"
+    done <<EOT
+$(_sprintbias_items "$plan" signoff)
+EOT
+    for mid in $(sprintbias_plan_member_ids "$plan"); do
+        path=$(sprintbias_task_path "$mid") || continue
+        sprintbias_is_human_task "$path" && continue
+        while IFS= read -r item; do
+            [ -n "$item" ] && printf -- '- [ ] #%s: %s\n' "$mid" "$item"
+        done <<EOT
+$(_sprintbias_items "$path" signoff)
+EOT
+        # A Decided: line is a call the agent made, shown at the end of the run
+        # with a newtask line to change it; it is not a check for the person.
+        while IFS= read -r item; do
+            case "$item" in ""|Decided:*|\*\*Decided:*) continue ;; esac
+            printf -- '- [ ] #%s assumed: %s\n' "$mid" "$item"
+        done <<EOT
+$(_sprintbias_items "$path" assumed)
+EOT
+    done
+    return 0
+}
+
+# _sprintbias_insert_after FILE HEADING_RE ITEM_RE -> insert $SB_ADD (lines,
+# newline-terminated) after the last ITEM_RE line of the HEADING_RE section,
+# or right under the heading when the section has none. With no such heading,
+# after the file's last ITEM_RE line, else at the end.
+_sprintbias_insert_after() {
+    awk -v h="$2" -v it="$3" '
+        { buf[NR] = $0 }
+        $0 ~ it { any = NR }
+        !head && $0 ~ h { head = NR; sec = 1; next }
+        sec && /^## / { sec = 0 }
+        sec && $0 ~ it { last = NR }
+        END {
+            at = last ? last : (head ? head : any)
+            if (!at) { at = NR; print_blank = 1 }
+            for (i = 1; i <= NR; i++) {
+                print buf[i]
+                if (i == at) { if (!last && (head || print_blank)) print ""; printf "%s", ENVIRON["SB_ADD"] }
+            }
+        }
+    ' "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+}
+
+# sprintbias_plan_ensure_human_test PLAN_FILE -> create or refresh the plan's
+# human test and print its path. Creates it (in review/, listed last in the
+# plan) only when the plan has human checks; a refresh appends only checks it
+# does not already list, so a re-run that finds nothing new writes nothing.
+sprintbias_plan_ensure_human_test() {
+    local plan="$1" pid title checks ht new line have out fix fid today
+    pid=$(sprintbias_plan_file_id "$plan")
+    checks=$(sprintbias_plan_human_checks "$plan")
+    ht=$(sprintbias_plan_human_test "$plan")
+    if [ -n "$ht" ]; then
+        have=$(_sprintbias_items "$ht" signoff)
+        new=""
+        while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            printf '%s\n' "$have" | grep -qxF -- "${line#- \[ \] }" && continue
+            new="$new$line
+"
+        done <<EOT
+$checks
+EOT
+        if [ -n "$new" ]; then
+            SB_ADD="$new" _sprintbias_insert_after "$ht" '^## Signoff \\(human\\)[[:space:]]*$' '^[[:space:]]*[-*][[:space:]]'
+        fi
+        printf '%s' "$ht"
+        return 0
+    fi
+    [ -n "$checks" ] || return 0
+
+    title=$(grep -m1 '^# ' "$plan" 2>/dev/null | sed 's/^# *//; s/^Plan [0-9]*: *//')
+    out=$(bash "$_SPRINTBIAS_LIB_DIR/scripts/create-task.sh" "Human test for plan $pid: $title" 2>&1) || {
+        printf '%s\n' "$out" >&2; return 1; }
+    fix=$(printf '%s\n' "$out" | grep -oE 'docs/tasks/backlog/[^ ]+\.md' | tail -1)
+    [ -n "$fix" ] && [ -f "$fix" ] || { printf '%s\n' "$out" >&2; return 1; }
+    fid=$(task_id "$fix")
+    today="${SPRINTBIAS_TODAY:-$(date +%Y-%m-%d)}"
+    cat > "$fix" <<EOT
+# Task $fid: Human test for plan $pid: $title
+
+**Owner**: human
+**Created**: $today
+**Plan**: $pid
+**Depends on**: none
+**Tests**: none
+
+## Problem
+
+Agents built plan $pid on reasonable assumptions and simulated tests, and kept
+moving. This is the one pass a person makes in the real world: on hardware,
+in the live product, by eye. Run it when \`./sprint.sh plan check $pid\` reads
+LANDED (earlier is fine; what you find feeds the agents sooner).
+
+## Signoff (human)
+
+$checks
+
+## Results
+
+<!-- sb:hint  One line per check that failed, in your words:
+       - fail: the LED stays red after pairing
+     ./sprint.sh promote plan:$pid files each one as a fix task the agents
+     build, then asks you to re-run this test. All passed: leave this empty
+     and approve the batch. -->
+EOT
+    move_file "$fix" "docs/tasks/review/${fix##*/}"
+    fix="docs/tasks/review/${fix##*/}"
+    SB_ADD="- #$fid — Human test for plan $pid
+" _sprintbias_insert_after "$plan" '^## Member tasks[[:space:]]*$' '^- (\\[[ xX]\\] )?#[0-9]+'
+    printf '%s' "$fix"
+}
+
+# sprintbias_human_test_file_failures HT_FILE -> file one fix task per
+# '- fail: …' line under the human test's ## Results and mark the line
+# '- filed #N: …' so it is never filed twice. Prints how many it filed.
+sprintbias_human_test_file_failures() {
+    local ht="$1" hid line text n=0
+    hid=$(task_id "$ht")
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        text=$(printf '%s' "$line" | sed -E 's/^[[:space:]]*[-*][[:space:]]*[Ff][Aa][Ii][Ll]:[[:space:]]*//')
+        sprintbias_file_fix_task "$hid" "$text" "Fix #$hid: $(printf '%s' "$text" | cut -c1-60)" >/dev/null || continue
+        SB_OLD="$line" SB_NEW="- filed #$SPRINTBIAS_FIX_ID: $text" awk '
+            BEGIN { o = ENVIRON["SB_OLD"]; nw = ENVIRON["SB_NEW"] }
+            !d && $0 == o { print nw; d = 1; next } { print }
+        ' "$ht" > "$ht.tmp" && mv "$ht.tmp" "$ht"
+        echo "    fix #$SPRINTBIAS_FIX_ID ← $text" >&2
+        n=$((n + 1))
+    done <<EOT
+$(awk '/^## Results[[:space:]]*$/ { cap = 1; next } cap && /^## / { exit }
+       !cap { next }
+       incom { if (index($0, "-->")) incom = 0; next }
+       index($0, "<!--") { if (!index($0, "-->")) incom = 1; next }
+       /^[[:space:]]*[-*][[:space:]]*[Ff][Aa][Ii][Ll]:/ { print }' "$ht" 2>/dev/null)
+EOT
+    printf '%s' "$n"
 }
 
 # sprintbias_list_plans -> one line per plan for interactive pickers:
@@ -2118,7 +2934,8 @@ sprintbias_emit_prompt() {
 # human still sees the line without double-printing on a normal terminal.
 # Optional args: when called as sprintbias_announce_provider "$@" from
 # sprintbias_run, peeks for --model <id> and appends · model: <id> so the
-# pin the CLI will receive is visible before "session started (…)".
+# pin the CLI will receive is visible before "session started (…)". Ends with
+# · fast: on|off so the session's mode reads at a glance.
 sprintbias_announce_provider() {
     [ -n "${_SPRINTBIAS_PROVIDER_ANNOUNCED:-}" ] && return 0
     _SPRINTBIAS_PROVIDER_ANNOUNCED=1
@@ -2140,6 +2957,7 @@ sprintbias_announce_provider() {
     else
       line=$(printf '▸ Provider: %s (%s) · mode: %s' "$cli" "$tier" "$mode")
     fi
+    line="$line · fast: $(sprintbias_fast_state)"
     printf '%s\n' "$line" >&2
     if [ ! -t 2 ] && { true >/dev/tty; } 2>/dev/null; then
         printf '%s\n' "$line" >/dev/tty 2>/dev/null || true
@@ -2148,8 +2966,12 @@ sprintbias_announce_provider() {
 
 # sprintbias_run — route an AI request to emit or exec based on the mode.
 # Same argument surface as the provider profiles.
+# In fast mode the run skips the CLI's permission prompts: --skip-permissions
+# leads the args, and every profile lets it win over the call site's
+# --permissions. Human-owned actions stay walled by rule, not by prompt.
 sprintbias_run() {
     sprintbias_announce_provider "$@"
+    sprintbias_fast_on && set -- --skip-permissions "$@"
     SPRINTBIAS_LAST_MODE="$(sprintbias_ai_mode)"
     if [ "$SPRINTBIAS_LAST_MODE" = "emit" ]; then
         sprintbias_emit_prompt "$@"
@@ -2269,8 +3091,10 @@ sprintbias_tty() {
 #          inherits the terminal (no stdout capture, no -p/JSON) so the CLI
 #          stays in its REPL. Otherwise degrade to the one-shot exec path.
 # Used by chat.sh — the one command that is a dialogue rather than a job.
+# Fast mode adds --skip-permissions here too, as in sprintbias_run.
 sprintbias_run_interactive() {
     sprintbias_announce_provider "$@"
+    sprintbias_fast_on && set -- --skip-permissions "$@"
     SPRINTBIAS_LAST_MODE="$(sprintbias_ai_mode)"
     if [ "$SPRINTBIAS_LAST_MODE" = "emit" ]; then
         sprintbias_emit_prompt "$@"

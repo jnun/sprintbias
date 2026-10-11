@@ -9,6 +9,9 @@
 #   1. The stage-aware hold-line + outcome-stamp helpers, sourced straight out of
 #      the real work.sh so an assert tracks the shipped body (extracted by name,
 #      not copied): _format_dep, _needs_clause, _stamp_outcome, _outcome_brief.
+#   1b. The plan 28 proof rule (#398): sprintbias_has_proof, sprintbias_dep_landed
+#      and sprintbias_unmet_deps release a dependent on done/ or proven review/
+#      work and hold it on review/ without a **Proof**: line.
 #   2. `work N` end to end for the two paths that resolve before any AI: a doing/
 #      task is offered a resume, and a next/ task with an open prereq is held.
 #
@@ -40,7 +43,7 @@ extract_fn() {  # NAME FILE
         grab && /^\}/ { exit }
     ' "$2"
 }
-for fn in _strip_outcome _stamp_outcome _outcome_brief _format_dep _needs_clause; do
+for fn in _strip_outcome _stamp_outcome _outcome_brief _format_dep _needs_clause _unproven_note; do
     eval "$(extract_fn "$fn" "$WORK")"
 done
 
@@ -48,7 +51,7 @@ cd "$BOARD"
 
 assert_contains() {
     local desc="$1" haystack="$2" needle="$3"
-    if printf '%s' "$haystack" | grep -qF "$needle"; then
+    if grep -qF "$needle" <<<"$haystack"; then
         echo "  PASS: $desc"; PASS=$((PASS + 1))
     else
         echo "  FAIL: $desc (expected to contain '$needle'; got '$haystack')"; FAIL=$((FAIL + 1))
@@ -86,6 +89,41 @@ echo "_needs_clause renders a canary's whole unmet set through _format_dep"
 # 9060 depends on the never-lifted backlog task 9009.
 assert_contains "9060's needs clause points at chat 9009" \
     "$(_needs_clause docs/tasks/next/9060-*.md)" "chat 9009"
+
+# ── Landed vs in review, unproven (plan 28 proof rule, #398) ───────────
+echo "sprintbias_has_proof reads a passing **Proof**: line under ## Completed"
+proof_probe() {  # BODY -> path of a throwaway review/ file holding BODY
+    local f="$BOARD/docs/tasks/review/9998-proof-probe.md"
+    printf '# Task 9998: Proof probe\n\n**Depends on**: none\n\n%b' "$1" > "$f"
+    printf '%s' "$f"
+}
+assert_eq "9002 (review/ + proof line) has proof" "yes" \
+    "$(sprintbias_has_proof docs/tasks/review/9002-*.md && echo yes || echo no)"
+assert_eq "9021 (review/, no proof line) has no proof" "no" \
+    "$(sprintbias_has_proof docs/tasks/review/9021-*.md && echo yes || echo no)"
+f="$(proof_probe '## Notes\n\n**Proof**: 2026-10-08 · bash x.sh · pass\n')"
+assert_eq "a proof line outside ## Completed does not count" "no" \
+    "$(sprintbias_has_proof "$f" && echo yes || echo no)"
+f="$(proof_probe '## Completed\n\n**Proof**: 2026-10-08 · bash x.sh · fail\n')"
+assert_eq "a proof line that records a failure does not count" "no" \
+    "$(sprintbias_has_proof "$f" && echo yes || echo no)"
+f="$(proof_probe '## Completed\n\n### Files changed\na.sh\n\n**Proof**: 2026-10-08 · bash x.sh · pass\n')"
+assert_eq "a proof line below ### Files changed still counts" "yes" \
+    "$(sprintbias_has_proof "$f" && echo yes || echo no)"
+rm -f "$BOARD/docs/tasks/review/9998-proof-probe.md"
+
+echo "sprintbias_dep_landed is the one met rule: done/, or review/ with proof"
+assert_eq "done/ prereq (9001) is met" "yes" "$(sprintbias_dep_landed 9001 && echo yes || echo no)"
+assert_eq "proven review/ prereq (9002) is met" "yes" "$(sprintbias_dep_landed 9002 && echo yes || echo no)"
+assert_eq "unproven review/ prereq (9021) is not met" "no" "$(sprintbias_dep_landed 9021 && echo yes || echo no)"
+
+echo "sprintbias_unmet_deps releases on landed work and holds on unproven review/"
+assert_eq "dependent on done/ (9085) is released" "" "$(sprintbias_unmet_deps docs/tasks/next/9085-*.md)"
+assert_eq "dependent on done/ + proven review/ (9050) is released" "" \
+    "$(sprintbias_unmet_deps docs/tasks/next/9050-*.md)"
+assert_eq "dependent on unproven review/ (9090) holds on 9021" "9021" \
+    "$(sprintbias_unmet_deps docs/tasks/next/9090-*.md)"
+assert_contains "hold line says in review, unproven" "$(_format_dep 9021)" "in review, unproven"
 
 # ── `## Outcome` stamp on an incomplete / failed / blocked route ───────
 echo "_stamp_outcome writes a durable, idempotent Outcome block a hold line can read"
@@ -125,6 +163,14 @@ out="$(bash "$WORK" 9051 2>&1)"; rc=$?
 set -e
 assert_eq "a next/ task with an open prereq exits 0 (held, not failed)" "0" "$rc"
 assert_contains "…and names the id it waits on" "$out" "9003"
+
+set +e
+out="$(bash "$WORK" 9090 2>&1)"; rc=$?
+set -e
+assert_eq "a next/ task on an unproven review/ prereq exits 0 (held)" "0" "$rc"
+assert_contains "…and the hold line says in review, unproven" "$out" "9021 (in review, unproven)"
+assert_contains "…with one note: promote it or add a proof line" "$out" "./sprint.sh promote <id>"
+assert_eq "…and the note prints once" "1" "$(printf '%s\n' "$out" | grep -c 'Note: review/')"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

@@ -9,6 +9,7 @@ genuinely open.
 
 1. **Probe.** Read the relevant artifacts first — ground yourself before you
    converse. Draw out what the user is after; restate the emerging shape.
+   Check `docs/history/` first for why an area is the way it is.
 
 2. **Ground.** Weigh project philosophy and prior decisions plus industry
    conventions and documented standards. Name trade-offs honestly, including
@@ -24,8 +25,10 @@ genuinely open.
    settled. Escape hatch: "want me to pick the sensible default?" On defer,
    choose best practice (ties → simpler/faster, options open) and record it.
    **Decisions land in the durable artifact.** On a task file: convert the
-   answer into clear instruction in Problem / Success criteria / Notes, then
-   delete the open question — the instruction *is* the record.
+   answer into clear instruction in Problem / Done when (automated) / Signoff
+   (human) / Notes, then delete the open question — the instruction *is* the
+   record. A call you settled yourself gets a `- Decided: X, because Y` bullet
+   in Notes so the person sees it.
 
 ## Many decisions: one issue at a time
 
@@ -64,7 +67,9 @@ bottom. Then:
    issue that turns up along the way is added as an unchecked line in its
    blocking order and waits its turn.
 
-When no unchecked lines remain, recap what changed in a few lines and delete
-the checklist — the updated artifacts are now the record. If a session ends
+When no unchecked lines remain, recap what changed in a few lines, end with
+the exact next command (for a task, usually `./sprint.sh work <id>`; for a
+plan, `./sprint.sh plan start <id>`), and delete the checklist — the updated
+artifacts are now the record. If a session ends
 early, the next one reads the checklist and picks up at the first unchecked
 line.

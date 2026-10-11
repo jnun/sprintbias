@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SprintBias — two agents fix an API and an iOS app at once, sharing one contract.
+SprintBias — teamwork, part 1: two agents claim an API fix and an iOS fix at once.
 
 A pretend, cinematic run: iOS users get logged out when a token refresh races a
 request. A crew of three (a lead, `api`, `ios`) splits the fix across two
@@ -8,6 +8,8 @@ codebases. Each agent claims its task by moving it into doing/, announces the
 files it is touching, messages the others, and checks theirs. When both reach
 for the shared contract file, the lower task id owns it and the other builds
 around it. Then the same work headless: `work 88` and `work 89` side by side.
+Part 1 of 3. Next: `learn team-landing` (landing, routing, a rejection), then
+`learn team-signoff` (the plan closes with one sign-off).
 Pure theater: it touches nothing in your project — no files written, no
 sessions started, no network.
 
@@ -115,6 +117,10 @@ def out(text):   line(f"  {GREY}{text}{RESET}")
 
 # ── crew atoms: who is talking ────────────────────────────────────────────────
 MEMBERS = {"lead": ORANGE, "api": BLUE, "ios": PURPLE}
+DATE = "2026-10-08"
+API_TEST = "go test ./server/auth -run TestRefreshGrace"
+IOS_TEST = "xcodebuild test -only-testing:AuthTests/RetryOnceTests"
+FIX_TEST = "xcodebuild test -only-testing:AuthTests/SlowNetworkRetryTests"
 CONTRACT = "contract/auth-refresh.json"
 
 def says(name, text):
@@ -130,12 +136,13 @@ def msg(frm, to, text):
     line(f"  {MEMBERS[frm]}{frm}{RESET} {DIM}→{RESET} {MEMBERS[to]}{to}{RESET}  "
          f"{GREY}“{text}”{RESET}", delay=0.3)
 
+
 # ── the show ──────────────────────────────────────────────────────────────────
 def banner():
     print()
     line(f"   {BOLD}{WHITE}Sprint{BLUE}Bias{RESET}   {DIM}two codebases, two agents, one contract{RESET}", delay=0)
     print()
-    line(f"   {DIM}a pretend run — an API agent and an iOS agent fix one bug side by side{RESET}")
+    line(f"   {DIM}teamwork, part 1 of 3 — set up a crew; two agents claim work side by side{RESET}")
     if not FAST:
         line(f"   {DIM}(run with --fast to skip the pauses){RESET}")
     print()
@@ -166,11 +173,11 @@ def act2():
     act("ACT 2  ·  three tasks, one plan",
         "two run in parallel; the end-to-end test waits for both.")
     prompt_and_type('./sprint.sh newtask "API: refresh keeps the old token valid for a grace window"')
-    ok(f"Created task: {BLUE}docs/tasks/backlog/88-api-refresh-keeps-the-old-token-valid.md{RESET}")
+    ok(f"Created task: {BLUE}docs/tasks/backlog/88-api-refresh-keeps-the-old-token-valid-for-a-grace.md{RESET}")
     prompt_and_type('./sprint.sh newtask "iOS: retry once after a token refresh"')
     ok(f"Created task: {BLUE}docs/tasks/backlog/89-ios-retry-once-after-a-token-refresh.md{RESET}")
     prompt_and_type('./sprint.sh newtask "End-to-end: a refresh race keeps the user logged in"')
-    ok(f"Created task: {BLUE}docs/tasks/backlog/90-end-to-end-a-refresh-race-keeps-the-user.md{RESET}")
+    ok(f"Created task: {BLUE}docs/tasks/backlog/90-end-to-end-a-refresh-race-keeps-the-user-logged-in.md{RESET}")
     note(f"90  **Depends on**: 88, 89   {GREY}(it tests both halves together){RESET}")
     print()
     prompt_and_type('./sprint.sh newplan "iOS logout race" 88 89 90')
@@ -195,7 +202,7 @@ def act3():
     ok("plan 14 → ## Crew board written")
     tool("lead", "ListAgents  → lead, api, ios")
     msg("lead", "api", "#88 is yours. You own the contract.")
-    msg("lead", "ios", "#89 is yours, then #90 once 88 and 89 are in review.")
+    msg("lead", "ios", "#89 is yours, then #90 once 88 and 89 land.")
     print()
     prompt_and_type("./sprint.sh crew api 88", where="tab 2")
     spinner("starting session 'api'", done="ready")
@@ -218,7 +225,7 @@ def act4():
     print()
     beat("Messages nudge. The task files are the record, so anyone can check them.")
     prompt_and_type("grep -H Touching docs/tasks/doing/*.md", where="tab 3")
-    out(f"docs/tasks/doing/88-api-refresh-keeps-the-old-token-valid.md:**Touching:** server/auth/refresh.go, {CONTRACT}")
+    out(f"docs/tasks/doing/88-api-refresh-keeps-the-old-token-valid-for-a-grace.md:**Touching:** server/auth/refresh.go, {CONTRACT}")
     out(f"docs/tasks/doing/89-ios-retry-once-after-a-token-refresh.md:**Touching:** ios/Auth/TokenRefresher.swift, {CONTRACT}")
     held(f"both list {CONTRACT}")
     says("ios", "Shared file. 88 is the lower id, so api owns the contract.")
@@ -261,50 +268,21 @@ def act6():
     line(f"  {RED}✗{RESET} 88 is in doing/ — it may be mid-work, or left by an interrupted run.")
     out("The file can't say which. If a run has it, leave it be.")
 
-def act7():
-    act("ACT 7  ·  who holds what, then the finish",
-        "check the board, check the sessions, then you approve.")
-    prompt_and_type("./sprint.sh crew", where="tab 4")
-    line(f"  {BOLD}api{RESET} — Owns the API server and the contract")
-    out("  doing/  88  API: refresh keeps the old token valid for a grace window")
-    line(f"  {BOLD}ios{RESET} — Owns the iOS app")
-    out("  doing/  89  iOS: retry once after a token refresh")
-    out("  next/  90  End-to-end: a refresh race keeps the user logged in")
-    line(f"  {BOLD}lead{RESET} (lead) — Holds the plan, routes tasks")
-    out("  holds nothing")
-    print()
-    prompt_and_type("./sprint.sh agents --local", where="tab 4")
-    line(f"  {BOLD}{BLUE}my-laptop (this machine){RESET}{DIM}  3 agents{RESET}")
-    line(f"  {BOLD}lead{RESET}  {DIM}idle 2m  {RESET} {GREY}Terminal ttys002{RESET}  {CYAN}my-app@main{RESET}  {GREY}up 24m{RESET}")
-    line(f"  {BOLD}api {RESET}  {GREEN}busy 4s  {RESET} {GREY}Terminal ttys003{RESET}  {CYAN}my-app@main{RESET}  {GREY}up 22m{RESET}")
-    line(f"  {BOLD}ios {RESET}  {GREEN}busy 9s  {RESET} {GREY}Terminal ttys004{RESET}  {CYAN}my-app@main{RESET}  {GREY}up 21m{RESET}")
-    line(f"  {BOLD}3 agents running{RESET} · 2 busy, 1 idle")
-    print()
-    says("api", "#88 done, Completed filled in.")
-    moved("doing/88", "review/88")
-    says("ios", "#89 done, overlap noted.")
-    moved("doing/89", "review/89")
-    msg("ios", "lead", "#89 in review. Starting #90.")
-    moved("next/90", "doing/90  Crew: ios")
-    print()
-    nextstep("you read both diffs, commit, and ship — the agents edit files and stop")
-
 def outro():
     print()
     rule("═")
-    line(f"{BOLD}{GREEN}  done — two codebases, one contract, no clobbering.{RESET}")
+    line(f"{BOLD}{GREEN}  part 1 done — two agents at work, one contract, no clobbering.{RESET}")
     print()
     line(f"  {DIM}the through-line:{RESET}")
     for head, why in (
         ("doing/ is the claim", "each task there is an agent at work"),
         ("Touching: is the hello", "announce your files; grep the others' first"),
         ("lower id owns shared code", "the other builds around it and notes the overlap"),
-        ("leave others' changes alone", "you approve, commit, and ship"),
+        ("leave others' changes alone", "another agent's edits stay as they are"),
     ):
         line(f"    {PURPLE}•{RESET} {WHITE}{head:<29}{RESET}{GREY}{why}{RESET}")
     print()
-    line(f"  {DIM}read more:{RESET} {CYAN}docs/sprintbias/guides/crew.md{RESET}   "
-         f"{DIM}rules:{RESET} {CYAN}./sprint.sh help work{RESET}")
+    nextstep("part 2 — the work lands, the lead routes, you reject one:  ./sprint.sh learn team-landing")
     print()
     rule("═")
     print()
@@ -318,7 +296,6 @@ def main():
         act4()
         act5()
         act6()
-        act7()
         outro()
     except KeyboardInterrupt:
         sys.stdout.write(RESET + "\n" + DIM + "  …demo interrupted.\n" + RESET)

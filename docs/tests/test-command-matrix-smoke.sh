@@ -224,7 +224,7 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
 # Assert the launcher flag was accepted (no "Unknown option") for one provider.
 assert_flag_ok() {
     local desc="$1" out="$2"
-    if printf '%s' "$out" | grep -qF -- "Unknown option"; then
+    if grep -qF -- "Unknown option" <<<"$out"; then
         fail "$desc — leading flag rejected as Unknown option"
     else
         pass "$desc — leading flag accepted"
@@ -240,8 +240,8 @@ assert_banner() {
         -g) tier="grok (grok-build)" ;;
         -c) tier="claude (claude-code)" ;;
     esac
-    if printf '%s' "$out" | grep -qF -- "▸ Provider: $tier" \
-       && printf '%s' "$out" | grep -qF -- "mode: emit"; then
+    if grep -qF -- "▸ Provider: $tier" <<<"$out" \
+       && grep -qF -- "mode: emit" <<<"$out"; then
         pass "$desc — announces '$tier · mode: emit'"
     else
         fail "$desc — missing provider banner for $flag"
@@ -251,7 +251,7 @@ assert_banner() {
 # Assert the provider banner is absent (non-AI path).
 assert_no_banner() {
     local desc="$1" out="$2"
-    if printf '%s' "$out" | grep -qF -- "▸ Provider:"; then
+    if grep -qF -- "▸ Provider:" <<<"$out"; then
         fail "$desc — non-AI path announced a provider banner"
     else
         pass "$desc — no provider banner (non-AI)"
@@ -326,9 +326,6 @@ expect_ai "loop"                 loop
 # Intentional short-circuit: promote is pure shell (NO AI). Fixture 61 has no
 # **Tests** field → skipped, stays in review/, exit 0 — no provider banner.
 expect_noai "promote"            promote
-# Intentional short-circuit: settle folds (Suggestion: …) open questions in
-# pure bash. Fixture next/ task is already clear → no-op summary, no AI.
-expect_noai "settle"             settle
 
 # ── polish — post-work quality, all three argument shapes ──
 echo "Polish modes:"

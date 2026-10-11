@@ -57,8 +57,10 @@ layers that stack:
 | S5    | Independence is what makes parallel work safe       | `parallel.py`     |
 | S6    | The momentum of the whole spine in one short run    | `speedrun.py`     |
 | S7    | The whole board at a glance — every stage, plan, and hold, alive | `status.py` |
-| S8    | One command drains the READY queue: next/ → review/, your pace | `work.py` |
-| S9    | Two agents, two codebases, one shared contract — claim, announce, build around | `teamwork.py` |
+| S8    | One command drains the READY queue; work lands with proof, then one sign-off closes the plan | `work.py` |
+| S9    | Two agents, two codebases, one shared contract — claim, announce, build around the lower id (part 1 of 3) | `teamwork.py` |
+| S9.2  | Land with proof, the lead routes on landing, a rejection becomes a fix task (part 2 of 3) | `team-landing.py` |
+| S9.3  | Every member landed: the lead runs the full suite once, your sign-off reuses it (part 3 of 3) | `team-signoff.py` |
 
 ### Per-command scenarios (play via `learn <name>` or `<cmd> --demo`)
 

@@ -120,7 +120,7 @@ BOARD = [
     ("doing",    2, YELLOW, "in flight right now"),
     ("review",   5, BLUE,   "worked — waiting on you to commit"),
     ("done",    38, GREEN,  "shipped & test-gated closed"),
-    ("blocked",  1, RED,    "needs a decision before it can run"),
+    ("blocked",  1, RED,    "cannot start yet: unclear, or needs your access"),
 ]
 
 def board_row(name, count, tone, aside, peak):
@@ -176,8 +176,8 @@ def act2():
     prompt_and_type("./sprint.sh status")
     print()
     line(f"  {PURPLE}▸ checkout-hardening{RESET}   {GREEN}STARTED{RESET}   "
-         f"{GREEN}{'█'*6}{RESET}{GREY}{'░'*4}{RESET}  {DIM}3/5 members in done/{RESET}", delay=0.12)
-    line(f"      {DIM}members: 3 done · 1 in review · 1 doing — committed to next/, latched{RESET}", delay=0.12)
+         f"{GREEN}{'█'*6}{RESET}{GREY}{'░'*4}{RESET}  {DIM}open 1 · landed 1 · signed off 3 (of 5){RESET}", delay=0.12)
+    line(f"      {DIM}landed = review/ with a proof line · signed off = done/{RESET}", delay=0.12)
     line(f"  {PURPLE}▸ search-revamp{RESET}        {YELLOW}planning{RESET}  "
          f"{GREY}{'░'*10}{RESET}  {DIM}think complete — not started yet{RESET}", delay=0.12)
     line(f"      {DIM}5 tasks fanned out, critiqued by two personas — awaiting plan start{RESET}", delay=0.12)

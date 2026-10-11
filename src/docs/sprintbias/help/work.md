@@ -26,12 +26,17 @@ prerequisite first, or work the whole sprint so the chain drains in order.
 (In emit mode the backlog/blocked gate is handed to the surrounding agent to
 run; land the task READY in next/, then re-run `work N` to execute it.)
 
+Work one plan: `work plan N` runs only plan N's member tasks in next/ and
+leaves the rest of next/ in place (for a closer look, or to do by hand). Run
+`plan start N` first so its members are in next/.
+
 Grounding first: before the queue runs, work checks the project map
 (profile check — no AI; one line when it has drifted). Each worker then makes
 sure its task file has ## Grounding — the sources it relies on, the glossary /
 lexicon / taxonomy terms it uses (copied word for word), and its conflicts, each
 settled before work. The gate normally writes it; the worker fills gaps. Every
-noted conflict is repeated in the end-of-run report under "Conflicts noted".
+noted conflict is repeated in the end-of-run checklist for that task, so you
+can check each call made on your behalf.
 
 Docs stay in step: a worker whose change alters what a source of truth
 describes updates it in the same task. Governing sources (security policy,
@@ -45,6 +50,12 @@ terminal in the same checkout. Each worker announces its files as **Touching:**
 in ## Grounding and keeps clear of the others (DOCUMENTATION.md rule 8). A task
 in doing/ is claimed: `work N` refuses it without --force. For named sessions
 you steer, or agents on a shared server, see `help crew`.
+
+Fast mode (`./sprint.sh fast on`, or `--fast` for one run): agents skip the AI
+CLI's permission prompts and the queue runs in parallel, 4 jobs at a time, with
+no flag. `--jobs N` sets the count; `--steady` runs one task at a time. Commit,
+push, ship.sh and sign-off to done/ stay yours by rule. Fast is safest on a dev
+server or a clean git tree. See `help fast`.
 
 Readiness gate: only tasks stamped 'Status: READY' with a clear question list
 are executed. A next/ task that hasn't been gated yet is not skipped — work
@@ -64,7 +75,11 @@ or not).
 Dependency-aware: a task's '**Depends on**:' prerequisites are honored
 within a single run. For each open prerequisite, `work` acts by stage:
 
-  review/ / done/  — already complete; dependent may run
+  done/            — signed off; dependent may run
+  review/ + proof  — landed (a `**Proof**:` line under `## Completed`);
+                     dependent may run
+  review/, no proof — in review, unproven: dependent holds; the hold line
+                     says to promote it or add a proof line
   doing/           — resume it this run (if it already has `## Completed`,
                      route straight to review/; otherwise re-run in place)
   next/            — frontier ordering; runs when READY and its own deps clear
@@ -75,16 +90,23 @@ within a single run. For each open prerequisite, `work` acts by stage:
                      ("no such task") or one folded into another id (repoint
                      **Depends on** at the fold target)
 
-A dependent is held only until prerequisites land in review/, then released
+A dependent is held only until prerequisites land (review/ with a proof line,
+`**Proof**: YYYY-MM-DD · <test commands> · pass`) or reach done/, then released
 automatically — so a chain (A→B→C) drains in one invocation instead of
 needing one run per link. That is sequencing, not a blocked condition.
-With --fast, independent tasks overlap while dependents still wait their
+In fast mode, independent tasks overlap while dependents still wait their
 turn.
 
 **Finish-first** (same action-bias as `conversation.md` / polish): READY + met
 deps → implement → `## Completed` → `review/`. Prefer clear best practice;
 pick a sensible default and finish. A product/scope fork that needs a human
 gets a one-line `## Outcome` and lands in `blocked/`.
+
+**Test loop** (every worker, solo or crew): build the smallest testable outcome
+first; run targeted tests (those Done when names, plus the tests for code the
+**Touching:** files feed; the full suite runs once, at plan close); log each failure under
+`## Test log` and re-run until green; land with the `**Proof**:` line. A task
+that lands without one is reported as in review, unproven.
 
 `## Outcome` (incomplete | failed | blocked) lets dependents name why they
 wait; a later success drops it on the way to `review/`. Retries fix the Reason
@@ -99,9 +121,10 @@ For each ready task it:
   - On hard CLI failure, leaves the task in doing/ (## Outcome: failed)
 
 When work lands in `review/`, the end-of-run summary says **Requires human
-review** — that is not `blocked/`. Implementation is done; close is a human
-sign-off to `done/`, or `./sprint.sh promote` when the task’s **Tests** field
-names suite scripts. `Tests: none` always means eyes before done/.
+review** — that is not `blocked/`. Landed work has already released its
+dependents; what remains is your sign-off to `done/`: `./sprint.sh promote`
+when the task’s **Tests** field names suite scripts, `promote plan:N` for a
+whole plan. `Tests: none` always means eyes before done/.
 
 Anything that did NOT complete — a hard fail, an incomplete stop, or a
 drift-blocked task — is recapped at the very end under **Needs your
@@ -126,12 +149,14 @@ Usage:
   ./sprint.sh work 311              # work just task 311 (a bare number is a task id)
   ./sprint.sh work count 3          # run at most 3 ready tasks
   ./sprint.sh work count 1          # run just the next task in the queue
+  ./sprint.sh work plan 32          # work only plan 32's tasks in next/
   ./sprint.sh work --force          # skip the readiness gate
   ./sprint.sh work --drift          # enable pre-task drift check
   ./sprint.sh work --audit          # enable post-task code audit (polish --code)
   ./sprint.sh work --excellence     # enable post-task deep-judge (polish <file>, after --audit)
   ./sprint.sh work --parallel       # run all tasks concurrently (2 jobs)
-  ./sprint.sh work --fast           # shorthand for --parallel with 4 jobs
+  ./sprint.sh work --fast           # fast mode for this run: no prompts, 4 jobs
+  ./sprint.sh work --steady         # steady for this run: one task at a time
   ./sprint.sh work --jobs N         # run parallel with N concurrent jobs
   ./sprint.sh work --max            # clear the budget cap (where one applies)
   ./sprint.sh work --fast --max     # parallel (4 jobs), cap cleared
@@ -140,8 +165,9 @@ Usage:
   ./sprint.sh work --model <id>     # pin the model for this run only
 
 Integrity: a next/ task stamped READY that still has open questions under
-### Questions for the developer is demoted to blocked/ (loud report). Clear
-suggestions with `./sprint.sh settle`, or answer via `./sprint.sh chat <id>`.
+### Questions for the developer is demoted to blocked/ (loud report). Every
+`(Suggestion: …)` is taken first; answer what is left with `./sprint.sh chat <id>`,
+then `./sprint.sh work <id>`.
 
 Quality chain: --audit runs polish --code (correctness) on each task that
 lands in review/; --excellence then runs polish <file> (deep-judge) after it

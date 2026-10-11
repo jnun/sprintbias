@@ -4,57 +4,57 @@
 **Created**: 2026-08-21
 **Docs**: none
 **Plan**: none
+**From plan**: none
 **Depends on**: none
 **Dependents**: none
 **Parent**: none
-**Tests**: none
-**Refined**: 0
+**Fixes**: none
+**Crew**: none
+**Tests**: docs/tests/test-run-interpret.sh, docs/tests/test-audit-code.sh
+**Refined**: 1
 **Reworked**: 0
 
 ## Problem
 
-Task 367 introduced `sprintbias_interpret_run`, whose stated purpose is that
-"every audit learns the outcome (and cost/turns/summary) from one read." The
-interpreter faithfully captures `SPRINTBIAS_RUN_TURNS`, `SPRINTBIAS_RUN_COST`,
-and `SPRINTBIAS_RUN_SUMMARY` on every run — but no call site reads them. Only
-`SPRINTBIAS_RUN_VERDICT_TEXT` and `SPRINTBIAS_RUN_OUTCOME` are consumed. The
-run size the interpreter paid to collect dead-ends in globals.
+When an audit run stops early, the one-line reason it prints
+(`sprintbias_run_hint`) says "hit its turn limit before finishing" and nothing
+more. The run's turn count and dollar cost are already captured in
+`SPRINTBIAS_RUN_TURNS` and `SPRINTBIAS_RUN_COST`, but nothing reads them. A
+person looking at a stopped run cannot tell a cheap 30-turn stop from a $3
+runaway, which is what they need to decide whether to raise the turn limit or
+narrow the scope.
 
-The visible cost of this: the shared honest abort line
-(`sprintbias_run_hint`) says "hit its turn limit before finishing" with no
-mention of how many turns, how long, or how much it cost — even though those
-numbers are one variable away. The interim `sprintbias_run_error` that 367
-supersedes DID surface "(N turns, Mm SSs, $X.XX)", so the run-mechanics
-diagnostics actually got less informative in the transition. An operator
-staring at a max_turns abort cannot tell whether it burned 30 turns and $0.10
-or ran away to $3, which is exactly the signal they need to decide whether to
-raise `SPRINTBIAS_AUDIT_MAX_TURNS` or narrow scope.
+## Done when (automated)
 
-## Success criteria
+- [ ] `sprintbias_run_hint` adds the run size to its line when the interpreter
+      captured it, e.g. `hit its turn limit before finishing (42 turns, $1.37)`.
+      `bash docs/tests/test-run-interpret.sh` asserts the line for a max_turns
+      and an error record that carry turns and cost.
+- [ ] When turns or cost is empty, the line shows only what is known, and shows
+      no brackets when both are empty. `bash docs/tests/test-run-interpret.sh`
+      asserts all three cases (both, one, neither) and that no bare
+      `( turns, $)` appears.
+- [ ] The `## Audit (aborted ...)` note that `polish --code` writes carries a
+      `Run size:` line with the same turns and cost. `bash
+      docs/tests/test-audit-code.sh` asserts it.
+- [ ] `bash docs/tests/run-all.sh` passes.
 
-- [ ] A max_turns / error abort reported by an audit (deps.sh, polish.sh
-      `--code`, polish-judge.sh, `_route_refine`) shows the run's turns and
-      cost when the interpreter captured them — the numbers already sit in
-      `SPRINTBIAS_RUN_TURNS` / `SPRINTBIAS_RUN_COST` after
-      `sprintbias_interpret_run`.
-- [ ] The `## Audit (aborted …)` record polish.sh `--code` appends includes
-      the run's turns/cost alongside the existing outcome/mode/edits fields.
-- [ ] The turns/cost render degrades cleanly when a field is empty
-      (best-effort per the interpreter contract) — no bare "( turns, $)".
-- [ ] `SPRINTBIAS_RUN_SUMMARY` either gets a consumer or the decision to keep
-      it capture-only is recorded, so the record's contract matches what
-      callers actually use.
+## Signoff (human)
+
+None: the automated checks cover it.
 
 ## Notes
 
-Keep the run-mechanics vocabulary shared: the cleanest fix is to let
-`sprintbias_run_hint` (or a small sibling) fold the captured turns/cost into
-its line, rather than each site re-formatting them — that preserves 367's
-"one honest line, identical across sites" goal. Verdict tokens stay
-caller-owned as before.
-
-Do not reintroduce a second JSON read to get the numbers — they are already
-in the interpreter's globals; this is purely a display-wiring change.
+- Put the formatting in `sprintbias_run_hint` (or a small helper beside it in
+  `lib.sh`) so every caller prints the same line. Callers today: `deps.sh`,
+  `polish-judge.sh`, `promote.sh`, and four sites in `polish.sh`. Each caller
+  keeps owning its own verdict wording.
+- Read the numbers from the globals the interpreter already sets. One read of
+  the run log per run stays the rule.
+- `SPRINTBIAS_RUN_SUMMARY` already has readers (`polish.sh`,
+  `polish-judge.sh`); it is out of scope.
+- Task 374 edits the same aborted-note block in `polish.sh`. Whichever lands
+  second adds its line beside the other's.
 
 ## References
 

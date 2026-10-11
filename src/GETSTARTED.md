@@ -36,13 +36,14 @@ place. Run it again any time to update.
 ```bash
 ./sprint.sh newtask "Reject empty password on login"   # → backlog/
 ./sprint.sh chat 12      # sharpen it with the AI until it's clear
-./sprint.sh work 12      # gate it into next/, then the AI builds it → review/
+./sprint.sh work 12      # gate it into next/; the AI builds, tests, lands it → review/
 git diff                 # check the change
-./sprint.sh promote      # its Tests pass → done/
+./sprint.sh promote      # sign off: its Tests pass → done/
 ```
 
-A task with no **Tests** waits in `review/` for you to approve it:
-`git mv docs/tasks/review/12-*.md docs/tasks/done/`.
+A task lands in `review/` with a proof line of the tests it passed, and that
+releases the tasks waiting on it. `done/` is your sign-off. A task with no
+**Tests** waits for you: `git mv docs/tasks/review/12-*.md docs/tasks/done/`.
 
 ## The board
 
@@ -51,8 +52,8 @@ docs/tasks/backlog/   planned
 docs/tasks/next/      the sprint: ready to build
 docs/tasks/doing/     in progress
 docs/tasks/blocked/   waiting on a decision
-docs/tasks/review/    built, waiting for your check
-docs/tasks/done/      finished
+docs/tasks/review/    landed: built and tested, waiting for your sign-off
+docs/tasks/done/      signed off
 ```
 
 Tasks enter `next/` through the gate: `work 12`, `plan start`, or `chat backlog`.
@@ -65,6 +66,7 @@ everything ready in `next/`. `./sprint.sh status` shows the board.
 ./sprint.sh newplan "Auth" 12 13 14   # group tasks into a plan
 ./sprint.sh plan start 7              # commit the whole plan to next/
 ./sprint.sh loop --refill --retry     # keep starting and working plans
+./sprint.sh promote plan:7            # sign off the whole plan: full suite once, one y
 
 ./sprint.sh crew add lead "Holds the plan" --lead   # several named AI sessions
 ./sprint.sh crew lead plan:7                        # one terminal per member
@@ -73,6 +75,9 @@ everything ready in `next/`. `./sprint.sh status` shows the board.
 ./sprint.sh -g work                   # this run on Grok (-c for Claude Code)
 ./sprint.sh config                    # set the default AI and model
 ```
+
+Run one agent at a time (**Solo**, saves context) or several named sessions you
+steer (**Crew**, saves time); `DOCUMENTATION.md` explains both.
 
 Ideas, features, bugs, and tests have their own commands: `newidea`,
 `newfeature`, `newbug`, `newtest`.

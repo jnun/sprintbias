@@ -12,7 +12,7 @@ SCRIPTS="$(cd "$(dirname "$0")/../sprintbias/scripts" && pwd)"
 
 assert_contains() {
     local desc="$1" haystack="$2" needle="$3"
-    if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+    if grep -qF -- "$needle" <<<"$haystack"; then
         echo "  PASS: $desc"; PASS=$((PASS + 1))
     else
         echo "  FAIL: $desc (expected to contain '$needle')"; FAIL=$((FAIL + 1))
@@ -21,7 +21,7 @@ assert_contains() {
 
 assert_not_contains() {
     local desc="$1" haystack="$2" needle="$3"
-    if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+    if grep -qF -- "$needle" <<<"$haystack"; then
         echo "  FAIL: $desc (did not expect '$needle')"; FAIL=$((FAIL + 1))
     else
         echo "  PASS: $desc"; PASS=$((PASS + 1))

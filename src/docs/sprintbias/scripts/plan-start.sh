@@ -25,6 +25,10 @@
 # is self-healing. Default mode then gates them with everyone else; --commit-only
 # leaves them in backlog (not re-promoted unvetted).
 #
+# Human test: after the start, every member's and the plan's ## Signoff (human)
+# items gather into one **Owner**: human task in review/, listed last in the
+# plan (sprintbias_plan_ensure_human_test). Only a plan with such items gets one.
+#
 # Plan-file Status: interactive DRAFT auto-marks READY; STARTED re-runs without
 # a prompt; non-interactive requires READY (loop --refill). Moves use move_file
 # (git mv || mv); developer owns commits.
@@ -275,6 +279,8 @@ for id in $MEMBER_IDS; do
   fpath="${hit%%$'\t'*}"
   stage="${hit##*$'\t'}"
   name=$(basename "$fpath")
+  # The plan's human test is the person's; it never enters the sprint.
+  sprintbias_is_human_task "$fpath" && continue
   case "$stage" in
     backlog)
       MOVE_PATHS+=("$fpath")
@@ -302,7 +308,15 @@ for id in $MEMBER_IDS; do
       fi
       ;;
     blocked)
-      BLOCKED_IDS+=("$id")
+      # Gated with the rest: the gate takes suggested answers, so a member
+      # that can start now reaches next/; one that still cannot stays put.
+      # --commit-only skips the gate, so it leaves blocked/ work in place.
+      if [ "$COMMIT_ONLY" -eq 0 ]; then
+        MOVE_PATHS+=("$fpath")
+        MOVE_NAMES+=("$name")
+      else
+        BLOCKED_IDS+=("$id")
+      fi
       ;;
     doing|review|done)
       SKIP_PAST+=("#$id $name ($stage/)")
@@ -320,16 +334,8 @@ if [ ${#MISSING_IDS[@]} -gt 0 ]; then
   exit 1
 fi
 
-# Blocked: stop entirely so the sprint is not half-committed around work that
-# still needs a decision or clarification
-if [ ${#BLOCKED_IDS[@]} -gt 0 ]; then
-  echo "✗ Member(s) still in blocked/ — resolve decisions/clarifications before starting this plan:"
-  for id in "${BLOCKED_IDS[@]}"; do
-    echo "    ./sprint.sh chat $id"
-  done
-  echo "  Then re-run: ./sprint.sh plan start $PLAN_ID"
-  exit 1
-fi
+# --commit-only leaves blocked/ members in place (it skips the gate); the rest
+# of the plan still starts. The summary names each one's next command.
 
 # ── Reconcile the Plan reverse index ─────────────────────────────────
 # The plan file is the membership authority; refresh each member's **Plan**
@@ -429,10 +435,10 @@ if [ ${#MOVE_PATHS[@]} -gt 0 ]; then
         ;;
       *)
         _bits="$(_held_dep_bits "$_src")"
-        echo "  ⊘ held (deps not in sprint): #${_id} depends on ${_bits} — left in backlog/"
+        echo "  ⊘ held (deps not in sprint): #${_id} depends on ${_bits} — left in $(basename "$(dirname "$_src")")/"
         echo "    A task is workable for next/ only when every dependency is in next/"
-        echo "    (or doing/review/done), or co-promoted in this start. Define/start"
-        echo "    the missing dep first, or add it to this plan."
+        echo "    (or doing/review/done), or co-promoted in this start."
+        echo "    Add the dep to this plan:  ./sprint.sh chat plan $PLAN_ID"
         HELD_DEP=$((HELD_DEP + 1))
         ;;
     esac
@@ -496,6 +502,7 @@ fi
 
 READY_MOVED=0   # READY members promoted into next/
 BLOCKED_CT=0    # graded BLOCKED, landed in blocked/
+declare -a BLOCKED_GATED=()   # ids the gate left in blocked/ (summary names each)
 COMPLETE_CT=0  # graded COMPLETE, landed in review/
 ERR_CT=0        # gate errored, member left in backlog/
 EMITTED=0       # a review prompt was emitted for the surrounding agent to run
@@ -545,11 +552,12 @@ elif [ ${#MOVE_PATHS[@]} -gt 0 ]; then
       case "$SPRINTBIAS_GATE_VERDICT" in
         EMIT)    EMITTED=1 ;;
         READY)   READY_MOVED=$((READY_MOVED + 1)); echo "  ✓ READY → next/: $name" ;;
-        BLOCKED) BLOCKED_CT=$((BLOCKED_CT + 1));   echo "  ⊘ BLOCKED → blocked/: $name" ;;
+        BLOCKED) BLOCKED_CT=$((BLOCKED_CT + 1)); BLOCKED_GATED+=("${name%%-*}")
+                 echo "  ⊘ BLOCKED → blocked/: $name" ;;
         COMPLETE) COMPLETE_CT=$((COMPLETE_CT + 1)); echo "  ✓ COMPLETE → review/: $name" ;;
         NOSTAMP|FAILED)
           ERR_CT=$((ERR_CT + 1))
-          echo "  ✗ gate $SPRINTBIAS_GATE_VERDICT: $name — left in backlog/"
+          echo "  ✗ gate $SPRINTBIAS_GATE_VERDICT: $name — left in $(basename "$(dirname "$src")")/"
           [ -n "$SPRINTBIAS_GATE_LOG" ] && echo "    log: $SPRINTBIAS_GATE_LOG"
           ;;
       esac
@@ -560,7 +568,7 @@ fi
 # ── Summary ──────────────────────────────────────────────────────────
 echo ""
 if [ "$EMITTED" -eq 1 ]; then
-  echo "▸ Plan $PLAN_ID ($MEMBER_COUNT members): gating ${#MOVE_PATHS[@]} backlog member(s) — run the review prompt(s) above."
+  echo "▸ Plan $PLAN_ID ($MEMBER_COUNT members): gating ${#MOVE_PATHS[@]} member(s) — run the review prompt(s) above."
   echo "  Gate every listed member (no subset). READY → next/; BLOCKED → blocked/, COMPLETE → review/."
 elif [ "$COMMIT_ONLY" -eq 1 ]; then
   echo "▸ Plan $PLAN_ID committed (--commit-only): $MEMBER_COUNT members — moved $READY_MOVED into next/ (gate skipped — not vetted)"
@@ -568,17 +576,33 @@ elif [ "$COMMIT_ONLY" -eq 1 ]; then
 else
   echo "▸ Plan $PLAN_ID started ($MEMBER_COUNT members): $READY_MOVED ready → next/, $BLOCKED_CT blocked, $COMPLETE_CT complete"
   [ "$DEMOTED" -gt 0 ] && echo "  (demoted $DEMOTED unstamped next/ → backlog/ before gate)"
-  [ "$ERR_CT" -gt 0 ] && echo "  ($ERR_CT gate error(s) — left in backlog/)"
+  [ "$ERR_CT" -gt 0 ] && echo "  ($ERR_CT gate error(s), left in place; logs above) → retry: ./sprint.sh plan start $PLAN_ID"
 fi
 [ ${#SKIP_NEXT[@]} -gt 0 ] && echo "  (already queued READY: ${#SKIP_NEXT[@]})"
 [ ${#SKIP_PAST[@]} -gt 0 ] && echo "  (already past next/: ${#SKIP_PAST[@]})"
-[ "${HELD_DEP:-0}" -gt 0 ] && echo "  (held — deps not in sprint: $HELD_DEP)"
+[ "${HELD_DEP:-0}" -gt 0 ] && echo "  (held — deps not in sprint: $HELD_DEP) → add each dep to the plan: ./sprint.sh chat plan $PLAN_ID"
+# Each member that cannot start yet, with the one command that moves it.
+for _bid in ${BLOCKED_GATED[@]+"${BLOCKED_GATED[@]}"} ${BLOCKED_IDS[@]+"${BLOCKED_IDS[@]}"}; do
+  echo "  ⊘ #$_bid cannot start yet (see its ## BLOCKED) → ./sprint.sh chat $_bid"
+done
+unset _bid
 
 # One-way STARTED latch: this plan has now been committed to the sprint. Set on
 # every successful exit — gated, emit, --commit-only, and idempotent re-runs —
 # regardless of how many members moved this run. It never reverts as members
 # flow through next/doing/review/done; `plan done` later deletes the file.
 stamp_started "$PLAN_FILE"
+
+# One human test per plan: every member's and the plan's Signoff (human) items
+# in a single task, parked in review/ for the person. Agents never wait on it.
+HUMAN_TEST="$(sprintbias_plan_ensure_human_test "$PLAN_FILE" || true)"
+if [ -n "$HUMAN_TEST" ]; then
+  echo ""
+  echo "  Human test: $HUMAN_TEST"
+  echo "    Every person-only check in this plan, in one task. Agents build on"
+  echo "    assumptions and keep moving. When the plan lands, run its checks, then:"
+  echo "    → ./sprint.sh promote plan:$PLAN_ID"
+fi
 
 GOAL="$(plan_goal_text "$PLAN_FILE")"
 if [ -n "$GOAL" ]; then

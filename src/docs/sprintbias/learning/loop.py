@@ -207,7 +207,7 @@ def act4():
     print()
     ok(f"{BOLD}5 tasks worked → review/.{RESET}  next/ empty again.")
     note("no more READY work · no further READY plans · stopping cleanly")
-    line(f"  {GREY}held aside:{RESET}  {ORANGE}#104{RESET} {DIM}still not in next/ — needs a decision{RESET}")
+    line(f"  {GREY}held aside:{RESET}  {ORANGE}#104{RESET} {DIM}still not in next/ — cannot start yet{RESET}")
     print()
     nextstep("./sprint.sh chat 104   → sharpen, then re-gate when you're back")
     nap(0.4)

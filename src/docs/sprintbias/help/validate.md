@@ -32,7 +32,7 @@ close-side mirror of the two-gate path: `Depends on` gates `work`, `Tests` gates
 loud here (named with its task id) instead of a silent never-promote — it never
 flips validate's exit code.
 
-Template fields (**Feature**, ## Problem, ## Success criteria) are not
+Template fields (**Feature**, ## Problem, ## Done when (automated)) are not
 re-checked — create-task.sh stamps them from .TEMPLATE-task.md. Dependency
 cycle detection is out of scope for v1.
 

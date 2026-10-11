@@ -49,7 +49,7 @@ assert_false() {
 
 assert_contains() {
   local desc="$1" haystack="$2" needle="$3"
-  if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if grep -qF -- "$needle" <<<"$haystack"; then
     echo "  PASS: $desc"
     PASS=$((PASS + 1))
   else
@@ -60,7 +60,7 @@ assert_contains() {
 
 assert_not_contains() {
   local desc="$1" haystack="$2" needle="$3"
-  if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if grep -qF -- "$needle" <<<"$haystack"; then
     echo "  FAIL: $desc (expected NOT to contain '$needle')"
     FAIL=$((FAIL + 1))
   else
@@ -259,7 +259,7 @@ _argv_opus=$(
   '
 )
 assert_contains "raw --model opus coerced in profile" "$_argv_opus" "--model grok-4.5"
-if printf '%s' "$_argv_opus" | grep -qE -- '--model opus(\s|$)'; then
+if grep -qE -- '--model opus(\s|$)' <<<"$_argv_opus"; then
   echo "  FAIL: profile still forwarded --model opus"; FAIL=$((FAIL + 1))
 else
   echo "  PASS: profile does not forward --model opus"; PASS=$((PASS + 1))

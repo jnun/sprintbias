@@ -160,11 +160,12 @@ work_bug() {
   replace_md_section "$taskfile" "Problem" "$problem_tmp"
   rm -f "$problem_tmp"
 
-  # Success criteria from the report when present.
+  # The report's Success criteria become the task's automated done-when
+  # (whichever heading the task carries; see lib.sh sprintbias_done_when).
   if [ -n "$(printf '%s' "$criteria" | tr -d '[:space:]')" ]; then
     criteria_tmp="$(mktemp)"
     printf '%s\n' "$criteria" > "$criteria_tmp"
-    replace_md_section "$taskfile" "Success criteria" "$criteria_tmp"
+    replace_md_section "$taskfile" "$(sprintbias_done_when_heading "$taskfile")" "$criteria_tmp"
     rm -f "$criteria_tmp"
   fi
 
@@ -233,7 +234,7 @@ For EACH report in order:
 3. Offer the developer the choice:
    [w] work it   — CONVERT to a fix task, then DELETE the report. Do EXACTLY this, in order:
                    a. Run: ./sprint.sh newtask \"Fix: <the bug's short description>\"  (real ID + template)
-                   b. Fill the new task from the report: copy ## Problem (include Steps to reproduce under it if present), ## Success criteria, and put origin + severity + any report Notes into the task ## Notes as: > **Origin:** bug #<id> — <title> (converted from docs/bugs/; report deleted)
+                   b. Fill the new task from the report: copy ## Problem (include Steps to reproduce under it if present), the report's ## Success criteria into the task's ## Done when (automated), and put origin + severity + any report Notes into the task ## Notes as: > **Origin:** bug #<id> — <title> (converted from docs/bugs/; report deleted)
                    c. DELETE the bug file: git rm -f <bug-file> || rm -f <bug-file>. Do NOT move to archived/.
                    Then move on; ./sprint.sh chat <task-id> can refine the task later if needed.
    [d] define it — go DEEP on the REPORT itself (not a task): refine ## Problem, ## Steps to reproduce, the Severity line, and ## Success criteria until any developer can reproduce and verify the fix. One detail at a time, editing as you go. This is the only step that escalates past the fast verdict.

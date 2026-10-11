@@ -196,6 +196,10 @@ fi
 check '\./sprint\.sh (talk|tasks|define|checkfeatures|ai-context|audit-deps|context)\b' \
     "no retired ./sprint.sh command invocations on live surface"
 
+# settle retired in plan 32 (gate and work take every suggestion themselves).
+check '\./sprint\.sh settle\b' \
+    "no ./sprint.sh settle on live surface (retired: work <id> · chat <id>)"
+
 # Config keys renamed with the surface (hard cut). Anchored to an assignment
 # form (line-start + optional indent + KEY=) so it fires only on a real live
 # config line, never on prose. This is deliberate: setup.sh carries a migration

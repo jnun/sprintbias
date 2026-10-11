@@ -33,6 +33,11 @@ PROVIDER=claude-code
 #             otherwise exec
 MODE=
 
+# Fast mode: on = agents run autonomously at high throughput; off = steady.
+# Per machine, set it with ./sprint.sh fast on|off (writes config.local);
+# per run, ./sprint.sh --fast | --steady <command>.
+FAST=off
+
 # Default model. Empty = let the CLI pick its own default (or a strong tier
 # default on claude-code / grok-build via sprintbias_tier_model).
 # Use a model id your CLI understands (grok models / claude docs). Claude-only
@@ -73,6 +78,11 @@ BUDGET_AUDIT=5.00
 
 # Code audit max iterative passes
 AUDIT_MAX_PASSES=2
+
+# Your project's full test command, run once when a whole plan signs off
+# (./sprint.sh promote plan:N), e.g. TEST_SUITE=npm test. Empty = no full
+# suite: sign-off says so and goes straight to the human checklist.
+TEST_SUITE=
 
 # Servers for `./sprint.sh agents` to check over ssh, as ssh aliases,
 # space-separated (e.g. AGENT_HOSTS=dev-box build-1). Personal, so it usually

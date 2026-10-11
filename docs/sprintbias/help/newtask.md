@@ -16,15 +16,17 @@ polish set it for you.
 
 Tasks get an auto-assigned ID and are built from a battle-tested
 template. The file is created ready to edit — fill in **Problem** (high-level
-what is wrong) and **Success criteria** (what done looks like) yourself, or
+what is wrong), **Done when (automated)** (what done looks like, with the
+test or command that proves it) and **Signoff (human)** (what a person checks)
+yourself, or
 run `./sprint.sh chat <id>` to develop them conversationally. Notes and
 References are optional hints and paths; how to implement is the developer's
 call.
 
 The header stamps **Plan** (which `docs/plans/N-…` this belongs to),
 **Depends on** (prerequisite task IDs), **Dependents** (the reverse edge —
-task IDs that wait on this one), and **Tests** (suite scripts that prove the
-success criteria for `promote`), all defaulting to `none`.
+task IDs that wait on this one), and **Tests** (suite scripts that prove
+Done when (automated) for `promote`), all defaulting to `none`.
 
 **Dependents** is the reverse of **Depends on**, not the `blocked/` folder.
 **Docs** is what you read while building; **Tests** is what `promote` runs to

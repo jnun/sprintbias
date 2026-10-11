@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # loop.sh — Continuous task runner. See: ./sprint.sh help loop
 
+# Bash reads a script as it runs. A long run can outlive edits to this file
+# (an agent's task, or a setup.sh update), so the braces make bash parse the
+# whole script before running any of it.
+{
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -325,3 +329,5 @@ echo "  Retried:   $RETRIED"
 echo "  Refills:   $REFILLS"
 printf '  Duration:  %dh %dm %ds\n' "$((TOTAL_ELAPSED/3600))" "$(((TOTAL_ELAPSED%3600)/60))" "$((TOTAL_ELAPSED%60))"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+exit
+}

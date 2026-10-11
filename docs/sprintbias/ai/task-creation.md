@@ -13,6 +13,7 @@ data; keep it in backticks. Full rule: `docs/sprintbias/guides/doc-style.md`.
 Work flows **Feature → Task → Audit**: a task usually builds toward a feature,
 and it will later be audited against the problem and success criteria you write
 here. Write both so a future auditor can judge "done" without asking you.
+Check `docs/history/` first for why an area is the way it is.
 
 ## The ultimate task file
 
@@ -22,7 +23,8 @@ optional fuel or post-work audit.
 | Section | Required? | Job |
 |---|---|---|
 | **## Problem** | Yes | Clear, simple language. Concisely define the problem at a high level. |
-| **## Success criteria** | Yes | What done looks like. When these are met, the task is done. |
+| **## Done when (automated)** | Yes | What done looks like, each outcome with the test or command that proves it. When these pass, an agent may land the task. |
+| **## Signoff (human)** | When a person must judge | What only a person can check: user stories to try, screens to look at, real hardware. Never holds the work; a plan gathers these into one human test. |
 | **## Notes** | No | Helpful hints that assist the developer in figuring out how to work the task. |
 | **## References** | No | Direct paths to docs or files known to be related. |
 | **### Files changed** (under **## Completed**) | After work only | The product files you edited to close the task — one path per line, not this task file. |
@@ -32,30 +34,36 @@ each section's guidance with an `<!-- sb:hint ... -->` comment that describes
 what belongs there. That marker is scaffolding for the author, not part of the
 task. When you fill a section, delete its `sb:hint` comment and put the real
 content in its place. A finished task carries no `sb:hint` blocks — only the
-author's own Problem, Success criteria, and optional Notes/References. Leaving a
+author's own Problem, Done when (automated), Signoff (human), and optional
+Notes/References. Leaving a
 section empty is fine; leaving its hint comment sitting above real content is
 not. (`work` also strips any surviving `sb:hint` comment when it runs a task, so
 the marker never reaches a worked file — but author them clean regardless.)
 
 **How to implement is the developer's decision.** Do not turn the task into a
 detailed outline of exact steps unless the work itself is a library or detailed
-technical fix — then put the new technical *needs* as outcomes under Success
-criteria, not as a prescribed implementation path.
+technical fix — then put the new technical *needs* as outcomes under Done when
+(automated), not as a prescribed implementation path.
 
 **Where content belongs**
 
 | Content | Location |
 |---|---|
-| Problem and outcomes | This task file (`## Problem`, `## Success criteria`) |
+| Problem and outcomes | This task file (`## Problem`, `## Done when (automated)`, `## Signoff (human)`) |
 | Hints for the implementer | `## Notes` (optional) |
 | Related paths | `## References` (optional) |
 | How to implement (guides, patterns, specs) | `docs/guides/`, `docs/examples/`, `docs/features/` — link, don't inline a build plan |
 | After-work audit trail | `## Completed` → `### Files changed` |
 
-The durable brief is **Problem + Success criteria**. Notes and References assist
-the developer. Gate's `## Questions` holds the workability stamp, code findings,
-remaining outcomes, and open questions still waiting on a decision. Write the
-work itself in Problem and Success criteria.
+The durable brief is **Problem + Done when (automated) + Signoff (human)**. Notes
+and References assist the developer. Gate's `## Questions` holds the workability
+stamp, code findings and remaining outcomes. Write the work itself in Problem,
+Done when and Signoff.
+
+An older task carries `## Success criteria` in place of the two done sections.
+Every reader treats it as Done when (automated). When you sharpen such a task,
+rename the heading to `## Done when (automated)`, move any item a person must
+judge into `## Signoff (human)`, and name the proving tests.
 
 ### Questions become instructions
 
@@ -64,23 +72,27 @@ work itself in Problem and Success criteria.
 2. **Get** the answer from the user or agent.
 3. **Convert** the answer into clear instruction or guidance (positive, direct,
    concise).
-4. **Update** the task body — `## Success criteria` when it defines done;
-   otherwise `## Notes` as guidance the implementer follows.
+4. **Update** the task body — `## Done when (automated)` when a test proves it,
+   `## Signoff (human)` when a person checks it, otherwise `## Notes` as
+   guidance the implementer follows.
 5. **Delete** the original question — it has been answered.
 
 When every question has been answered this way, that subsection reads
-`None — task is fully defined.` Open questions keep the task **BLOCKED** and out
-of `next/` until the loop finishes.
+`None — task is fully defined.`
 
 **Do not park micro-choices as open questions.** If you can write a useful
-`(Suggestion: …)`, apply it as body instruction and omit the question. Only
-product forks that change success criteria need a human. Bulk-accept path:
-`./sprint.sh settle` (folds every remaining Suggestion, demotes anything still
-open).
+`(Suggestion: …)`, apply it as body instruction, record it in `## Notes` as
+`- Decided: X, because Y`, and omit the question. Only product forks that
+change what done looks like need the person. A question still open when the
+conversation ends stays listed with its `(Suggestion: …)`; `work` takes the
+suggestion as the answer, so it never holds the task.
+
+A task goes to `blocked/` only when it cannot start: no reasonable reading of
+it exists, or it needs access or credentials only the person holds.
 
 ## Instruct positively
 
-**State the desired path as the rule.** Success criteria say what should be true
+**State the desired path as the rule.** Done when and Signoff say what should be true
 when the work is done — not a checklist of things to avoid.
 
 - Prefer (style sample of phrasing — not a live step): "User can log in with
@@ -163,7 +175,10 @@ source docs/sprintbias/lib.sh
 
 ## The Q&A Process
 
-Before creating any task, work through these questions with the user:
+Before creating any task, work through these questions with the user, one at
+a time. Read the code and docs first so each question carries your suggested
+answer; a question the request or code already answers, state the answer in a
+line and move on.
 
 ### 1. Understand the Problem
 
@@ -185,8 +200,8 @@ Ask:
 
 Dependencies are sequencing, not a blocked state. A task that needs another
 task finished first is **dependent** (on hold until that prerequisite lands) —
-it is not blocked. **Blocked** / **BLOCKED** means a decision or clarification
-is needed about *this* task.
+it is not blocked. **Blocked** / **BLOCKED** means *this* task cannot start:
+no reasonable reading of it, or it needs access only the person holds.
 
 Ask:
 - "Does anything need to be done first?" (→ **Depends on** — prerequisites)
@@ -208,9 +223,11 @@ Ask:
 - "How would you test that it works?"
 - "What would you check to verify it's complete?"
 
-The answers become **## Success criteria**. For a library or detailed technical
-fix, the criteria may name new technical *needs* as checkable outcomes — still
-not a line-by-line build plan.
+What a test or command proves becomes **## Done when (automated)**, with that
+test or command named; what a person must try or look at becomes
+**## Signoff (human)**. For a library or detailed technical fix, Done when may
+name new technical *needs* as checkable outcomes — still not a line-by-line
+build plan.
 
 ### 5. Confirm Understanding
 
@@ -218,7 +235,8 @@ Before writing anything, summarize back:
 - "So the problem is [X], and we'll know it's fixed when [Y]. Is that right?"
 
 Proceed after confirmation. Optional Notes and References come after that core
-is solid — only if they help the developer without prescribing the build.
+is solid — only if they help the developer without prescribing the build. End
+with the next command (`./sprint.sh work <id>`).
 
 ## Task Structure
 
@@ -231,10 +249,10 @@ The header carries the task's place in the larger body of work. Set what applies
 - **Docs** — a guide the implementer should follow, e.g. `docs/guides/script-template-sync.md`. `none` if there is none.
 - **Plan** — the plan this task belongs to, e.g. `15` for `docs/plans/15-…`. Reverse index of plan membership only. `none` if not in a plan. The plan *file* remains the membership authority.
 - **From plan** — the plan whose work produced this task (a rework, delta, put-off item, or enhancement filed while working plan N). Set by `./sprint.sh newtask "…" --from-plan N`; `none` otherwise. `newplan "…" from:N` groups these follow-ups once plan N is done.
-- **Depends on** — prerequisite task IDs that must finish before this one can start. The runner holds a READY dependent task until those land in review/ or done/ — sequencing, not a block.
+- **Depends on** — prerequisite task IDs that must land before this one can start. The runner holds a READY dependent task until those land (review/ with a proof line) or reach done/ — sequencing, not a block.
 - **Dependents** — reverse edge: task IDs that wait on this one. Graph metadata only — does not put anyone in `blocked/`. Write **Dependents**; readers still accept legacy **Blocks**.
 - **Parent** — a task that groups this one with related work. Task-to-task only; not **Plan**.
-- **Tests** — suite scripts that prove the success criteria so `./sprint.sh promote` may move `review/ → done/` without a human. Paths under `docs/tests/` (typically `test-*.sh`); comma-separate several — **all** must pass. `none` = human sign-off in `review/`. Set only when a real script already proves the criteria; a hopeful path that is missing keeps the task in `review/`. Write **Tests**; readers still accept legacy **Proven by**.
+- **Tests** — suite scripts that prove Done when (automated) so `./sprint.sh promote` may move `review/ → done/` without a human. Paths under `docs/tests/` (typically `test-*.sh`); comma-separate several — **all** must pass. `none` = human sign-off in `review/`. Set only when a real script already proves the criteria; a hopeful path that is missing keeps the task in `review/`. Write **Tests**; readers still accept legacy **Proven by**.
 
 These definitions are the single source of truth for the header fields. The task
 template carries a bare field list and no legend — keep it that way. When a field
@@ -247,32 +265,60 @@ matters. Prefer 2–5 short sentences, as you'd explain it to a colleague new to
 the area. Loose Gherkin (Given/When/Then) is welcome, not required. The *how*
 belongs in the implementation the developer chooses, not here.
 
-### Success Criteria Section
+### Done When (automated) Section
 
-What done looks like. When these requirements are met, the task is done. Write
-observable behaviors that anyone can verify. This is the yardstick audits and
-`promote` measure against. Phrase each criterion as the desired path (see
-**Instruct positively** above).
+What done looks like, proven by a machine. Write observable outcomes, and name
+the test or command that proves them in backticks: the suite script that covers
+the change, or the new test the work adds. This is the yardstick agents, audits
+and `promote` measure against; when it passes, an agent may land the task. The
+gate keeps a task out of `next/` until this section names at least one test or
+command. Phrase each item as the desired path (see **Instruct positively**
+above).
 
 Patterns that work:
-- "User can [do what]"
+- "User can [do what]; `[test command]` covers it"
 - "App shows [result]"
 - "[Action] completes within [time]"
-- For technical/library tasks: "[API/module] exposes [capability] and [test] covers it"
+- For technical/library tasks: "[API/module] exposes [capability] and `[test]` covers it"
 
 Example:
 ```markdown
-## Success criteria
+## Done when (automated)
 - [ ] User can log in with email and password
 - [ ] Error message appears when password is wrong
 - [ ] Session persists across browser refresh
+- [ ] `npm test -- login` passes
+```
+
+### Signoff (human) Section
+
+What only a person can judge: a user story to try end to end, a screen to look
+at, wording to read, a run on real hardware. Leave it empty when Done when
+proves everything.
+
+**A person-only check never holds the work.** Agents build to the most
+reasonable assumption, prove what a test can reach (simulate the device, stub
+the service), record each assumption under `### Assumptions` in `## Completed`,
+and land the task in `review/`. `plan start` gathers every member's Signoff
+(human) items, the plan's own, and later each assumption into **one human test**
+per plan: a task marked `**Owner**: human`, parked in `review/`, listed last in
+the plan. The person runs it once the plan lands and writes each failure under
+its `## Results` as `- fail: <what you saw>`; `promote plan:N` files each as a
+fix task the agents build. So write person-only checks here, inside the task
+they verify. A standalone task whose whole job is a person testing on hardware
+belongs in that human test instead.
+
+Example:
+```markdown
+## Signoff (human)
+- [ ] Log in on a phone; the form fits the screen and reads clearly
 ```
 
 ### Notes Section
 
 Optional hints that help the developer work the task: decisions already made,
 constraints, edge cases, gotchas, pointers to patterns. Fuel for the developer's
-choice — not a step list, not a substitute for Problem or Success criteria.
+choice — not a step list, not a substitute for Problem or Done when.
 Leave empty when there is nothing useful to add.
 
 ### References Section
@@ -292,7 +338,9 @@ docs/features/task-automation.md — spec this serves
 
 ### Completed / Files changed (after work only)
 
-When the task is finished, list under `### Files changed` the product files you
+When the task is finished, open `## Completed` with a `**Summary**:` line, one
+plain sentence on what changed; `plan done` copies it into the plan's history
+record in `docs/history/`. Then list under `### Files changed` the product files you
 edited to complete it — one repo-relative path per line. Reviews and the change
 manifest read this list. **Leave this task file out** — its folder location and
 git history already track it. Write both headings at column 0 (unindented); do
@@ -300,6 +348,8 @@ git history already track it. Write both headings at column 0 (unindented); do
 
 ```markdown
 ## Completed
+
+**Summary**: <one plain sentence: what changed, for someone reading the project's history>
 
 ### Files changed
 docs/sprintbias/scripts/example.sh
@@ -312,8 +362,8 @@ task to `review/`, and `### Files changed` is the list the audit trusts.
 ## Verify Before Saving
 
 1. **Problem** is clear, simple, and high-level — someone unfamiliar can understand it
-2. **Success criteria** state what done looks like; an auditor could check each one
-3. Success criteria state the desired path — no prohibition-shaped rule list
+2. **Done when (automated)** states what done looks like and names the test or command that proves it
+3. **Signoff (human)** holds only what a person must judge; both state the desired path — no prohibition-shaped rule list
 4. **Notes** (if any) are optional hints, not a mandatory build plan
 5. **References** (if any) are real paths that help; deep HOW lives in guides/examples/features
 6. Header fields set what applies (Feature, Docs, Plan, Depends on, Dependents, Tests)

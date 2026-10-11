@@ -3,7 +3,8 @@ Discuss a task with an AI to turn it into a well-defined, workable task.
 `plan` and `find` stress-test flows used to do. It sizes the task up first,
 then routes to the right depth:
 
-  - Blank stub → fills the durable brief (## Problem + ## Success criteria)
+  - Blank stub → fills the durable brief (## Problem + ## Done when (automated)
+    + ## Signoff (human))
     from scratch, one question at a time; optional ## Notes / ## References
     as helpful hints and paths (how to implement stays the developer's call)
   - Several jobs bundled together → proposes a breakdown, and on your OK
@@ -71,11 +72,14 @@ With a STAGE FOLDER name (`blocked`, `next`, or `backlog`), `chat` sweeps that
 whole folder one task at a time — an express, verdict-first sort that absorbed
 the old `triage` command. For each task it gives a fast verdict (status, a
 one-line summary, a recommendation) on a cheap model, then lets you decide.
-Verdict **BLOCKED** means a decision or clarification is needed on *this* task —
-not “has an open Depends on.” **UNDEFINED** means too thin to act on yet.
+Verdict **BLOCKED** means *this* task cannot start — no reasonable reading of
+it, or it needs access or credentials only you hold — not “has an open Depends
+on.” An open choice with a reasonable pick is decided and recorded as
+`- Decided: X, because Y`, not blocked. A BLOCKED verdict names
+`./sprint.sh chat <id>`. **UNDEFINED** means too thin to act on yet.
 Ordinary deps are pipeline ordering: the task is **dependent** (on hold); `work`
 holds it until prerequisites finish. A dep that sits in the `blocked/` *folder*
-is different (that prerequisite needs a decision) and is called out separately —
+is different (that prerequisite cannot start yet) and is called out separately —
 the dependent stays on hold; the prerequisite is the blocked one.
 
   - [w] work it   — from `next/`: start it (`doing/`). From `blocked/` or
@@ -109,10 +113,17 @@ next `chat` on the same task or plan picks up at the first unchecked line.
 With `plan` (or `plan <id>`), `chat` authors a plan file in `docs/plans/` —
 conversational grouping, not task refinement. Bare `chat plan` picks a plan
 (like bare `chat backlog`); `chat plan <id>` uses a *plan* id (never a task
-id). Create the scaffold first with `newplan`. The session writes only the plan
-file: Goal, ordered member task IDs (from `backlog/`, read-only — no task moves
-or edits), parallelism notes (recorded, not acted on), and
-`**Status:** DRAFT → READY` when you confirm.
+id). Create the scaffold first with `newplan`. The session writes the plan
+file — Goal, ordered member task IDs, parallelism notes (recorded, not acted
+on), and `**Status:** DRAFT → READY` when you confirm — and does the planning
+work around it: creates missing tasks with `newtask`, edits member tasks and
+other plans' tasks, sets **Depends on** / **Dependents** across plans on both
+sides (noting `Touched by plan N` on the other plan), and moves READY tasks
+between `backlog/` and `next/`. With fast on it also acts as the plan's lead:
+it gets subagents, may run `plan start` and `work`, and builds a missing piece
+itself or through a subagent, landing it in `review/` with a proof line. With
+fast off, building and starting agents stay with `plan start` and `work`.
+Commit, push, `ship.sh` and moving tasks to `done/` stay yours in every mode.
 When `plan think` has listed decisions for you (docs/tmp/plan-<id>_discuss.md),
 `chat plan <id>` runs the work loop over that checklist first: plan-level
 lines, then each task's lines in plan order. Each held task is raised by its verdict: DONE ALREADY shows where the
@@ -121,7 +132,8 @@ delete; NOT REAL walks the evidence that the problem isn't one, then offers
 delete or keep-with-your-context; OFF GOAL says why it's off topic, then offers
 delete or put off (stays in backlog/).
 After authoring: optional `./sprint.sh plan think <id>` (dual-persona critique),
-then `./sprint.sh plan start <id>` to commit members into the sprint — not here.
+then `./sprint.sh plan start <id>` to commit members into the sprint (fast on:
+the session may run it for you).
 
 With `bugs`, `chat` sweeps the bug inbox (`docs/bugs/`) — the same verdict-first
 tempo, but bug-shaped. A bug report is not a task: it lives flat, has no
@@ -131,7 +143,8 @@ verdict (REPRODUCIBLE / FIXED / UNDEFINED / DUPLICATE / STALE on a cheap model),
 then lets you decide:
 
   - [w] work it   — **convert**: create a fix task filled from the report
-                    (Problem, Steps→Problem, Success criteria, origin in Notes),
+                    (Problem, Steps→Problem, the report's Success criteria
+                    → Done when (automated), origin in Notes),
                     then **delete** the bug file. The task owns the work from
                     here; refine later with `chat <task-id>` if needed.
   - [d] define it — go deep on the *report itself* (the strongest model):
@@ -179,14 +192,15 @@ What it does:
   - Lays out open technical decisions with a recommended default and its
     rationale, flagging security and performance trade-offs
   - Polishes each answer, then edits immediately: convert the answer into
-    instruction in Problem / Success criteria / Notes, delete the question
-  - Fills ## Problem and ## Success criteria as a user-story brief (problem
-    + what done looks like); optional ## Notes (hints + guidance from answered
+    instruction in Problem / Done when / Signoff / Notes, delete the question
+  - Fills ## Problem, ## Done when (automated) and ## Signoff (human) as a
+    user-story brief (problem + what done looks like, with the tests that
+    prove it, + what a person checks); optional ## Notes (hints + guidance from answered
     questions) and ## References (paths)
   - Closes the loop on a blocked task: when every question is answered and
     turned into body instruction, it re-enters the sprint through the shared
     workability gate (same review as `plan start` / folder `[w]`) — READY →
-    next/, or BLOCKED while a question is still open
+    next/, or BLOCKED only when it still cannot start
   - Chains to the next dependency that still needs work in a *fresh* context
     so a long session doesn't pile up tokens: it seeds the next task's
     file with a short "Context from chat" note (the decisions that flow

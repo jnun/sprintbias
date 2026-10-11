@@ -154,7 +154,7 @@ def act1():
     line(f"      {GREY}Problem:{RESET} {DIM}\"make login better\" — better how? no symptom, no user impact.{RESET}")
     line(f"      {GREY}Success:{RESET} {DIM}no testable check — nothing a run could prove it hit.{RESET}")
     ok(f"Wrote a {BOLD}## Questions{RESET} section into the task with what's missing.")
-    moved("next/57", "blocked/57   · needs a decision")
+    moved("next/57", "blocked/57   · cannot start: no reasonable reading")
     nap(0.5)
     beat("This is the guardrail doing its job. Vague work waits in blocked/ "
          "instead of running half-understood and burning a context on a guess.")
@@ -208,7 +208,7 @@ def outro():
     line(f"    {PURPLE}•{RESET} {WHITE}the gate is a guardrail{RESET}   "
          f"{GREY}vague work stops in blocked/, it doesn't run{RESET}")
     line(f"    {PURPLE}•{RESET} {WHITE}blocked is not broken{RESET}     "
-         f"{GREY}it means \"needs a decision\" — answer it, don't delete it{RESET}")
+         f"{GREY}it means \"cannot start yet\" — define it, don't delete it{RESET}")
     line(f"    {PURPLE}•{RESET} {WHITE}one door into next/{RESET}       "
          f"{GREY}everything enters the sprint through the same gate{RESET}")
     print()

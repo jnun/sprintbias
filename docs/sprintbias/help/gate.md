@@ -13,8 +13,8 @@ without moving anything.
 On **next/** (default) gate:
   - Checks which action items are already complete (and verifies quality)
   - Identifies remaining work
-  - Surfaces open questions under ### Questions for the developer (each with a
-    suggestion)
+  - Decides each open call by its best answer and records it in Notes
+    (`- Decided: X, because Y`); no question is left waiting on you
   - Grounds the task: writes ## Grounding — the project-map sources it relies
     on, the glossary / lexicon / taxonomy terms it uses (word for word), and its
     conflicts settled before work (printed as "Conflicts noted")
@@ -22,13 +22,14 @@ On **next/** (default) gate:
 
 Verdicts on next/ (workability stamps — **not** lifecycle folders):
   READY    — task stays in next/, ready for execution (question list clear)
-  BLOCKED  — open question still needs an answer; moves to blocked/
+  BLOCKED  — cannot start: no reasonable reading of the task, or it needs
+             access only you hold; moves to blocked/
   COMPLETE — work already present in the codebase; task moves to **review/**
              (not `docs/tasks/done/`; you approve and move to done/ later)
 
-Questions become instructions: answer → write as instruction in the body →
-delete the question. READY and promotion into next/ need a clear list
-(`None — task is fully defined.`).
+Every call the gate makes is written into the task and listed at the end of
+`work`, each with `./sprint.sh newtask "<the change you want>"` to change it.
+READY and promotion into next/ need a clear list (`None — task is fully defined.`).
 
 On **backlog/**, **doing/**, or **blocked/** gate reports only (read-only):
   COMPLETE  — work already present in the codebase (not the done/ folder)
@@ -56,11 +57,9 @@ re-pay to review the whole queue each run. --force re-reviews all of them.
 
 After running on next/:
   - READY tasks: run ./sprint.sh work to execute them
-  - BLOCKED tasks: answer each open question (`./sprint.sh chat <id>`), write
-    each answer as instruction in the body, delete the question, then re-enter
-    next/ via the shared gate again. If every open item already has a
-    `(Suggestion: …)`, run `./sprint.sh settle` (or `settle <id>`) to fold and
-    clear without a full chat.
+  - BLOCKED tasks: give the task what it lacks (`./sprint.sh chat <id>`), then
+    `./sprint.sh work <id>` gates it back into next/ and runs it. Suggested
+    answers are taken automatically.
   - COMPLETE tasks: verify in review/, then move to done/ when you approve
 
 **Invariant:** nothing enters `next/` without this workability review. Surfaces

@@ -6,12 +6,15 @@
 # Pure shell, NO AI. Reads a plan and its members and prints one glance at where
 # the plan stands. Changes NOTHING — no task or plan file is created, edited,
 # moved, or deleted, and no model is called. This is the read-only inverse of
-# `plan start` (gates + moves) and `plan done` (deletes on a full pass).
+# `plan start` (gates + moves) and `plan done` (retires on a full pass).
 #
 # It answers three questions:
-#   1. Plan state — not started / started / in process / completed, from the
-#      plan **Status:** field plus where members live. A plan is completed only
-#      when every member is in done/ (the point `plan done` would retire it).
+#   1. Plan state — computed from the folders, never stamped: STARTED (work
+#      open) · LANDED (every member landed: review/ with proof) · SIGNED OFF
+#      (every member in done/, the point `plan done` would retire it); "not
+#      started" while the **Status:** latch is not STARTED and nothing has moved.
+#      Three counts back it — open, landed, signed off — and the report flags
+#      review/ members without proof and open fix tasks (**Fixes**: #N).
 #   2. Lifecycle — which folder each member sits in (backlog/next/doing/blocked/
 #      review/done), with a count rollup so the spread is visible at a glance.
 #   3. Definition — undefined / defined / in process / abandoned, derived from
@@ -48,16 +51,12 @@ plan_status() {
   printf '%s' "${s:-(no status)}"
 }
 
-# has_success_criteria FILE -> exit 0 when the ## Success criteria section holds
+# has_success_criteria FILE -> exit 0 when the task's ## Done when (automated)
+# section (or an old ## Success criteria, see lib.sh sprintbias_done_when) holds
 # at least one checkbox with real text (checked or unchecked). Empty "- [ ]"
 # placeholders from a fresh task template do not count.
 has_success_criteria() {
-  awk '
-    /^## Success criteria[[:space:]]*$/ { cap=1; next }
-    cap && /^## / { cap=0 }
-    cap && /^-[[:space:]]*\[[ xX]\][[:space:]]*[^[:space:]]/ { found=1 }
-    END { exit(found ? 0 : 1) }
-  ' "$1" 2>/dev/null
+  sprintbias_done_when "$1" | grep -qE '^-[[:space:]]*\[[ xX]\][[:space:]]*[^[:space:]]'
 }
 
 # outcome_result FILE -> the ## Outcome **Result**: value (failed|incomplete|…) or empty.
@@ -155,23 +154,24 @@ if [ -z "$MEMBER_IDS" ]; then
 fi
 
 # Old bash (3.2, macOS default) has no associative arrays. Collect one
-# "id stage dstate" record per member into an indexed array; derive every count
-# by filtering that list, so no `declare -A` is needed.
-TOTAL=0; DONE=0; PROGRESSED=0; MISSING=0
+# "id stage dstate standing" record per member into an indexed array; derive
+# every count by filtering that list, so no `declare -A` is needed.
 RECORDS=()
+UNPROVEN_IDS=""
+HELD_LINES=""
 
 for id in $MEMBER_IDS; do
-  TOTAL=$((TOTAL + 1))
   if ! stage="$(sprintbias_task_stage "$id")"; then
-    MISSING=$((MISSING + 1))
-    RECORDS+=("$id missing missing")
+    RECORDS+=("$id missing missing missing")
     continue
   fi
   file="$(sprintbias_task_path "$id")"
   dstate="$(def_state "$file" "$stage")"
-  [ "$stage" = "done" ] && DONE=$((DONE + 1))
-  case "$stage" in doing|review|done) PROGRESSED=$((PROGRESSED + 1)) ;; esac
-  RECORDS+=("$id $stage $dstate")
+  standing="$(sprintbias_member_standing "$id")"
+  [ "$standing" = "unproven" ] && UNPROVEN_IDS="$UNPROVEN_IDS #$id"
+  [ "$standing" = "held" ] && HELD_LINES="$HELD_LINES    #$id $(sprintbias_held_label "$id")
+"
+  RECORDS+=("$id $stage $dstate $standing")
 done
 
 # count_field N VALUE -> how many records have VALUE in whitespace field N (2|3).
@@ -184,19 +184,24 @@ count_field() {
 }
 
 # ── Plan state ───────────────────────────────────────────────────────
-# completed = every member in done/. Otherwise progress is read from where
-# members live, gated by whether the plan has been started (STARTED latch).
-if [ "$DONE" -eq "$TOTAL" ]; then
-  PLAN_STATE="completed"
-elif [ "$STATUS" != "STARTED" ]; then
-  PLAN_STATE="not started ($STATUS)"
-elif [ "$PROGRESSED" -gt 0 ]; then
-  PLAN_STATE="in process"
-else
-  PLAN_STATE="started"
-fi
+# Computed from the folders by lib.sh (sprintbias_plan_state), never stamped:
+# STARTED (work open) · LANDED (every member landed — ready for the full suite
+# and sign-off) · SIGNED OFF (every member in done/ — plan done retires it).
+# The **Status:** latch shown in brackets is plan start's, unchanged here.
+read -r OPEN LANDED SIGNED UNPROVEN MISSING TOTAL FIXES _moved HELD _human <<EOF
+$(sprintbias_plan_counts "$PLAN_FILE")
+EOF
+PLAN_STATE="$(sprintbias_plan_state "$PLAN_FILE")"
+case "$PLAN_STATE" in
+  "not started") PLAN_STATE="not started ($STATUS)" ;;
+esac
 
-echo "  Plan state:  $PLAN_STATE  [**Status:** $STATUS · $DONE/$TOTAL in done/]"
+echo "  Plan state:  $PLAN_STATE  [**Status:** $STATUS]"
+_counts="open $OPEN · landed $LANDED · signed off $SIGNED  (of $TOTAL)"
+[ "$HELD" -gt 0 ] && _counts="$_counts · held $HELD"
+[ "$UNPROVEN" -gt 0 ] && _counts="$_counts · $SPRINTBIAS_UNPROVEN_LABEL $UNPROVEN"
+[ "$MISSING" -gt 0 ] && _counts="$_counts · missing $MISSING"
+echo "  Counts:      $_counts"
 echo ""
 
 # ── Lifecycle rollup ─────────────────────────────────────────────────
@@ -217,19 +222,52 @@ echo "  Definition:$_def"
 echo ""
 
 # ── Per-member table ─────────────────────────────────────────────────
-echo "  Member    Folder    State"
+echo "  Member Folder    Definition  Standing"
 for rec in "${RECORDS[@]}"; do
   set -- $rec
   if [ "$2" = "missing" ]; then
-    printf '  #%-4s  %-8s  %s\n' "$1" "missing" "no task file found"
+    printf '  #%-5s %-8s  %s\n' "$1" "missing" "no task file found"
+  elif [ "$4" = "held" ]; then
+    printf '  #%-5s %-8s  %-10s  %s\n' "$1" "$2" "$3" "$(sprintbias_held_label "$1")"
+  elif [ "$4" = "human" ]; then
+    printf '  #%-5s %-8s  %-10s  %s\n' "$1" "$2" "$3" "human test — yours to run"
   else
-    printf '  #%-4s  %-8s  %s\n' "$1" "$2" "$3"
+    printf '  #%-5s %-8s  %-10s  %s\n' "$1" "$2" "$3" "${4/-/ }"
   fi
 done
 
+# ── Flags: what keeps the plan from LANDED ───────────────────────────
+if [ -n "$HELD_LINES" ]; then
+  echo ""
+  echo "  ⚠ Held (review/ with proof, waiting on its fix task):"
+  printf '%s' "$HELD_LINES"
+  echo "    Work the fix task; the original lands when every fix it names lands."
+fi
+if [ -n "$UNPROVEN_IDS" ]; then
+  echo ""
+  echo "  ⚠ $SPRINTBIAS_UNPROVEN_LABEL (review/, no **Proof**: line):$UNPROVEN_IDS"
+  echo "    Add the proof line under ## Completed once the targeted tests pass."
+fi
+if [ "$FIXES" -gt 0 ]; then
+  echo ""
+  echo "  ⚠ Open fix tasks (**Fixes**: field):"
+  sprintbias_plan_open_fixes "$PLAN_FILE" | while read -r _fid _tid; do
+    echo "    #$_fid fixes #$_tid — in $(sprintbias_task_stage "$_fid")/"
+  done
+fi
 if [ "$MISSING" -gt 0 ]; then
   echo ""
   echo "  ⚠ $MISSING member(s) have no task file — listed in the plan but not on disk."
 fi
+case "$PLAN_STATE" in
+  LANDED)
+    echo ""
+    _ht="$(sprintbias_plan_human_test "$PLAN_FILE")"
+    [ -n "$_ht" ] && echo "  Run the human test: $_ht (failures go under its ## Results)."
+    echo "  Every member landed. Sign the plan off (full suite once, one approval): ./sprint.sh promote plan:$PLAN_ID" ;;
+  "SIGNED OFF")
+    echo ""
+    echo "  Every member signed off. Retire it: ./sprint.sh plan done $PLAN_ID" ;;
+esac
 
 exit 0

@@ -198,25 +198,27 @@ fi
 if [ "$STAGE" = "blocked" ]; then
   _CLOSE_LOOP_INSTR="
 1b. CLOSE THE LOOP (this task is in blocked/):
-gate parked this task because a question was still open. When every question is
-answered — each answer written as instruction in Problem / Success criteria /
-Notes, each original question deleted, and '### Questions for the developer'
-reads 'None — task is fully defined.' — promote via the shared gate:
+This task is in blocked/ because it could not start. Work through what is
+missing with the user, one question at a time — write each answer as
+instruction in Problem / Done when (automated) / Signoff (human) / Notes and
+delete the question — until '### Questions for the developer' reads
+'None — task is fully defined.' Then promote via the shared gate:
 1. DELETE any stale '## BLOCKED' section once the question list is clear.
 2. Run the promote helper (project root):
      bash docs/sprintbias/scripts/promote-to-sprint.sh $TASK_FILE
    That runs the workability gate: READY → next/, BLOCKED → blocked/ (reason in
    file), COMPLETE → review/. Tell the user the one-line result.
-While any open question remains, leave the file in blocked/ and name what still
-needs answering."
+When it still cannot start (no reasonable reading, or it needs access only the
+person holds), leave it in blocked/, say in one line what is missing, and name
+the command that moves it: ./sprint.sh chat $PARENT_NUM."
 else
   _CLOSE_LOOP_INSTR=""
 fi
 
 # ── Demote-the-other-way: the symmetric partner of close-the-loop. blocked/
-# means a decision or clarification is needed — so a task that ENDS the session
-# with a real open question shouldn't keep sitting in a workable stage pretending
-# to be ready. Only meaningful when the task is NOT already in blocked/ (a
+# means the task cannot start — so a task that ENDS the session with no
+# reasonable reading, or waiting on access only the person holds, shouldn't keep
+# sitting in a workable stage pretending to be ready. Only meaningful when the task is NOT already in blocked/ (a
 # blocked task that stays unresolved is handled by close-the-loop's own "leave
 # it in blocked/" branch), so this is empty for blocked/ and the closing prompt
 # reads clean. chat states the demotion plainly because a user who ran chat on
@@ -224,18 +226,20 @@ fi
 if [ "$STAGE" != "blocked" ]; then
   _DEMOTE_INSTR="
 
-═══ IF A DECISION IS STILL OPEN — RECORD, THEN DEMOTE ═══
-If the session ends with a real choice still needed before work can start (a
-decision on this task, beyond ordinary dependency waits), move it to BLOCKED:
-1. RECORD the open question(s): make the file END with a '## Questions' section
+═══ IF THE TASK CANNOT START — RECORD, THEN DEMOTE ═══
+A question still open at session end stays listed with its (Suggestion: …) and
+the task stays where it is — work takes the suggestion as the answer. Demote
+only when the task cannot start at all: no reasonable reading of it, or it needs access or
+credentials only the person holds. Then move it to BLOCKED:
+1. RECORD what is missing: make the file END with a '## Questions' section
    whose first line is EXACTLY:
      **Status: BLOCKED**
-   Under '### Questions for the developer', list each as
-   'N. [Question]? (Suggestion: [pick and why])'. Replace any earlier
-   '## Questions' section with one clean section.
+   Under '### Questions for the developer', list each missing piece as
+   'N. [Question]?'. Replace any earlier '## Questions' section with one clean
+   section.
 2. DEMOTE it:  git mv $TASK_FILE docs/tasks/blocked/$TASK_NAME || mv $TASK_FILE docs/tasks/blocked/$TASK_NAME
-3. TELL THE USER PLAINLY that you moved this task out of ${STAGE}/ into blocked/
-   and name the open question in one line.
+3. TELL THE USER PLAINLY that you moved this task out of ${STAGE}/ into blocked/,
+   name what is missing in one line, and the command: ./sprint.sh chat $PARENT_NUM
 4. Then give the same leave-session cue as the finish path (step 5 below)."
 else
   _DEMOTE_INSTR=""
@@ -255,14 +259,14 @@ else
 fi
 
 # ── Chain to the next dependency in a FRESH context. Defining one task often
-# surfaces that it depends on another task that still needs a decision; walking
+# surfaces that it depends on another task that cannot start yet; walking
 # that chain in THIS conversation piles context up and burns tokens. So we hand
 # the next task off through its FILE (a durable note the fresh session reads)
 # and start clean:
 # emit mode on orchestration-capable tiers spawns a brand-new subagent;
 # exec mode can't open a window, so it prints the command for the user to run.
 if [ "$(sprintbias_ai_mode)" = "emit" ] && sprintbias_orchestration_capable; then
-  _CONTINUE_INSTR="Then CONTINUE THE CHAIN in a fresh context to keep this session's tokens lean: $(sprintbias_subagent_spawn_phrase "<next-id>" chain). Its entire instruction: 'Run ./sprint.sh chat <next-id> and carry that task as far toward READY as you can on your own — read the *Context from chat* note already in its file, refine it, and for each answered question convert the answer into body instruction and delete the question; leave only still-open questions under ### Questions for the developer and report those back.' Tell the user you have spun up a fresh agent for <next-id> and say in one line what it is picking up."
+  _CONTINUE_INSTR="Then CONTINUE THE CHAIN in a fresh context to keep this session's tokens lean: $(sprintbias_subagent_spawn_phrase "<next-id>" chain). Its entire instruction: 'Run ./sprint.sh chat <next-id> and carry that task as far toward READY as you can on your own — read the *Context from chat* note already in its file, refine it, and for each answered question convert the answer into body instruction and delete the question; leave only still-open questions (each with a Suggestion) under ### Questions for the developer and report those back.' Tell the user you have spun up a fresh agent for <next-id> and say in one line what it is picking up."
 else
   _CONTINUE_INSTR="Then, to keep each session's context small, hand off instead of continuing here. Tell the user the next task to define and the exact command to run in a FRESH window:  ./sprint.sh chat <next-id>  — the *Context from chat* note you just wrote means that fresh session already has what it needs."
 fi
@@ -350,6 +354,7 @@ _CHECKLIST_LINE="$(sprintbias_checklist_line "task-$PARENT_NUM")"
 _open="$(sprintbias_discuss_open_count "$(sprintbias_discuss_file "task-$PARENT_NUM")")"
 [ "$_open" -gt 0 ] && echo -e "${CYAN}▸ $_open unchecked decision(s) from last time — resuming there first.${NC}"
 
+_FAST="$(sprintbias_fast_rules)"
 APPEND_PROMPT="You are a senior engineer reviewing a task with the colleague who wrote it. Talk it through one detail at a time until it is a crisp user-story brief any developer (human or AI) can pick up — the problem, what done looks like, and the technical requirements, with how to build it left to the implementer.
 
 The task file is at: $TASK_FILE — read it now, before you say anything.
@@ -357,14 +362,18 @@ ${_ORIENT}${_CHECKLIST_LINE}${_CONTEXT_BLOCK}
 
 $_METHOD
 
-YOUR GOAL: Turn a rough task into a crisp user-story brief any developer (human or AI) can pick up — fill in a stub, refine one rough job, split several jobs, or stress-test one that already looks done. Result: clear problem, what done looks like, and technical requirements; optional hints and paths; every answered question turned into instruction in the body. How to implement is the developer's choice guided by those instructions.
+${_FAST:+
+$_FAST
+}
+YOUR GOAL: Turn a rough task into a crisp user-story brief any developer (human or AI) can pick up — fill in a stub, refine one rough job, split several jobs, or stress-test one that already looks done. Result: clear problem, what done looks like, and technical requirements; optional hints and paths; every call written into the body. How to implement is the developer's choice guided by those instructions.
 
-Questions become instructions:
-1. ASK one focused question (with a suggestion when it is a real decision).
+This is the time to dig into questions and decisions with the person; work later makes best-practice calls on its own. Questions become instructions:
+1. ASK one focused question (with a (suggested) answer when it is a real decision).
 2. GET the answer.
 3. CONVERT the answer into clear instruction or guidance.
-4. UPDATE the task body (Success criteria when it defines done; otherwise Notes).
+4. UPDATE the task body (Done when (automated) when a test proves it; Signoff (human) when a person checks it; otherwise Notes).
 5. DELETE the original question — it has been answered.
+A clear-cut point best practice settles: state it in a line, record - Decided: X, because Y in Notes, and move on.
 
 STEP 0 — AUDIT THE ASK FIRST (before any refining):
 Read the file, then open with a short, opinionated read that answers four things in order:
@@ -373,12 +382,12 @@ Read the file, then open with a short, opinionated read that answers four things
   3. WORTH MORE DISCUSSION? Does this task deserve refinement now, or does it already read clean, aligned, and ready? Say which, plainly. When it already reads clean and aligned, confirm \"this is ready\" and stop — a fast, valid outcome. Refine only where the task is genuinely thin or has drifted.
   4. BEST-PRACTICE PATH: lead with the best-practice, most efficient solution — grounded in documented standards, biased toward mature, antifragile code — offered first, as your recommendation, before any questions.
 Then the two-part call:
-  (a) DEFINITION STATE — UNDEFINED STUB (Problem/Success empty/placeholder or \"This task is not defined yet\"), MISPLACED BRIEF (Problem/Success still empty but title, Notes, References, or ## Questions Remaining work already state the work clearly — promote that into the body), ROUGH or SEVERAL JOBS (thin, or bundles distinct work), or LOOKS DEFINED (Problem plus verifiable criteria already clear)?
+  (a) DEFINITION STATE — UNDEFINED STUB (Problem/Done when empty/placeholder or \"This task is not defined yet\"), MISPLACED BRIEF (Problem/Done when still empty but title, Notes, References, or ## Questions Remaining work already state the work clearly — promote that into the body), ROUGH or SEVERAL JOBS (thin, or bundles distinct work), or LOOKS DEFINED (Problem plus verifiable criteria already clear)?
   (b) MODE — FILL-IN, REFINE, SPLIT, or STRESS-TEST below.
-Treat this as an opening frame you can revise as facts warrant: switch modes mid-session when they do (hollow criterion → FILL-IN; multi-job stub → SPLIT; now-clean task → STRESS-TEST). Say so when you switch. Borderline → ask the user. Already clear → confirm and stop; the fastest good outcome is the goal. Prefer promoting existing clarity into Problem/Success over re-interrogating from zero.
+Treat this as an opening frame you can revise as facts warrant: switch modes mid-session when they do (hollow criterion → FILL-IN; multi-job stub → SPLIT; now-clean task → STRESS-TEST). Say so when you switch. Borderline → ask the user. Already clear → confirm and stop; the fastest good outcome is the goal. Prefer promoting existing clarity into Problem/Done when over re-interrogating from zero.
 
 ═══ MODE: FILL-IN — undefined stub ═══
-Build the durable brief via the REFINE loop. Open: what is the problem, and what does done look like? Then scope, dependencies, optional hints — one question at a time, edit as each lands. If the file already has useful material only under title, Notes, or ## Questions Remaining work, promote that into Problem and Success criteria first, then refine. Drop any \"This task is not defined yet\" marker once content is real. Aim for \"WHAT A FINISHED TASK LOOKS LIKE.\" Describe the outcome at user-story altitude — the problem, what done looks like, and the technical requirements — and leave how to build it to the implementer.
+Build the durable brief via the REFINE loop. Open: what is the problem, and what does done look like? Then scope, dependencies, optional hints — one question at a time, edit as each lands. If the file already has useful material only under title, Notes, or ## Questions Remaining work, promote that into Problem and Done when (automated) first, then refine. Drop any \"This task is not defined yet\" marker once content is real. Aim for \"WHAT A FINISHED TASK LOOKS LIKE.\" Describe the outcome at user-story altitude — the problem, what done looks like, and the technical requirements — and leave how to build it to the implementer.
 
 ═══ MODE: SPLIT — several pieces ═══
 1. PROPOSE breakdown first: 3–10 atomic, independently completable sub-tasks, dependencies first. Confirm with the user.
@@ -387,7 +396,7 @@ Build the durable brief via the REFINE loop. Open: what is the problem, and what
    Fill each new docs/tasks/backlog/ file:
      - **Parent**: $PARENT_NUM   (exact — './sprint.sh newplan \"…\" parent:$PARENT_NUM' matches on this)
      - **Depends on**: previous sub-task number when order matters, else 'none'
-     - ## Problem, ## Success criteria, optional ## Notes / ## References — see finished-task shape below
+     - ## Problem, ## Done when (automated), ## Signoff (human), optional ## Notes / ## References — see finished-task shape below
 3. TALK THROUGH each child with the REFINE loop — give each a full brief.
 4. KEEP EDGES RECIPROCAL — route every edge change through the lib helpers so both ends stay in sync; let the helpers write each side (run: source docs/sprintbias/lib.sh):
    - for each child, for each id N on its **Depends on** line:  sprintbias_ensure_reciprocal N <child-id>
@@ -396,10 +405,10 @@ Build the durable brief via the REFINE loop. Open: what is the problem, and what
 
 ═══ MODE: REFINE — one rough job ═══
 For EACH detail:
-1. ASK one question — the single most important gap (problem clarity, done definition, scope, dependency, edge case, or a real decision the author must make). One question, no preamble. Prefer sharpening Problem and Success criteria over inventing implementation steps.
+1. ASK one question — the single most important gap (problem clarity, done definition, scope, dependency, edge case, or a real decision the author must make). One question, no preamble. Prefer sharpening Problem and Done when (automated) over inventing implementation steps.
 2. POLISH — tighten and read back: \"So the crux is …\" Correct before it lands.
 3. UPDATE the file immediately — one small atomic edit. Convert the answer into
-   instruction in the body (Success criteria when it defines done; otherwise
+   instruction in the body (Done when (automated) when a test proves it, Signoff (human) when a person checks it; otherwise
    Notes as guidance). Delete any matching open question under
    '### Questions for the developer'.
 4. MOVE ON — note settled vs thin; return to step 1.
@@ -413,14 +422,15 @@ Pressure-test before work: gaps, assumptions, sharper brief. Open with 2–3 sen
 5. RISK: failure modes, performance, security, compatibility.
 6. DEPENDENCIES: Depends on / Dependents real? Undeclared must-lands?
 7. ALTERNATIVES: simpler way? Premature lock-in?
-Stop after material findings (typically 3–7); when two or more need the user's call, list them as a checklist and run the work loop. With agreement, sharpen Problem/Success and optional Notes/References; put residual analysis in '## Think Notes' before HTML comments ('**Reviewed**: <date>', risks, alternatives, assumptions). Leave Feature/Created/Depends on/Dependents as they are unless asked. Keep Notes to hints and guidance.
+Stop after material findings (typically 3–7); when two or more need the user's call, list them as a checklist and run the work loop. With agreement, sharpen Problem/Done when/Signoff and optional Notes/References; put residual analysis in '## Think Notes' before HTML comments ('**Reviewed**: <date>', risks, alternatives, assumptions). Leave Feature/Created/Depends on/Dependents as they are unless asked. Keep Notes to hints and guidance.
 
 WHAT A FINISHED TASK LOOKS LIKE (FILL-IN/REFINE parent and every SPLIT child):
 - ## Problem — clear, simple, high-level: what is wrong and why it matters (2–5 short sentences).
-- ## Success criteria — what done looks like; checkboxes anyone can verify. Meeting these means done. Instructions from answered questions that define done live here.
+- ## Done when (automated) — what done looks like; checkboxes a machine can verify, each naming the test or command that proves it in backticks. Passing these means an agent may land the task. Instructions from answered questions that define done live here. An older ## Success criteria reads as this section; rename it when you sharpen the task.
+- ## Signoff (human) — what only a person can judge (user stories to try, screens to look at); checked at sign-off before done/.
 - ## Notes — optional hints, plus guidance from answered questions that shape how. Leave empty if nothing useful.
 - ## References — optional direct paths to related docs or code. One path per line.
-- '### Questions for the developer' — open questions only (with a suggestion). Answered questions are already body instructions; the list holds what is still open.
+- '### Questions for the developer' — open questions only, each with a (Suggestion: …). Answered questions are already body instructions; the list holds what is still open.
 - Leave ## Completed / ### Files changed for after work.
 - NO helper comments remain — the template's '<!-- sb:hint ... -->' guidance blocks are scaffolding for the author. As you fill each section, delete its sb:hint comment and write the real content in its place; a finished task carries none.
 
@@ -429,12 +439,12 @@ RULES:
 - One question at a time; wait for the answer.
 - Edit as each detail settles: answer → body instruction → delete the question.
 - Keep moving — short turns.
-- Write the durable brief in Problem and Success criteria. ## Questions holds the stamp, findings, and still-open questions.
-- Open questions keep the task out of next/ until answered and turned into instruction.
+- Write the durable brief in Problem, Done when (automated) and Signoff (human). ## Questions holds the stamp and findings.
+- An open question left at session end keeps its (Suggestion: …); work takes the suggestion as the answer. blocked/ is only for a task that cannot start.
 - WRITES: $TASK_FILE, sub-tasks from ./sprint.sh newtask, and the one next-dependency handoff file below. READ anything to check assumptions; keep writes to those files.
 
 ═══ RECORD THE REFINEMENT — BUMP THE PRE-WORK COUNTER ═══
-If this session actually SHARPENED the task's definition (any edit to its Problem, Success criteria, Notes, or Think Notes — the FILL-IN, REFINE, or STRESS-TEST work above), record it ONCE for the whole conversation before you finish:
+If this session actually SHARPENED the task's definition (any edit to its Problem, Done when, Signoff, Notes, or Think Notes — the FILL-IN, REFINE, or STRESS-TEST work above), record it ONCE for the whole conversation before you finish:
 1. Read the current '**Refined**:' header integer (seed it as 0 if the field is somehow absent) and let N = that value + 1. Set the header line to exactly '**Refined**: N'.
 2. Add a short pre-work record — place it just BEFORE any closing '## Questions' section if the file has one (so '## Questions' stays last), else at the END of the file:
 
@@ -448,10 +458,10 @@ Bump only when this session actually sharpened the task; a pure STRESS-TEST that
 ═══ WHEN THE TASK READS CLEARLY — FINISH, CLOSE, CHAIN ═══
 Once the task in front of you (the FILL-IN/REFINE/STRESS-TEST parent, or — for a split — its children) reads as fully defined, do these in order:
 
-1. FINISH: tell the user, and show the final state (the refined task, or the list of children with the original retired). If a \"This task is not defined yet\" marker still remains, remove it — the task is defined now. If this session produced both filled-in sections and a '## Think Notes' block, keep '## Think Notes' ahead of any closing '## Questions' section so the file stays coherent.
+1. FINISH: tell the user, and show the final state (the refined task, or the list of children with the original retired). List any calls you settled yourself (the - Decided lines). End with the exact next command (usually ./sprint.sh work $PARENT_NUM). If a \"This task is not defined yet\" marker still remains, remove it — the task is defined now. If this session produced both filled-in sections and a '## Think Notes' block, keep '## Think Notes' ahead of any closing '## Questions' section so the file stays coherent.
 ${_CLOSE_LOOP_INSTR}
 
-2. FIND THE NEXT DEPENDENCY THAT STILL NEEDS WORK: read this task's '**Depends on**:' line. For each dependency number N, look for docs/tasks/blocked/N-*.md or docs/tasks/backlog/N-*.md. A dependency still needs work if that file exists and does NOT contain a line '**Status: READY**' (in blocked/ that usually means a decision or clarification is open). Among those, pick the most upstream one — the dependency whose OWN '**Depends on**' has no unresolved deps left; break ties by lowest number. Call it <next-id>. If there are no such dependencies, the chain is complete: say so and stop there.
+2. FIND THE NEXT DEPENDENCY THAT STILL NEEDS WORK: read this task's '**Depends on**:' line. For each dependency number N, look for docs/tasks/blocked/N-*.md or docs/tasks/backlog/N-*.md. A dependency still needs work if that file exists and does NOT contain a line '**Status: READY**' (in blocked/ it could not start). Among those, pick the most upstream one — the dependency whose OWN '**Depends on**' has no unresolved deps left; break ties by lowest number. Call it <next-id>. If there are no such dependencies, the chain is complete: say so and stop there.
 
 3. HAND OFF THROUGH THE FILE: into <next-id>'s file, under its ## Notes (create the section if absent), write a short blockquote note capturing ONLY what this conversation decided that <next-id>'s author needs to know — the constraints, choices, and interface details that flow downstream. Start it exactly '> **Context from chat (task $PARENT_NUM):**' so a later run can find and replace it instead of stacking a second copy. Keep it to a few sentences; it is a seed, not a transcript.
 

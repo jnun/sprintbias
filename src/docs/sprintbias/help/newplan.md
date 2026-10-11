@@ -29,8 +29,8 @@ not a lifecycle stage. A plan created with members bound (ids, `parent:N`,
 `plan start` runs from an agent session too. A plan created empty starts
 `**Status:** DRAFT`; flip it to `READY` once it is authored (`chat plan`).
 `plan start` then latches `**Status:** STARTED` (a one-way switch) as it commits
-members to `next/`, and once every member reaches `done/`, `./sprint.sh plan
-done <id>` retires the plan by deleting the file — there is no stored DONE.
+members to `next/`. Once every member has landed, `./sprint.sh promote plan:<id>`
+signs them off into `done/`, and `./sprint.sh plan done <id>` retires the plan by deleting the file — there is no stored DONE.
 
 The plan gets an auto-assigned ID from a dedicated `sprint_PLAN_ID` counter
 in `docs/sprintbias/DOC_STATE.md` (bumped on creation, exactly like task and bug

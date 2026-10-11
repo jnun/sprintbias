@@ -47,7 +47,7 @@ EOF
 assert_contains() {
     local desc="$1" haystack="$2" needle="$3"
     # -- so needles like --claude are not parsed as grep options (macOS grep).
-    if echo "$haystack" | grep -qF -- "$needle"; then
+    if grep -qF -- "$needle" <<<"$haystack"; then
         echo "  PASS: $desc"
         PASS=$((PASS + 1))
     else
@@ -224,6 +224,26 @@ rc=0
 output=$(bash "$TMPDIR/sprint.sh" -x work 2>&1) || rc=$?
 assert_exit_code "Unknown option exits 1" "1" "$rc"
 assert_contains "Unknown option message" "$output" "Unknown option: -x"
+
+# Test 17: an edit to sprint.sh mid-run does not reach the running launcher
+# (a task's worker can edit sprint.sh while `work` runs it).
+echo "Test 17: mid-run edit to sprint.sh does not run"
+setup
+cat > "$TMPDIR/docs/sprintbias/scripts/fast.sh" << 'STUB'
+#!/usr/bin/env bash
+echo 'echo EDIT-RAN' >> "$(dirname "$0")/../../../sprint.sh"
+STUB
+chmod +x "$TMPDIR/docs/sprintbias/scripts/fast.sh"
+rc=0
+output=$(bash "$TMPDIR/sprint.sh" fast 2>&1) || rc=$?
+assert_exit_code "Mid-run edit exits 0" "0" "$rc"
+if grep -qF "EDIT-RAN" <<<"$output"; then
+    echo "  FAIL: Mid-run edit was executed"
+    FAIL=$((FAIL + 1))
+else
+    echo "  PASS: Mid-run edit is not executed"
+    PASS=$((PASS + 1))
+fi
 
 # --- Summary ---
 echo ""

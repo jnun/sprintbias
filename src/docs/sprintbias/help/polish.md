@@ -3,7 +3,7 @@ Post-work quality pass — three modes, one command.
 `polish` is THE post-work quality surface. Three levers stay distinct inside
 it; argument shape selects the mode:
 
-  Sweep (bare)     polish [limit] [--rounds N] [--parallel|--fast|--jobs N]
+  Sweep (bare)     polish [limit] [--rounds N] [--parallel|--fast|--steady|--jobs N]
                    Judge every finished task in review/. When a second
                    execution pass would close a real gap, rewrite that same
                    task with concrete improvements and reopen it to next/.
@@ -62,11 +62,15 @@ Parallel fan-out (sweep only — same surface as work): each task judges in a
 fresh context and writes only its own task file, so independent judges overlap
 safely.
   --parallel   up to 2 concurrent judges
-  --fast       up to 4 concurrent judges
+  --fast       fast mode for this run (4 concurrent judges)
   --jobs N     up to N concurrent judges
+  --steady     one judge at a time, fast mode off for this run
+In fast mode (`./sprint.sh fast on`) the sweep fans out at 4 judges with no
+flag, and judges skip the AI CLI's permission prompts.
 Only the judging overlaps: verdict parsing, the '**Reworked**' bump, gate
 promotion, and the run counters all stay serialized after each judge returns —
-no reopen races the gate and no count is lost. Sequential is the default.
+no reopen races the gate and no count is lost. Sequential is the default in
+steady mode.
 In an orchestration-capable AI session the flags tell the orchestrator to fan
 the judge subagents out concurrently (the numeric --jobs cap is a headless-only
 knob and is not passed to the orchestrator). Deep-judge and --code stay
@@ -143,7 +147,8 @@ Usage:
   ./sprint.sh polish 3               # sweep at most 3 tasks (if no task 3)
   ./sprint.sh polish --rounds 2      # allow up to 2 reopens per task
   ./sprint.sh polish --parallel      # sweep review/ with 2 concurrent judges
-  ./sprint.sh polish --fast          # shorthand for --parallel with 4 judges
+  ./sprint.sh polish --fast          # --parallel with 4 judges, fast mode on for this run
+  ./sprint.sh polish --steady        # fast mode off for this run (see: help fast)
   ./sprint.sh polish --jobs N        # sweep with N concurrent judges
   ./sprint.sh polish --force         # sweep: ignore the round cap this run
   ./sprint.sh polish --force 874     # deep-judge: re-judge an already-judged task

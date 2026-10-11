@@ -1,40 +1,53 @@
-# Task 397: Bring project docs in step with landed work
+# Task 412: Crew list says a lead holds nothing right under the plan it leads
 
 **Feature**: none
 **Created**: 2026-10-08
 **Docs**: none
 **Plan**: none
-**From plan**: none
+**From plan**: 29
 **Depends on**: none
 **Dependents**: none
 **Parent**: none
+**Fixes**: none
 **Crew**: none
-**Tests**: none
-**Refined**: 0
+**Tests**: docs/tests/test-crew.sh
+**Refined**: 1
 **Reworked**: 0
 
 ## Problem
 
-Landed work changed what project documents describe, or found gaps in
-them (a missing term, a moved source). Each item under ## Follow-ups names
-the document, what must change, and the task it came from.
+`./sprint.sh crew` prints a lead's `leads plan N: ...` line and then `holds
+nothing` right under it. A lead holds its plan, so the two lines contradict
+each other and a reader cannot tell whether the lead is busy. Found while
+running plan 29 with a crew.
 
-## Success criteria
+## Done when (automated)
 
-- [ ] Every item under ## Follow-ups is resolved: the named document states
-      the current facts, or the item is struck with a one-line reason.
-- [ ] Project-map items are settled with ./sprint.sh profile (profile check is clean).
+- [ ] A lead with an assigned plan shows its `leads plan N: ...` line plus any
+      tasks it holds, and no `holds nothing` line. `bash
+      docs/tests/test-crew.sh` asserts the lead's list block lacks `holds
+      nothing`.
+- [ ] A lead with no plan and no tasks, and a member with no tasks, still show
+      `holds nothing`. `bash docs/tests/test-crew.sh` asserts both.
+- [ ] `bash docs/tests/run-all.sh` passes.
+
+## Signoff (human)
+
+None: the automated checks cover it.
 
 ## Notes
 
-<!-- sb:hint  Optional helpful hints that assist the developer: constraints, edge
-     cases, gotchas. Guidance from answered questions also lives here when it
-     shapes how (and is not already a success criterion). Leave empty if none. -->
+- `cmd_list` in `crew.sh` sets `held` only from the tasks loop, then prints
+  `holds nothing` when `held` is empty. Treat a printed `leads plan` line as
+  holding something.
+- `test-crew.sh` already puts lead `orcha` on plan 5 (Tests 6/6a) and asserts
+  the `leads plan 5` line. Add the missing negative check beside it.
 
 ## References
 
-<!-- sb:hint  Direct paths to docs or files known to be related. One path per
-     line. Leave empty if none. -->
+docs/sprintbias/scripts/crew.sh (cmd_list)
+docs/tests/test-crew.sh
+
 
 <!-- sb:hint  After work only — audit trail of what was touched. Helps committers,
      later audits, and "what broke?" recovery. List the product files you
@@ -63,8 +76,3 @@ the document, what must change, and the task it came from.
 AI: Full task-writing guidance is in docs/sprintbias/ai/task-creation.md
 Keep it plain text — no emoji, color, or ASCII art. See docs/sprintbias/guides/doc-style.md
 -->
-
-<!-- sb:doc-followups -->
-## Follow-ups
-
-- [ ] `docs/guides/provider-reality.md` — note `agents` reads Claude Code session records; Grok Build support unknown (from #396)

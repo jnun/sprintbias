@@ -126,7 +126,7 @@ if [ -f "$TPL" ]; then
     cp "$TPL" "$WORK/tpl.md"
     sprintbias_scrub_template_scaffold "$WORK/tpl.md"
     assert_not "H: real template leaves no HTML comment behind" 'grep -q "<!--" "$WORK/tpl.md"'
-    assert "H: template section headings survive the strip" 'grep -q "^## Problem" "$WORK/tpl.md" && grep -q "^## Success criteria" "$WORK/tpl.md"'
+    assert "H: template section headings survive the strip" 'grep -q "^## Problem" "$WORK/tpl.md" && grep -q "^## Done when (automated)" "$WORK/tpl.md" && grep -q "^## Signoff (human)" "$WORK/tpl.md"'
 fi
 
 echo ""
