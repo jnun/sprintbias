@@ -132,8 +132,8 @@ tests and keeping the proof line), files what lives elsewhere, and removes the
 proof line for what it cannot fix — the task then lands in review, unproven,
 with the failure under `## Test log`. It adds `**Breaker**: N cases tried · N
 fixed · N filed · $cost` under `## Completed`. Bounded: targeted tests only,
-BREAK_MAX_TURNS (25) turns, BREAK_TIMEOUT (900 s) at sign-off, BUDGET_BREAK ($2)
-where caps apply; MODEL_BREAK picks its model. The status scorecard scores it. Turn it off
+BREAK_MAX_TURNS (25) turns, BREAK_TIMEOUT (900 s) at sign-off, and BUDGET_BREAK
+when you set one; MODEL_BREAK picks its model. The status scorecard scores it. Turn it off
 with `BREAK=off` in docs/sprintbias/config, or `--no-break` for one run.
 A `- Decided:` call that caused a defect is re-decided and fixed (the line is
 replaced, saying what changed); a test left failing names its filed task
@@ -167,10 +167,10 @@ a bare `N failed` count in the `▸ Done:` line is never the only thing you are
 left holding.
 
 Lifecycle moves always try `git mv` first, then plain `mv` when the file is
-not yet tracked. There is no turn limit. A per-run budget cap (BUDGET_WORK in
-docs/sprintbias/config, default $5) applies when the provider supports spending
-caps — today Claude Code only. On any other tier the cap is omitted and the run
-is uncapped.
+not yet tracked. There is no turn limit and, by default, no budget cap: agents
+spend what finishing the work takes. To set a ceiling, put BUDGET_WORK=5.00 (or
+your number) in docs/sprintbias/config.local; it applies where the provider
+supports spending caps, today Claude Code only.
 
 `git commit` and `./ship.sh` are human-owned by default. `work` implements the
 change and stops; it does not commit or ship unless **you** explicitly ask the

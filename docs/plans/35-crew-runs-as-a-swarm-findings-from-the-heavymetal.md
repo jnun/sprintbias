@@ -25,6 +25,12 @@ come from what the heavymetal plan 69 crew run shows, filed as it happens.
 
 - #455 — crew up plan:N starts the lead and its Active members in one command
 - #456 — Fast work and crew leave person-only tasks in next/ alone
+- #457 — Chats report changes already made as Fixed: lines
+- #458 — Crew sessions start working when they open
+- #459 — Crew lead routes by May touch and single-owner steps
+- #460 — crew setup builds lanes from the project's own agents and standards
+- #461 — crew setup decides and builds instead of asking
+- #462 — No budget cap by default; a project sets one when it wants a ceiling
 
 ## Signoff (human)
 

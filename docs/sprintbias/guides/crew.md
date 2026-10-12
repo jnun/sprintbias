@@ -24,9 +24,11 @@ six per lead.
 
 Build the smallest crew that gives every lane one owner. A lane is a kind of
 work with its own files or powers (a codebase, the database, production), or a
-pass over landed work (stress, security), never a single task. Not sure?
-`./sprint.sh crew setup` reads the project, asks up to three questions,
-proposes one of these, and fills the member files.
+pass over landed work (stress, security, UI and UX), never a single task.
+Start from the agents and standards docs the project already has. Not sure?
+`./sprint.sh crew setup` reads the project (its own agents and standards docs
+included), builds the closest of these, fills the member files and lists the
+calls it made.
 
 Project shape										Crew (lead first)			Who owns what
 One codebase, a clear queue							none						./sprint.sh work, or loop
@@ -37,6 +39,7 @@ A bug backlog to burn down							lead, fixer-a, fixer-b		split May touch by fold
 One API, several clients (web, iOS, Android)		lead, api, data, web, app		api owns the API contract; data owns schema and migrations
 Money or regulated data (a ledger, tenants)			add checker					checker: tests the invariants, reviews each landing that touches them
 A plan you ship to real users						add stress, security		passes over review/ work: polish --break, polish --code; filed fixes go to the builder
+Screens with a design system or screen specs		add ux						ux: reviews each screen change against the design system and specs; filed fixes go to the builder
 
 The lead's file arrives filled in from `crew add <name> "<role>" --lead`. A
 member's file arrives with Reports filled in; you write its Job and May touch.
@@ -52,7 +55,7 @@ document that holds the project's invariants (the map's **Invariants:** line).
 ## Quick start
 
 Step				Command
-Guided build		./sprint.sh crew setup (proposes a crew and does the steps below)
+Guided build		./sprint.sh crew setup (builds the crew: the steps below)
 Add the lead		./sprint.sh crew add orcha "Keeps everyone rowing: holds the plan, routes tasks" --lead
 Add members			./sprint.sh crew add dill "Finds and fixes bugs"
 Fill in each file	edit docs/crew/<name>.md: Job, Reads first, May touch, Reports

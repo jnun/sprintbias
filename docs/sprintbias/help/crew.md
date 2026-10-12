@@ -11,7 +11,7 @@ close the lead runs the suite and hands you one sign-off: promote plan:N.
 
 Usage:
   ./sprint.sh crew                          list members and the tasks each holds (no AI)
-  ./sprint.sh crew setup                    guided build: an AI session proposes a crew and fills the files
+  ./sprint.sh crew setup                    an AI session reads the project, builds the crew and fills the files
   ./sprint.sh crew add <name> "<role>"      add a member from docs/crew/.TEMPLATE-crew.md
   ./sprint.sh crew add <name> "<role>" --lead   add the lead (its file arrives filled in)
   ./sprint.sh crew <name>                   start a session as that member

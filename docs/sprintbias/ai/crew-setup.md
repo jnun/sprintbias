@@ -2,39 +2,49 @@
 
 Build the smallest crew that gives every lane of work exactly one owner. A lane
 is a kind of work with its own files or powers (a codebase, the database,
-production) or a pass over landed work (stress, security), never a single task.
+production) or a pass over landed work (stress, security, UI and UX), never a
+single task. Start from how the project is already built: its own agents,
+standards and decisions are the crew's starting position.
 Member files are cheap and sessions are not: write a file for every lane, and
 run only the members a plan needs. The recommended shapes are in
 docs/sprintbias/guides/crew.md → Recommended crews; start from the closest one.
 
 1. **Read first.** The project map, the instruction file, `./sprint.sh crew`
-   (members that already exist), and the open plans in docs/plans/. Name the
-   lanes you see: codebases, shared contracts, migrations, deploys, and the
-   passes the project needs. Name its invariants too, the rules every change
+   (members that already exist), the open plans in docs/plans/, the project's
+   own agent definitions (`.claude/agents/`, roles named in AGENTS.md), and its
+   standards docs (API and security standards, RBAC or permission matrix,
+   design system, UI and form standards, screen specs). Name the lanes you
+   see: codebases, shared contracts, migrations, deploys, and the passes the
+   project needs. An existing agent definition becomes the lane it describes,
+   and its member's Reads first names that file: a builder agent is a lane, a
+   reviewer agent is a pass. A design system or screen specs mean a UI and UX
+   pass that reviews each screen change against them; a security matrix or
+   reviewer agent means a security pass. Name its invariants too, the rules every change
    keeps (tenant isolation, money that balances, records never edited), and
    find the document that holds them: the map's **Invariants:** line, or its
    sources of truth.
-2. **Ask at most three questions, one at a time,** each with your recommended
-   answer: which lanes run in parallel, who deploys to production, and where
-   each lane runs (this machine, a shared server, or the machine it needs, such
-   as a Mac for iOS). Skip any the project already answers.
-3. **Propose one crew** as a table: name, lead (yes/no), role, May touch. Lead
-   with your pick and one line on why. Then name the active set for the first
-   open plan: the members it needs running, about four to six per lead, or
-   fewer where your CLI's notes below say so. A solo lane with a clear queue
-   needs no crew: recommend `./sprint.sh work` instead and stop.
-4. **Build it on a yes.** Run `./sprint.sh crew add <name> "<role>" [--lead]`
+2. **Decide.** Settle each open call from what the project already
+   shows, and record it as a `- Decided: X, because Y` line in the lead's file:
+   lanes that share no files run in parallel; production deploys belong to one
+   member (ops) or to the person when no deploy tooling exists; each lane runs
+   on this machine unless it needs another (iOS on a Mac with Xcode).
+3. **Build the crew now.** Run `./sprint.sh crew add <name> "<role>" [--lead]`
    for each new member; members that exist get edits, not re-creation. Then
    fill each file: Job (2-4 sentences on its lane), Reads first (the lane's
-   docs and code roots, plus the invariants document), May touch (folders,
-   powers, and who owns anything shared), Reports. The lead's sections arrive
-   filled; add the project's docs to its Reads first. Keep every file short:
-   members read it each session. When no document holds the invariants, file
-   one task to write them down (`./sprint.sh newtask "Write down the project's
-   invariants"`) and list them in the lead's Job until it lands. The map's
-   ## Known edges stays the record of cases that broke; rules live in their
-   own document.
-5. **Hand off** with the start commands: the lead on a plan
+   own agent file, its docs and code roots, plus the invariants document), May
+   touch (folders, powers, and who owns anything shared), Reports. The lead's
+   sections arrive filled; add the project's docs to its Reads first. Keep every
+   file short: members read it each session. When no document holds the
+   invariants, file one task to write them down
+   (`./sprint.sh newtask "Write down the project's invariants"`) and list them
+   in the lead's Job until it lands. The map's ## Known edges stays the record of cases that broke; rules
+   live in their own document. A solo lane with a clear queue needs no crew:
+   say so, recommend `./sprint.sh work`, and stop.
+4. **Name the active set** for each open plan: the members it needs running,
+   about four to six per lead, or fewer where your CLI's notes below say so.
+5. **Hand off** in a short table (name, lead, role, May touch, active), then the
+   calls you made (each `- Decided:` line, with `./sprint.sh newtask "<the
+   change you want>"` to change one), then the start commands: the lead on a plan
    (`./sprint.sh crew <lead> plan:N`), then one terminal per member of the
    active set (`./sprint.sh crew <name>`).
 

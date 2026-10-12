@@ -173,7 +173,7 @@ any task that has not had it before signing off, so `promote <id>` / `promote pl
 is the whole human path; `polish --break <id|plan:N>` runs it alone. A plan target
 reads `plan N`, `plan:N`, or a bare N when no task N exists (work, promote, polish, crew).
 Each run adds `· $cost` to its Breaker line; raise its limits with `BREAK_MAX_TURNS` (25),
-`BREAK_TIMEOUT` (900 s) and `BUDGET_BREAK` ($2) in config. `status --edges` scores it:
+`BREAK_TIMEOUT` (900 s) in config, and cap its spend with `BUDGET_BREAK` (no cap by default). `status --edges` scores it:
 defects the agents caught vs defects you found (`promote --reject`, including on a `done/`
 task found broken later, and human-test failures), with and without the breaker.
 
@@ -297,7 +297,7 @@ job, none idle. A lead keeps everyone rowing; members such as a builder, a bug
 fixer, a production operator or a security pass do the work. Write a member for
 every lane; run only the ones a plan needs. Each member is one file,
 `docs/crew/<name>.md`: its role, what it reads first, what it may touch, how it reports.
-`./sprint.sh crew setup` proposes a crew and fills the files; `crew <name> [id|plan:N]`
+`./sprint.sh crew setup` builds a crew from your project and fills the files; `crew <name> [id|plan:N]`
 starts a member in its own terminal (`./sprint.sh help crew`). Every member works by these:
 
 1. **Claim and route through files.** A task's `Crew` field routes it to a member.

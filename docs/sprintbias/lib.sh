@@ -815,7 +815,7 @@ EOF
 
 # sprintbias_break_run FILE LOG — run the breaker headless on one landed task
 # (exec). Bounded: SPRINTBIAS_BREAK_MAX_TURNS (25) turns, BUDGET_BREAK where a
-# cap applies (an empty BUDGET_WORK, as --max sets, lifts it), MODEL_BREAK.
+# cap is set (--max clears it), MODEL_BREAK.
 # Returns the CLI's exit code; output goes to LOG. Used by work and polish --break.
 sprintbias_break_run() {
     local file="$1" log="$2" model args
@@ -823,8 +823,7 @@ sprintbias_break_run() {
     args=(--tools "Read,Edit,Write,Bash,Grep,Glob" --permissions auto \
         --max-turns "${SPRINTBIAS_BREAK_MAX_TURNS:-25}")
     [ -n "$model" ] && args+=(--model "$model")
-    if sprintbias_budget_capable && [ -n "${SPRINTBIAS_BUDGET_BREAK:-}" ] \
-       && [ -n "${SPRINTBIAS_BUDGET_WORK-x}" ]; then
+    if sprintbias_budget_capable && [ -n "${SPRINTBIAS_BUDGET_BREAK:-}" ]; then
         args+=(--budget "$SPRINTBIAS_BUDGET_BREAK")
     fi
     local rc=0
@@ -4058,14 +4057,13 @@ SPRINTBIAS_CLI="${SPRINTBIAS_CLI:-${SPRINTMD_CLI:-$(sprintbias_cfg CLI)}}"
 # Capability tier. Empty is fine — sprintbias_ai_tier infers it from the CLI.
 SPRINTBIAS_PROVIDER="${SPRINTBIAS_PROVIDER:-${SPRINTMD_PROVIDER:-$(sprintbias_cfg PROVIDER)}}"
 
-SPRINTBIAS_BUDGET_WORK="${SPRINTBIAS_BUDGET_WORK:-$(sprintbias_cfg BUDGET_WORK)}"
-: "${SPRINTBIAS_BUDGET_WORK:=5.00}"
+# Budgets: empty = no cap, so agents finish the work. A project that wants a
+# ceiling sets one (BUDGET_WORK=5.00 keeps each task under $5).
+SPRINTBIAS_BUDGET_WORK="${SPRINTBIAS_BUDGET_WORK-$(sprintbias_cfg BUDGET_WORK)}"
 
-SPRINTBIAS_BUDGET_AUDIT="${SPRINTBIAS_BUDGET_AUDIT:-$(sprintbias_cfg BUDGET_AUDIT)}"
-: "${SPRINTBIAS_BUDGET_AUDIT:=3.00}"
+SPRINTBIAS_BUDGET_AUDIT="${SPRINTBIAS_BUDGET_AUDIT-$(sprintbias_cfg BUDGET_AUDIT)}"
 
-SPRINTBIAS_BUDGET_BREAK="${SPRINTBIAS_BUDGET_BREAK:-$(sprintbias_cfg BUDGET_BREAK)}"
-: "${SPRINTBIAS_BUDGET_BREAK:=2.00}"
+SPRINTBIAS_BUDGET_BREAK="${SPRINTBIAS_BUDGET_BREAK-$(sprintbias_cfg BUDGET_BREAK)}"
 
 SPRINTBIAS_BREAK_MAX_TURNS="${SPRINTBIAS_BREAK_MAX_TURNS:-$(sprintbias_cfg BREAK_MAX_TURNS)}"
 : "${SPRINTBIAS_BREAK_MAX_TURNS:=25}"

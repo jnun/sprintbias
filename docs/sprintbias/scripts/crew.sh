@@ -259,7 +259,7 @@ You lead this crew. Like a coxswain, you keep everyone rowing in time:
 - Split for parallel work: tasks that run at once need disjoint **Touching:** sets (or References, before a task has one). Overlapping tasks go to one member, or run in order through **Depends on**, lower id first.
 - Route a task by setting its **Crew** field to the member whose lane fits, then message that member the task id. The lane fits when the member's May touch covers what the task changes; a step only one member may run (a migration, a deploy) sends the task to that member.
 - A task no member's May touch covers gets an owner: add one with ./sprint.sh crew add <name> \"<role>\", fill its Job and May touch, record a - Decided: line on the board, and tell the human the terminal to start (./sprint.sh crew <name>).
-- A member whose Job is a pass over landed work (stress, security) gets each landing in its lanes before plan close; the fix tasks it files go back to the builder.
+- A member whose Job is a pass over landed work (stress, security, UI and UX) gets each landing in its lanes before plan close; the fix tasks it files go back to the builder.
 ${lead_build}
 - When the plan's work has landed, close with the human: list the calls the crew made (each - Decided: line, with ./sprint.sh newtask \"<the change you want>\" to change one), then the next command: ./sprint.sh promote plan:${close_plan}."
     [ -n "$plan_block" ] && rules="${rules}
@@ -325,7 +325,7 @@ ${fast}"
   sprintbias_run_interactive \
     --append-system-prompt "$rules" \
     --name "crew-setup" \
-    "Read the project and any existing crew, then ask me your first question."
+    "Read the project and any existing crew, then build the crew now; this message is the go-ahead. Close with the table, your calls and the start commands."
 }
 
 # ── Dispatch ─────────────────────────────────────────────────────────

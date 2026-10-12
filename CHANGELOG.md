@@ -9,9 +9,19 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+## 0.0.141 — 2026-10-12
+
+### Changed
+- `crew setup` starts from how your project is already built: it reads your own agent definitions (`.claude/agents/`, roles in AGENTS.md) and standards docs (API, security, permissions, design system, screen specs), makes each builder agent a lane and each reviewer agent a pass, and adds a UI and UX pass when you have a design system or screen specs.
+- `crew setup` builds the crew without asking you: it settles each call from what the project shows, records it as a `- Decided:` line, fills the member files, and closes with the crew table, its calls and the start commands.
+- No budget cap by default: agents spend what finishing the work takes. To keep each task under a ceiling, set `BUDGET_WORK=5.00` (and `BUDGET_AUDIT`, `BUDGET_BREAK`) in `docs/sprintbias/config.local`; `work --max` clears it for one run.
+
+## 0.0.140 — 2026-10-12
+
 ### Changed
 - `chat` and `chat plan` report each change they already made as a past-tense `Fixed: …` line, apart from any question, so you can see it is done and needs no answer.
 - `crew <name>` starts working as soon as it opens: the lead runs `plan start` on a ready plan and routes wave 1, and a member takes its task, instead of describing its first step and waiting for you.
+- The crew lead routes a task to the member whose `May touch` covers what it changes, and sends a step only one member may run (a migration, a deploy) to that member.
 
 ## 0.0.139 — 2026-10-12
 

@@ -79,13 +79,15 @@ MODEL_TRIAGE=
 MODEL_PLAN_THINK=
 MODEL_DRIFT=
 
-# Budget caps per invocation (USD). Empty = no cap.
+# Budget caps per invocation (USD). Empty = no cap (the default): agents
+# spend what finishing the work takes. To keep each task under $5, set
+# BUDGET_WORK=5.00 here or in config.local.
 # Applied on tiers whose CLI supports a spending cap — today Claude Code only.
 # On every other tier (Grok Build, Cursor, OpenAI, generic) these are ignored
 # and the run is uncapped; nothing is sent to the provider.
-BUDGET_WORK=10.00
-BUDGET_AUDIT=5.00
-BUDGET_BREAK=2.00
+BUDGET_WORK=
+BUDGET_AUDIT=
+BUDGET_BREAK=
 
 # Code audit max iterative passes
 AUDIT_MAX_PASSES=2

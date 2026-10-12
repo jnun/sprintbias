@@ -216,6 +216,7 @@ PERMISSIONS="auto"
 # never a cap to remove, so it is silently a no-op.
 if [ "$_NO_LIMITS" -eq 1 ]; then
   SPRINTBIAS_BUDGET_WORK=""
+  SPRINTBIAS_BUDGET_BREAK=""
 fi
 unset _NO_LIMITS
 
