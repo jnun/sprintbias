@@ -6,7 +6,7 @@
 # Pure shell, NO AI. Reads a plan and its members and prints one glance at where
 # the plan stands. Changes NOTHING — no task or plan file is created, edited,
 # moved, or deleted, and no model is called. This is the read-only inverse of
-# `plan start` (gates + moves) and `plan done` (deletes on a full pass).
+# `plan start` (gates + moves) and `plan done` (retires on a full pass).
 #
 # It answers three questions:
 #   1. Plan state — computed from the folders, never stamped: STARTED (work

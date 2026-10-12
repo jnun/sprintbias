@@ -72,11 +72,14 @@ With a STAGE FOLDER name (`blocked`, `next`, or `backlog`), `chat` sweeps that
 whole folder one task at a time — an express, verdict-first sort that absorbed
 the old `triage` command. For each task it gives a fast verdict (status, a
 one-line summary, a recommendation) on a cheap model, then lets you decide.
-Verdict **BLOCKED** means a decision or clarification is needed on *this* task —
-not “has an open Depends on.” **UNDEFINED** means too thin to act on yet.
+Verdict **BLOCKED** means *this* task cannot start — no reasonable reading of
+it, or it needs access or credentials only you hold — not “has an open Depends
+on.” An open choice with a reasonable pick is decided and recorded as
+`- Decided: X, because Y`, not blocked. A BLOCKED verdict names
+`./sprint.sh chat <id>`. **UNDEFINED** means too thin to act on yet.
 Ordinary deps are pipeline ordering: the task is **dependent** (on hold); `work`
 holds it until prerequisites finish. A dep that sits in the `blocked/` *folder*
-is different (that prerequisite needs a decision) and is called out separately —
+is different (that prerequisite cannot start yet) and is called out separately —
 the dependent stays on hold; the prerequisite is the blocked one.
 
   - [w] work it   — from `next/`: start it (`doing/`). From `blocked/` or
@@ -197,7 +200,7 @@ What it does:
   - Closes the loop on a blocked task: when every question is answered and
     turned into body instruction, it re-enters the sprint through the shared
     workability gate (same review as `plan start` / folder `[w]`) — READY →
-    next/, or BLOCKED while a question is still open
+    next/, or BLOCKED only when it still cannot start
   - Chains to the next dependency that still needs work in a *fresh* context
     so a long session doesn't pile up tokens: it seeds the next task's
     file with a short "Context from chat" note (the decisions that flow

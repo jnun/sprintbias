@@ -29,5 +29,11 @@ profile check needs no AI and runs automatically before work and plan start
   - a tracked file changed since the **Checked:** stamp — sources of truth,
     environment files, manifests, CI/deploy config, new top-level docs
     (code folders under ## Code are not tracked; they change every task)
+  - more than ~15 lines under ## Known edges
+
+The map's ## Known edges section lists cases that broke before, one line each
+(class: case (#id)). promote --reject adds them; every agent is told to test the ones its
+change touches; a profile refresh keeps them, merging lines of one class. The
+check skips its paths.
 
 Refresh with ./sprint.sh profile when it flags drift.

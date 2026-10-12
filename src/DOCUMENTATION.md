@@ -48,7 +48,8 @@ Follow these eight and you will not get lost:
 7. **Start from the project map.** `docs/sprintbias/project.md` says where the
    project's knowledge lives. Ground a task before working it — its `## Grounding`
    names the sources, the terms, and the conflicts. Sources of truth are the
-   authority: name a conflict instead of working around it.
+   authority: name a conflict instead of working around it. Check `docs/history/`
+   first for why an area is the way it is.
 8. **Work alongside other agents.** Every task in `doing/` is an agent at work.
    Announce yours with `**Touching:**` (files you expect to change) in its
    `## Grounding`, read the others' at the start and whenever a file changes
@@ -80,6 +81,7 @@ docs/
 ├── features/            # fully defined specs
 ├── tasks/{backlog,next,doing,blocked,review,done}/   # work — folder = status
 ├── plans/               # named lists of task IDs (an index, not a stage)
+├── history/             # finished work: one record per retired plan, plus `history record` files
 ├── crew/                # one file per named AI session (role, what it may touch)
 ├── bugs/                # open bug reports (inbox; handled reports are deleted)
 ├── guides/  tests/  designs/  examples/  data/       # your content
@@ -118,8 +120,8 @@ docs/
   tasks has zero blocked tasks.
 - **plan ≠ folder.** A plan (`docs/plans/N-name.md`) is one file listing related
   task IDs. Members never move into it — each flows through its own lifecycle folder.
-  A plan carries `DRAFT → READY → STARTED`; delete it (`plan done`) once every member
-  is in `done/`.
+  A plan carries `DRAFT → READY → STARTED`; `plan done` retires it into a history
+  record in `docs/history/` once every member is in `done/`.
 - **COMPLETE ≠ done/.** COMPLETE is a verdict ("already built in the code") and routes
   to `review/` for your sign-off — never a silent jump to `done/`. `done/` is where
   *you* (or `promote`) move an approved task.
@@ -131,10 +133,12 @@ docs/
   so work happens and closes in dependency order.
 - `Dependents` — reverse edge; graph info only. `Plan` — its plan (`none` or an id).
 - `Crew` — the member it is routed to (`none` or a name); in `doing/`, the claim.
-- `Tests` — suite scripts under `docs/tests/` that prove success. `promote` runs them;
+- `Tests` — test files under `docs/tests/` that prove success. `promote` runs them
+  (`.sh` with bash; others with config `TEST_RUN`, else `.py` with pytest);
   all green → `done/`. `none` means a human signs off.
-- `Fixes` — on a fix task, the review/ task it repairs (`#<id>`). `promote --reject`
-  (or a failing full suite at `promote plan:N`) files it.
+- `Fixes` — on a fix task, the task it repairs (`#<id>`). `promote --reject` (on a
+  review/ task, or a done/ one found broken later) or a failing full suite at
+  `promote plan:N` files it.
 - `Held` — on the original: `fix #<new>`. It stays in `review/`, shows as
   `held: fix #N` in `plan check` and `status` (apart from *unproven*), releases its
   dependents once the fix lands, and closes once the fix is in `done/`.
@@ -154,6 +158,25 @@ unexplained lands in `review/` without proof. Decisions and person-only checks n
 hold a task: assume, record `Decided: X, because Y` under `### Assumptions`, land. The
 end of the run lists every call for you to check; `newtask` changes one.
 
+**Edge cases** (gate, worker, crew, breaker — one list): a task's example stands for
+its class. The gate names a check per listed case; the worker asserts each Done when
+case and each realistic case of the class, round trips (every form your docs, UI or
+examples tell people to write, and what the real tools people use emit), again and
+after (run twice, older state, hand edits), empty / one / many / malformed, and
+neighbors (other code on the same data). A failing case is fixed, or filed with
+`newtask` when it lives in another code path; Decided and Assumptions record choices
+between working options. **Breaker** (on by default): after a task lands, a fresh
+agent writes tests designed to fail against the change, fixes what it can, and
+removes the proof line for what it cannot (the task lands unproven, the failure in
+`## Test log`). Off: `BREAK=off` in `docs/sprintbias/config`, or `--no-break`. `promote` runs it on
+any task that has not had it before signing off, so `promote <id>` / `promote plan N`
+is the whole human path; `polish --break <id|plan:N>` runs it alone. A plan target
+reads `plan N`, `plan:N`, or a bare N when no task N exists (work, promote, polish, crew).
+Each run adds `· $cost` to its Breaker line; raise its limits with `BREAK_MAX_TURNS` (25),
+`BREAK_TIMEOUT` (900 s) and `BUDGET_BREAK` ($2) in config. `status --edges` scores it:
+defects the agents caught vs defects you found (`promote --reject`, including on a `done/`
+task found broken later, and human-test failures), with and without the breaker.
+
 ## The pipeline
 
 Work flows one direction: **backlog → next → doing → review → done**. Follow one
@@ -172,7 +195,9 @@ Done when. That bar is what keeps `next/` trustworthy.
 
 For grouped work, use the spine **`chat → plan start → work → promote plan:N`**: gather
 tasks into a plan, `plan start` commits them all at once, `work` or `loop` lands them,
-and one `promote plan:N` signs the plan off.
+and one `promote plan:N` signs the plan off. A member in `blocked/` is gated with
+the rest: one that can start joins `next/`, and one that still cannot stays in
+`blocked/` with its `./sprint.sh chat <id>` line.
 
 `chat plan N` does the planning work in one session: it creates missing tasks,
 edits tasks in any plan, and sets **Depends on** / **Dependents** across plans
@@ -184,6 +209,11 @@ lanes. Commit, push, `ship.sh` and `done/` stay yours in every mode.
 ## Commands
 
 One line each. For flags and detail: `./sprint.sh help <cmd>` (or `<cmd> --help`).
+Not sure of the name? `./sprint.sh help <plain words>` (`help new idea`, `help idea`)
+finds it with no AI: one match prints its page, several print a short list (exit 0),
+none prints one line (exit 1). At a terminal, bare `./sprint.sh help` ends with
+`What command would you like to understand better?` — and when your words match no
+single command, it offers a read-only AI answer (`Ask the AI instead? [y/N]`).
 Groups: **create · chat · plan · work · look · keep**.
 
 ```bash
@@ -203,23 +233,25 @@ Groups: **create · chat · plan · work · look · keep**.
 ./sprint.sh plan start 5        # gate + commit members into next/ (latches STARTED)
 ./sprint.sh plan check 5        # read-only: STARTED / LANDED / SIGNED OFF, and each member's standing
 ./sprint.sh plan polish 5       # excellence-judge the plan's finished work
-./sprint.sh plan done 5         # retire the plan once every member is in done/
+./sprint.sh plan done 5         # retire the plan into a history record (docs/history/)
 
 # work — execute and finish
-./sprint.sh work [N]            # run READY tasks (work N = one by id; count N caps how many)
-./sprint.sh work plan N         # work only plan N's tasks in next/; the rest waits
+./sprint.sh work [N]            # run READY tasks (work N = one by id; count N caps how many; --no-break skips the breaker)
+./sprint.sh work plan N         # start plan N if needed, work only its tasks; the rest waits
 ./sprint.sh loop                # autopilot: plan start refill, then drain next/
 ./sprint.sh gate [folder]       # off-spine quality gate: re-gate next/ or report elsewhere
 ./sprint.sh crew [name] [ID]    # list the crew · start a session as one member (add <name> "<role>")
 ./sprint.sh split <path>        # split a large task into subtasks
-./sprint.sh polish [id]         # sweep review/, deep-judge a task, or --code audit
-./sprint.sh promote [id]        # close review/ → done/ (runs Tests; --accept <id>, --audit, --reject <id> "why",
+./sprint.sh polish [id]         # sweep review/, deep-judge a task, --code audit, or --break <id|plan:N>
+./sprint.sh promote [id]        # close review/ → done/ (breaker, then Tests; --accept <id>, --audit, --reject <id> "why",
                                 #   plan:N = sign off a LANDED plan with one approval)
 
 # look — read-only
-./sprint.sh status              # project status
+./sprint.sh status              # project status (--edges: caught by agents vs found by you)
 ./sprint.sh agents              # every AI session here and on your servers
 ./sprint.sh search <keyword>    # search tasks
+./sprint.sh history             # finished work, newest first (--since <date|tag> = release notes)
+./sprint.sh history record      # write done/ tasks no plan record covers into docs/history/
 ./sprint.sh learn [demo]        # watch the flow run (no name lists demos)
 ./sprint.sh align               # feature alignment
 
@@ -261,7 +293,8 @@ Solo optimizes for one context: one agent, the code read once, nothing re-learne
 
 Crew optimizes for throughput: several AI sessions at once, each with a name and a
 job, none idle. A lead keeps everyone rowing; members such as a builder, a bug
-fixer or a production operator do the work. Each member is one file,
+fixer, a production operator or a security pass do the work. Write a member for
+every lane; run only the ones a plan needs. Each member is one file,
 `docs/crew/<name>.md`: its role, what it reads first, what it may touch, how it reports.
 `./sprint.sh crew setup` proposes a crew and fills the files; `crew <name> [id|plan:N]`
 starts a member in its own terminal (`./sprint.sh help crew`). Every member works by these:
@@ -273,8 +306,9 @@ starts a member in its own terminal (`./sprint.sh help crew`). Every member work
 2. **Stay in your lane.** Each member touches only what its file allows.
 3. **Land fast and report it.** Land each task with its proof line, tell the lead the
    id and proof (or write it on the plan's `## Crew` board), and take your next.
-4. **The lead splits and routes.** It holds the plan in its `## Crew` section, leaves
-   product code to the others, splits work as wide as disjoint `**Touching:**` lists
+4. **The lead splits and routes.** It holds the plan in its `## Crew` section, with an
+   `Active:` line naming who runs; adds a member for a task no lane covers; leaves
+   product code to the others; splits work as wide as disjoint `**Touching:**` lists
    allow, and routes what each landing releases, marking it "built on #N (landed)".
    At LANDED it runs the full suite, routes each fix to the member who built the
    original, and hands you one `./sprint.sh promote plan:N`.
@@ -295,7 +329,7 @@ This manual is the baseline. Three places go further, each for one kind of quest
 
 | Question | Where |
 |----------|-------|
-| How do I do X with a command? | `./sprint.sh help <cmd>` (pages in `docs/sprintbias/help/`) |
+| How do I do X with a command? | `./sprint.sh help <cmd>` or `help <plain words>` (pages in `docs/sprintbias/help/`) |
 | What does it look like in motion? | `./sprint.sh learn` or `<cmd> --demo` (demos in `docs/sprintbias/learning/`) |
 | How does a whole workflow fit together? | `docs/sprintbias/guides/` (chat, crew, `sprint` alias, doc style) |
 
@@ -372,6 +406,10 @@ it relies on, the glossary terms it uses (word for word), and its conflicts — 
 a source, source vs source, task vs code, or task vs SprintBias — each settled before
 work. A conflict that changes scope or what done means becomes a question for you.
 `work` grounds what the gate did not and reports every conflict.
+
+**Known edges.** `promote --reject <id> "class: case"` also adds one line to the
+map's `## Known edges`; every agent is told to test the ones its change touches.
+`profile check` skips the section's paths and asks for a prune past ~15 lines.
 
 **Docs stay in step.** When work changes what a source of truth describes, the
 worker updates it in the same task — glossary, architecture, API, README,

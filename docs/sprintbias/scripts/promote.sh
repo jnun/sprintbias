@@ -160,7 +160,8 @@ if [ "$REJECT" -eq 1 ]; then
   fi
   echo ""
   echo "  Next: shape and run the fix —  ./sprint.sh work $SPRINTBIAS_FIX_ID"
-  echo "  promote closes #$ONLY_ID once #$SPRINTBIAS_FIX_ID is in done/."
+  case "$(sprintbias_task_path "$ONLY_ID" 2>/dev/null)" in docs/tasks/review/*)
+    echo "  promote closes #$ONLY_ID once #$SPRINTBIAS_FIX_ID is in done/." ;; esac
   exit 0
 fi
 
@@ -289,7 +290,7 @@ run_test() {  # prints exit code, running the test at most once per path
     [ "${RC_PATHS[$i]}" = "$p" ] && { printf '%s' "${RC_CODES[$i]}"; return; }
   done
   set +e
-  bash "$p" >/dev/null 2>&1
+  bash -c "$(sprintbias_test_cmd "$p")" >/dev/null 2>&1
   rc=$?
   set -e
   RC_PATHS+=("$p"); RC_CODES+=("$rc")

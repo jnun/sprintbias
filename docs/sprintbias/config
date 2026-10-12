@@ -41,7 +41,10 @@ FAST=off
 # Breaker: after work lands a task, a fresh agent writes tests designed to
 # fail against the change (edge cases the task never named), fixes what it
 # can, and files the rest. on (default) | off. Per run: work --no-break.
+# Each run stops at BREAK_MAX_TURNS turns or BREAK_TIMEOUT seconds at sign-off.
 BREAK=on
+BREAK_MAX_TURNS=25
+BREAK_TIMEOUT=900
 
 # Default model. Empty = let the CLI pick its own default (or a strong tier
 # default on claude-code / grok-build via sprintbias_tier_model).
@@ -91,6 +94,12 @@ AUDIT_MAX_PASSES=2
 # (./sprint.sh promote plan:N), e.g. TEST_SUITE=npm test. Empty = no full
 # suite: sign-off says so and goes straight to the human checklist.
 TEST_SUITE=
+
+# How one **Tests** file runs (promote <id>, fix tasks). A .sh file always runs
+# with bash. Other files: this command, {} = the file's path, {file} = its name
+# (no placeholder: the path is appended), e.g. TEST_RUN=scripts/pytest.sh {file}.
+# Empty = .py with python3 -m pytest -q, an executable directly, else bash.
+TEST_RUN=
 
 # Servers for `./sprint.sh agents` to check over ssh, as ssh aliases,
 # space-separated (e.g. AGENT_HOSTS=dev-box build-1). Personal, so it usually

@@ -140,7 +140,7 @@ def slug(title):
 
 def work_one(tid, title, diff, test, fail=None):
     """One task's trip through work: fresh context, targeted tests, a proof
-    line, then review/ — landed. `fail` plays one Test log round first."""
+    line, the breaker's edge-case pass, then review/ — landed. `fail` plays one Test log round first."""
     moved(f"next/{tid}", f"doing/{tid}")
     spinner(f"working {tid}  {DIM}{title}{RESET}",
             ticks=random.randint(8, 12), done="changes made")
@@ -150,6 +150,7 @@ def work_one(tid, title, diff, test, fail=None):
         line(f"    {GREY}  → ## Test log, fix, re-run{RESET}", delay=0.1)
     line(f"    {GREEN}✓ bash docs/tests/{test}{RESET}  {DIM}targeted · pass{RESET}", delay=0.08)
     line(f"    {GREY}**Proof**: {DATE} · bash docs/tests/{test} · pass{RESET}", delay=0.08)
+    line(f"    {GREEN}✓ breaker{RESET}  {DIM}a fresh agent tried edge cases · 5 tried · 0 broke{RESET}", delay=0.08)
     moved(f"doing/{tid}", f"review/{tid}  · landed")
     nap(0.25)
 
@@ -235,7 +236,7 @@ def checklist():
     line(f"  {BLUE}#74{RESET}  {WHITE}add Retry-After header to 429s{RESET}", delay=0.06)
     line(f"    1. Try the change. Something wrong?", delay=0.06)
     line(f"       → {CYAN}./sprint.sh promote --reject 74 \"what is wrong\"{RESET}", delay=0.06)
-    line(f"    2. Happy with it? Close it:", delay=0.06)
+    line(f"    2. Happy with it? Sign it off (the breaker checks it first):", delay=0.06)
     line(f"       → {CYAN}./sprint.sh promote --accept 74{RESET}", delay=0.06)
     print()
     line(f"  {DIM}#80 and #83 follow the same shape.{RESET}", delay=0.06)
@@ -278,7 +279,7 @@ def act3():
     for tid, *_ in QUEUE + [HELD]:
         ok(f"#{tid} → done/")
     ok("#84 → done/")
-    ok(f"Plan 12 is {GREEN}SIGNED OFF{RESET}. Retire it:  {CYAN}./sprint.sh plan done 12{RESET}")
+    ok(f"Plan 12 is {GREEN}SIGNED OFF{RESET}. Retire it into docs/history/:  {CYAN}./sprint.sh plan done 12{RESET}")
     nap(0.4)
     beat("Agents land work. You sign it off — once per plan, not once per task. "
          "Then you commit and ship.")

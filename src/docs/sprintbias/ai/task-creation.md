@@ -13,6 +13,7 @@ data; keep it in backticks. Full rule: `docs/sprintbias/guides/doc-style.md`.
 Work flows **Feature → Task → Audit**: a task usually builds toward a feature,
 and it will later be audited against the problem and success criteria you write
 here. Write both so a future auditor can judge "done" without asking you.
+Check `docs/history/` first for why an area is the way it is.
 
 ## The ultimate task file
 
@@ -337,7 +338,9 @@ docs/features/task-automation.md — spec this serves
 
 ### Completed / Files changed (after work only)
 
-When the task is finished, list under `### Files changed` the product files you
+When the task is finished, open `## Completed` with a `**Summary**:` line, one
+plain sentence on what changed; `plan done` copies it into the plan's history
+record in `docs/history/`. Then list under `### Files changed` the product files you
 edited to complete it — one repo-relative path per line. Reviews and the change
 manifest read this list. **Leave this task file out** — its folder location and
 git history already track it. Write both headings at column 0 (unindented); do
@@ -345,6 +348,8 @@ git history already track it. Write both headings at column 0 (unindented); do
 
 ```markdown
 ## Completed
+
+**Summary**: <one plain sentence: what changed, for someone reading the project's history>
 
 ### Files changed
 docs/sprintbias/scripts/example.sh

@@ -248,15 +248,20 @@ $(sprintbias_assume_rule)"
 ${fast}"
 
   if [ "$lead" = "yes" ]; then
+    local close_plan="<N>"
+    case "$target" in plan:*) close_plan="${target#plan:}" ;; esac
     local lead_build="- Leave product code to the members. You plan, route, unblock and check landed work. Decide by the finishing rule above; ask the human only goal questions."
     sprintbias_fast_on && lead_build="- You plan, route, unblock and check landed work, and you build too: take a task yourself when a lane is idle or a member stalls. Decide by the finishing rule above; ask the human only goal questions."
     rules="${rules}
 
 You lead this crew. Like a coxswain, you keep everyone rowing in time:
-- Hold the central idea of how the plan gets solved. Keep it in the plan file under ## Crew (after ## Member tasks): the approach in a few lines, then one line per member: name, task now, task next, state.
+- Hold the central idea of how the plan gets solved. Keep it in the plan file under ## Crew (after ## Member tasks): the approach in a few lines, an Active: line naming the members this plan needs running, then one line per member: name, task now, task next, state.
 - Split for parallel work: tasks that run at once need disjoint **Touching:** sets (or References, before a task has one). Overlapping tasks go to one member, or run in order through **Depends on**, lower id first.
 - Route a task by setting its **Crew** field to the member whose lane fits, then message that member the task id.
-${lead_build}"
+- A task no member's May touch covers gets an owner: add one with ./sprint.sh crew add <name> \"<role>\", fill its Job and May touch, record a - Decided: line on the board, and tell the human the terminal to start (./sprint.sh crew <name>).
+- A member whose Job is a pass over landed work (stress, security) gets each landing in its lanes before plan close; the fix tasks it files go back to the builder.
+${lead_build}
+- When the plan's work has landed, close with the human: list the calls the crew made (each - Decided: line, with ./sprint.sh newtask \"<the change you want>\" to change one), then the next command: ./sprint.sh promote plan:${close_plan}."
     [ -n "$plan_block" ] && rules="${rules}
 
 ${plan_block}"
@@ -327,11 +332,17 @@ ${fast}"
 case "${1:-}" in
   ""|list)        cmd_list ;;
   add)            shift; cmd_add "$@" ;;
-  setup)          cmd_setup ;;
+  setup)
+    shift
+    case "${1:-}" in -h|--help|help) usage; exit 0 ;; esac
+    if [ $# -gt 0 ]; then usage >&2; exit 1; fi
+    cmd_setup ;;
   -h|--help|help) usage ;;
   *)
     if ! valid_name "$1"; then usage; exit 1; fi
-    cmd_start "$@" ;;
+    _name="$1"; shift
+    sprintbias_plan_args --bare "$@"
+    cmd_start "$_name" ${SPRINTBIAS_ARGS[@]+"${SPRINTBIAS_ARGS[@]}"} ;;
 esac
 exit
 }

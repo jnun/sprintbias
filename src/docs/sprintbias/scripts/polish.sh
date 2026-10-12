@@ -16,6 +16,10 @@
 #   polish --code <id|file|task.md> [file...] [-- max-passes]
 #       Code-diff audit: fixer/verifier loop that may fix issues inline.
 #
+#   polish --break <id|task.md|plan:N>
+#       The breaker alone on landed work (review/ or done/): tests designed to
+#       fail, drawn from the edge cases. No rework, no gate.
+#
 # Argument shape selects the mode: a bare number that names an existing task
 # targets THAT task (deep judge, or code audit with --code); a number that
 # resolves to no task is a sweep limit. A bare path is the deep judge; the
@@ -33,6 +37,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gate-lib.sh"
 # ── Mode selection ───────────────────────────────────────────────────
 # Modes: sweep | judge | code
 CODE_FLAG=0
+BREAK_FLAG=0
 MAX_TASKS=999
 MAX_ROUNDS=1
 _NO_LIMITS=0
@@ -47,6 +52,12 @@ _JOBS=""
 _STEADY=0
 MAX_PASSES="${SPRINTBIAS_AUDIT_MAX_PASSES:-3}"
 POSITIONAL=()
+# One plan-target reader (lib.sh): plan N / plan:N. A bare number becomes a
+# plan only for --break, the one polish mode that takes a plan.
+_bare=""; for _a in "$@"; do [ "$_a" = "--break" ] && _bare="--bare"; done
+sprintbias_plan_args $_bare "$@"
+set -- ${SPRINTBIAS_ARGS[@]+"${SPRINTBIAS_ARGS[@]}"}
+unset _bare _a
 
 _usage() {
   cat >&2 <<'EOF'
@@ -61,6 +72,9 @@ Usage:
 
   ./sprint.sh polish --code <id|task.md|file> [file...] [-- max-passes]
       Code-diff audit (fixer/verifier); may fix issues inline.
+
+  ./sprint.sh polish --break <id|task.md|plan:N>
+      Run the breaker on landed work (review/ or done/); plan:N = each landed member.
 EOF
   exit 1
 }
@@ -68,6 +82,7 @@ EOF
 while [ $# -gt 0 ]; do
   case "$1" in
     --code)  CODE_FLAG=1; shift ;;
+    --break) BREAK_FLAG=1; shift ;;
     --rounds)
       [ $# -lt 2 ] && { echo "✗ --rounds needs a number" >&2; exit 1; }
       MAX_ROUNDS="$2"; shift 2
@@ -121,8 +136,109 @@ fi
 
 if [ "$_NO_LIMITS" -eq 1 ]; then
   SPRINTBIAS_BUDGET_AUDIT=""
+  SPRINTBIAS_BUDGET_BREAK=""
 fi
 unset _NO_LIMITS
+
+# ═════════════════════════════════════════════════════════════════════
+# MODE: break — the breaker alone on landed work (work runs it by default
+# after each task lands; this re-runs it on review/ or done/ tasks, or on each
+# landed member of a plan except its human test). No rework, no gate.
+# ═════════════════════════════════════════════════════════════════════
+if [ "$BREAK_FLAG" -eq 1 ]; then
+  [ "$CODE_FLAG" -eq 0 ] || { echo "✗ --break and --code are separate passes; run one at a time" >&2; exit 1; }
+  [ ${#POSITIONAL[@]} -eq 1 ] || { echo "Usage: ./sprint.sh polish --break <id|task.md|plan:N>" >&2; exit 1; }
+  _target="${POSITIONAL[0]}"; _plan=""; _files=()
+  case "$_target" in
+    plan:*)
+      _plan="${_target#plan:}"
+      _pf="$(sprintbias_find_plan "$_plan")" || { echo "✗ No plan $_plan in $SPRINTBIAS_PLANS_DIR/" >&2; exit 1; }
+      for _mid in $(sprintbias_plan_member_ids "$_pf"); do
+        _p="$(sprintbias_task_path "$_mid" 2>/dev/null || true)"
+        case "$_p" in docs/tasks/review/*|docs/tasks/done/*) ;; *) continue ;; esac
+        sprintbias_is_human_task "$_p" && continue
+        _files+=("$_p")
+      done
+      [ ${#_files[@]} -gt 0 ] || { echo "▸ Plan $_plan has no landed members (review/ or done/) to break yet."; exit 0; }
+      ;;
+    *)
+      if [ -f "$_target" ]; then _p="$_target"
+      else _p="$(sprintbias_task_path "$_target" 2>/dev/null || true)"; fi
+      [ -n "$_p" ] || { echo "✗ No task $_target found." >&2; exit 1; }
+      case "$_p" in
+        docs/tasks/review/*|docs/tasks/done/*|./docs/tasks/review/*|./docs/tasks/done/*) ;;
+        *) echo "✗ $_p has not landed; --break checks review/ or done/ work. Land it first: ./sprint.sh work $_target" >&2; exit 1 ;;
+      esac
+      _files=("$_p")
+      ;;
+  esac
+  if [ -n "$_plan" ]; then
+    _next="./sprint.sh plan check $_plan   # then sign off: ./sprint.sh promote plan:$_plan"
+  else
+    _next="./sprint.sh promote $(task_id "${_files[0]}")"
+  fi
+
+  if [ "$(sprintbias_ai_mode)" = "emit" ]; then
+    _list=""; for _p in "${_files[@]}"; do _list="$_list
+- $_p"; done
+    if sprintbias_orchestration_capable; then
+      _how="For each task below, launch $(sprintbias_subagent_own_fresh polish) whose entire
+instruction is the breaker rule, with <task file> set to that task:"
+    else
+      _how="Work the tasks below one at a time; reset your focus before each and
+follow the breaker rule, with <task file> set to that task:"
+    fi
+    sprintbias_run -p "You are running the SprintBias breaker on landed work: ${#_files[@]} task(s).
+$(sprintbias_orient)
+
+$_how
+---
+$(sprintbias_break_rule "<task file>")
+---
+Tasks:$_list
+
+When every task is done, print one line per task: #<id>  **Breaker**: <its line>,
+then: ▸ Breaker: <N> task(s) checked · <N> lost its proof — next: $_next"
+    exit 0
+  fi
+
+  mkdir -p docs/tmp
+  # A plan: the members not yet checked, in parallel lanes (tasks sharing a code
+  # file run in turn), as promote does. Re-run one checked task by its id.
+  if [ -n "$_plan" ]; then
+    _jobs="$MAX_JOBS"
+    [ -z "$_JOBS" ] && sprintbias_fast_on && _jobs=4
+    _todo=0
+    for _p in "${_files[@]}"; do [ -n "$(sprintbias_break_line "$_p")" ] || _todo=$((_todo + 1)); done
+    if [ "$_todo" -eq 0 ]; then
+      echo "▸ Every landed member of plan $_plan has a Breaker line. Re-run one:  ./sprint.sh polish --break <id>"
+      echo "  next: $_next"
+      exit 0
+    fi
+    sprintbias_break_signoff "$_jobs" 0 "${_files[@]}"
+    _lost=0; for _id in $SPRINTBIAS_BREAK_LOST; do _lost=$((_lost + 1)); echo "    #$_id has no **Proof**: line — read its ## Test log"; done
+    echo ""
+    echo "▸ Breaker: $_todo task(s) checked · $_lost lost its proof — next: $_next"
+    exit 0
+  fi
+  _unproven=0
+  for _p in "${_files[@]}"; do
+    _id="$(task_id "$_p")"
+    echo "▸ Breaker on #$_id ($_p)"
+    _log="$(sprintbias_log_path break "$(basename "$_p")")"
+    _had=0; sprintbias_has_proof "$_p" && _had=1
+    if sprintbias_break_run "$_p" "$_log"; then
+      _b="$(sprintbias_break_line "$_p")"
+      echo "  #$_id  **Breaker**: ${_b:-(no Breaker line written — log: $_log)}"
+    else
+      echo "  ⚠ #$_id  breaker did not finish (log: $_log)"
+    fi
+    [ "$_had" -eq 1 ] && ! sprintbias_has_proof "$_p" && { _unproven=$((_unproven + 1)); echo "    No **Proof**: line — read ## Test log in $_p"; } || true
+  done
+  echo ""
+  echo "▸ Breaker: ${#_files[@]} task(s) checked · $_unproven lost its proof — next: $_next"
+  exit 0
+fi
 
 # Classify positionals into TASK_FILE / EXPLICIT_FILES / numeric limits.
 TASK_FILE=""
@@ -779,6 +895,11 @@ VERDICT: PASS    (landed edits hold up)   or   VERDICT: FAIL   (issues remain)"
     fi
   fi
 
+  # The exact re-run command: the task file, the explicit files, or none (diff).
+  _code_cmd="./sprint.sh polish --code"
+  if [ -n "$TASK_FILE" ]; then _code_cmd="$_code_cmd $TASK_FILE"
+  elif [ ${#EXPLICIT_FILES[@]} -gt 0 ]; then _code_cmd="$_code_cmd ${EXPLICIT_FILES[*]}"; fi
+
   case "$VERDICT" in
     PASS)
       echo "✓ Code audit passed ($STEP step(s): $FIXER_COUNT fixer + $VERIFY_COUNT verifier)"
@@ -800,28 +921,28 @@ VERDICT: PASS    (landed edits hold up)   or   VERDICT: FAIL   (issues remain)"
       case "$ABORT_OUTCOME" in
         no_start)
           echo "  Confirm the '$SPRINTBIAS_CLI' CLI is installed and authenticated, then re-run:"
-          echo "    ./sprint.sh polish --code ${TASK_FILE:-<files>}" ;;
+          echo "    $_code_cmd" ;;
         *)
           # --code IS the edit-now lever: re-run it to push the banked work
           # forward — it picks up from what already landed. Raising the turn
           # budget is the last resort, only if it keeps stalling on one step.
           echo "  Push the banked work forward — re-run to continue from what landed:"
-          echo "    ./sprint.sh polish --code ${TASK_FILE:-<files>}"
+          echo "    $_code_cmd"
           echo "  Only if it keeps hitting the wall on the same step, give it more room:"
-          echo "    SPRINTBIAS_AUDIT_MAX_TURNS=60 ./sprint.sh polish --code ${TASK_FILE:-<files>}" ;;
+          echo "    SPRINTBIAS_AUDIT_MAX_TURNS=60 $_code_cmd" ;;
       esac
       exit 1
       ;;
     UNCLEAR)
       echo "? Code audit finished but its final line held no VERDICT token after $STEP step(s)."
       echo "  It ran to completion — a formatting slip, not a crash."
-      echo "  Inspect the log tail in $LOG_DIR/, then re-run: ./sprint.sh polish --code ${TASK_FILE:-<files>}"
+      echo "  Inspect the log tail in $LOG_DIR/, then re-run: $_code_cmd"
       exit 1
       ;;
     *)
       echo "⚠ Code audit completed with warnings after $STEP step(s)"
       echo "  Final verdict: $VERDICT — the audit logs are in $LOG_DIR/"
-      echo "  Read the last one, then push the work forward:  ./sprint.sh polish --code ${TASK_FILE:-<files>}"
+      echo "  Read the last one, then push the work forward:  $_code_cmd"
       exit 1
       ;;
   esac
@@ -1204,7 +1325,7 @@ _route_refine() {
       else
         PASSED=$((PASSED + 1))
         echo "  ⚠ Verdict REOPEN but no '## Rework' section was written — left in review/"
-        echo "    Log: $LOG_FILE — re-judge:  ./sprint.sh polish $TASK_FILE"
+        echo "    Log: $LOG_FILE — re-run the sweep:  ./sprint.sh polish"
       fi
       ;;
     PASS)
@@ -1226,13 +1347,13 @@ _route_refine() {
           max_turns)
             echo "    Re-run with more room:  SPRINTBIAS_AUDIT_MAX_TURNS=60 ./sprint.sh polish --force" ;;
           no_start)
-            echo "    Confirm the '$SPRINTBIAS_CLI' CLI is installed and authenticated, then:  ./sprint.sh polish $TASK_FILE" ;;
+            echo "    Confirm the '$SPRINTBIAS_CLI' CLI is installed and authenticated, then:  ./sprint.sh polish" ;;
           *)
-            echo "    See $LOG_FILE, then re-judge:  ./sprint.sh polish $TASK_FILE" ;;
+            echo "    See $LOG_FILE, then re-run the sweep:  ./sprint.sh polish" ;;
         esac
       else
         echo "  ? Judge finished but its final line held no VERDICT token — left in review/. See $LOG_FILE"
-        echo "    Re-judge:  ./sprint.sh polish $TASK_FILE"
+        echo "    Re-run the sweep:  ./sprint.sh polish"
       fi
       ;;
   esac
@@ -1312,7 +1433,7 @@ TOTAL_ELAPSED=$((SECONDS - TOTAL_START))
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "▸ Done: $REOPENED reopened → next/, $PASSED passed, $BLOCKED blocker(s), $UNCLEAR unclear — total $((TOTAL_ELAPSED / 60))m $((TOTAL_ELAPSED % 60))s"
 for _bid in ${BLOCKER_IDS[@]+"${BLOCKER_IDS[@]}"}; do
-  echo "  ✗ #$_bid blocker — see the lines above it for its command"
+  echo "  ✗ #$_bid blocker → ./sprint.sh chat $_bid   (a defect: ./sprint.sh polish --code $_bid)"
 done
 if [ "$REOPENED" -gt 0 ]; then
   echo "  ↩ Run ./sprint.sh work to re-execute the $REOPENED reopened task(s)."

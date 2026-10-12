@@ -78,7 +78,7 @@ TOTAL_START=$SECONDS
 _RETRY_USED=0
 
 # Snapshot pre-existing blocked/ tasks so retry only touches ones that landed
-# this run (need a decision or clarification)
+# this run (cannot start, or an incomplete run)
 _INITIAL_BLOCKED=$(mktemp)
 trap 'rm -f "$_INITIAL_BLOCKED"' EXIT
 ls "$BLOCKED_DIR"/*.md 2>/dev/null | while read -r f; do basename "$f"; done > "$_INITIAL_BLOCKED" 2>/dev/null || true
@@ -286,7 +286,8 @@ while true; do
     [ -f "$f" ] || continue
     name="${f##*/}"
     move_file "$f" "$BLOCKED_DIR/$name"
-    echo "  ⚠ $name incomplete → blocked/ (needs decision or clarification)"
+    echo "  ⚠ $name incomplete → blocked/ (incomplete run)"
+    echo "    ./sprint.sh work $(task_id "$name")"
   done
 
   AFTER_REVIEW=$(count_tasks "$REVIEW_DIR")

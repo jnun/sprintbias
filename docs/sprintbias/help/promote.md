@@ -24,7 +24,8 @@ ways:
   **Depends on** holds still apply. This is the close line work's end-of-run
   checklist prints.
 - **`--reject <id> "what is wrong"`** — send a `review/` task back as a
-  linked fix task. See **Reject** below.
+  linked fix task, or report a `done/` task found broken later. See
+  **Reject** below.
 - **`plan:N`** — sign off a whole plan in one batch: the full suite once, then
   one approval. See **Plan sign-off** below.
 
@@ -71,7 +72,10 @@ For each task in `review/` (or just `[id]`):
    **Depends on**: any prerequisite not yet in `review/`/`done/` (still in
    `backlog/next/doing/blocked`, folded, or missing) → *hold* the task, name the
    open prereq and its stage, and leave it in `review/`. Holds self-clear.
-3. Run each named test (once per run, even if two tasks share it).
+3. Run each named test (once per run, even if two tasks share it), the way
+   the project runs it: `.sh` with bash; other files with config `TEST_RUN`
+   (`{}` = path, `{file}` = name, e.g. `TEST_RUN=scripts/pytest.sh {file}`),
+   else `.py` with `python3 -m pytest -q`, an executable directly.
 4. Every test green **and** every prerequisite closed → `git mv review/… done/`
    (`|| mv`). Messaging may say “proven green”; the field name is still
    **Tests**. Any test failing, missing, or out-of-tree → stay in `review/`,
@@ -107,6 +111,9 @@ moves nothing:
   one line under its `## Known edges` (the section is created when missing),
   so later work in that area tests the case. Phrase it as class and case:
   "re-import: the same file twice duplicates contacts". No map, no line.
+- **Found broken after sign-off** (the task is in `done/`): the same fix task
+  and Known edges line; the original stays in `done/`, nothing is held, and
+  its `## Test log` links the fix. the status scorecard counts it as an escape.
 
 Output:
 

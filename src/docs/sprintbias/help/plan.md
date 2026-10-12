@@ -16,7 +16,11 @@ members, order) and **rewrites the Problem/Done when of each unstarted member**
 member (doing/review/done) is trusted as completed-as-defined and never
 reopened; if the plan needs more from it, a new delta task is filed with
 `newtask` (starting from the current code state) and added to the plan.
-Plan-level analysis lands in docs/tmp/plan-think-<id>.md. It decides and applies
+Plan-level analysis lands in docs/tmp/plan-think-<id>.md. When the pass ends —
+complete, partial, or failed — it prints a **Changes** list: every plan and task
+file it created, edited, moved, or deleted, with `+N −M` lines and a one-line
+summary, then the members it left alone. The same report is kept in
+docs/tmp/plan-think-<id>-changes.md. It decides and applies
 every finding with a reasonable pick and lists each call under `## Decided` in
 the plan file (`- Decided: X, because Y`; change one with
 `./sprint.sh newtask "<the change you want>"`). Only a question whose answer
@@ -96,7 +100,7 @@ lands, and `promote plan:N` refreshes it and turns its failures into fix tasks. 
 (git mv first; plain mv finishes when untracked). The developer owns commits.
 
 **plan check [id]** — read-only plan health report. Pure shell, **no AI, no
-moves** — the inverse of `plan start` (gates + moves) and `plan done` (deletes).
+moves** — the inverse of `plan start` (gates + moves) and `plan done` (retires).
 It reads the plan and its members and prints one glance at where the plan stands,
 changing nothing:
 
@@ -141,9 +145,12 @@ for a plan's completed body of work; `plan think` critiques the plan as a unit,
 and the reopen sweep / `--code` audit stay on `polish` itself.
 
 **plan done [id]** — retire a finished plan. When every member task is in
-`docs/tasks/done/`, deletes the plan file (retirement is deletion, never a
-stored DONE status). If any member is still outstanding, it reports what remains
-and does nothing. Bare `plan done` picks a plan.
+`docs/tasks/done/`, retires the plan into a history record: it writes
+`docs/history/YYYY-MM-DD-plan-N-<slug>.md` (the plan's Goal, Why and Decided,
+one line per member with its `**Summary**:`, and any follow-ups), stages it,
+removes the plan file, and prints a changelog line you can paste. DONE is never
+a stored status on a plan. If any member is still outstanding, it reports what
+remains and writes nothing. Bare `plan done` picks a plan. Pure shell, no AI.
 When tasks were filed from the plan's work (**From plan**: N — reworks, deltas,
 put-off items, enhancements), plan done names them and prints the command that
 groups them into the next plan: `./sprint.sh newplan "… — follow-ups" from:N`.
@@ -178,7 +185,7 @@ Family order:
   5. ./sprint.sh work · loop        # members land in review/ with a proof line
   6. ./sprint.sh plan polish [id]    # optional: excellence-judge finished members (review/ + done/)
   7. ./sprint.sh promote plan:[id]   # LANDED → full suite once, one approval → done/
-  8. ./sprint.sh plan done [id]      # all members in done/ → delete the plan file
+  8. ./sprint.sh plan done [id]      # all members in done/ → history record, plan file removed
 
   Anytime: ./sprint.sh plan check [id]   # read-only "where does this stand?" — no AI, no moves
 

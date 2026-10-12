@@ -74,6 +74,8 @@ starts from their wording. 434, the human test, runs last.
 - Decided (2026-10-10 audit): the leftover old-meaning blocked/ lines (gate's chat queue, work's gate summary, help/loop, help/work, help/chat, use_chat, GETSTARTED, command-matrix) are fixed in place and the guard now reads wrapped lines and those files, because they were the same leak #436 targeted.
 - Decided (2026-10-10 audit): the folder sweep's [w] now writes its `- Decided:` pick into the task's ## Notes, and the crew lead closes with the crew's calls and `./sprint.sh promote plan:<N>`, because the Policy says decide *and record* and every message ends in a command.
 
+- Decided (2026-10-12): membership is closed at the eleven members above; #438 (change report at the end of plan start, polish and chat plan) stays a separate follow-up, because every member has landed and an unwritten task should not hold `promote plan:32`.
+
 ## Signoff (human)
 
 Checked in the plan's one human test, #434 (check 11 covers #436).

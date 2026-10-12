@@ -9,7 +9,16 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+### Changed
+- Bare `./sprint.sh plan check` lists your plans and asks which to check; press Enter to check them all. Without a terminal it checks them all.
+
+## 0.0.138 — 2026-10-11
+
 ### Added
+- `./sprint.sh status --edges [plan:N]` scores edge-case catching with no AI: defects the agents caught (Breaker lines) vs defects you found (`promote --reject` and human-test failures), split by work the breaker checked vs work it did not, with catch rate, breaker cost and the escapes to learn from.
+- `promote --reject <id> "what is wrong"` also takes a `done/` task found broken after sign-off: it files the linked fix task and the Known edges line, and the original stays signed off.
+- Parallel breakers (sign-off and `polish --break plan:N`) never share a code file: tasks whose `### Files changed` lists overlap run one after another in a lane, lanes run side by side, and a free slot starts the next lane at once. `polish --break plan:N` now checks the members that have no Breaker line yet, in parallel; re-run a checked task by its id.
+- The breaker records its cost on its Breaker line (`· $1.23`), and `BREAK_MAX_TURNS` (25) and `BREAK_TIMEOUT` (900 seconds) can be set in `docs/sprintbias/config` or `config.local`.
 - `./sprint.sh polish --break <id|plan:N>` runs the breaker alone on landed work (review/ or done/; for a plan, each landed member but the human test), with no rework or gate, and prints each task's Breaker line plus the next command.
 - Rejected cases become project memory: `promote --reject <id> "…"` also adds one line to `## Known edges` in your project map (`docs/sprintbias/project.md`, when you have one), and every agent is told to test the ones its change touches. `profile check` skips that section's paths and asks for a prune past ~15 lines.
 - `./sprint.sh history record` writes the finished tasks no plan record covers — planless work and tasks from plans retired before records existed — into one dated file in `docs/history/`, so `history` and `history --since` cover all your finished work. Run it by hand before a release; a second run with nothing new says "History is up to date with done/."
@@ -23,6 +32,8 @@ renames that section to the new version and date on each bump.
 - After each task lands, a fresh "breaker" agent now tries to break it by default: it writes tests designed to fail, fixes what it can, and leaves the task unproven with the failure in `## Test log` when it cannot. Turn it off with `BREAK=off` in `docs/sprintbias/config`, or for one run with `work --no-break`; `MODEL_BREAK` and `BUDGET_BREAK` tune it. The breaker starts from real use (commands and inputs as people type or paste them, every form the docs promise) before extremes, re-decides and fixes a call that caused a defect, and leaves a test failing only when it names the filed task.
 - `plan done` now retires a finished plan into a history record instead of just deleting it: `docs/history/YYYY-MM-DD-plan-N-<slug>.md` keeps the plan's goal, its decisions and one line per task saying what changed, and the command prints a changelog line you can paste. Work agents open `## Completed` with a one-sentence `**Summary**:` for that line, and setup creates an empty `docs/history/`.
 - The crew demo (`python3 docs/sprintbias/learning/crew.py`) now plays the lead routing what each landing releases ("built on #41 (landed)") and closing the plan with one `./sprint.sh promote plan:5`, and the project map's `**Test:**` line from `profile` points at `TEST_SUITE` in `docs/sprintbias/config`, the full-suite command `promote plan:N` runs.
+- `crew setup` fits projects with many lanes: it writes a member file for every lane (a codebase, the database, production, or a pass over landed work such as stress or security), names the few members the first plan needs running, and points every member at the document holding your project's invariants, the rules every change keeps. The lead writes an `Active:` line on the plan's `## Crew` board, adds a member when a task fits no lane, and sends landings to pass members before plan close. `crew setup` with extra words now prints usage instead of starting a session.
+- The project map can point at your invariants: `profile` looks for the document that holds them and adds an optional `**Invariants:**` line under `## Sources of truth`.
 - `blocked/` means one thing everywhere: work that cannot start. The `chat <folder>` sweep now decides an open choice and records it as `- Decided: X, because Y` instead of blocking the task, and `status`, `gate`, `work` and `loop` label blocked items "cannot start" (or their real reason) with the `chat <id>` or `work <id>` command next to them.
 
 - `plan think` ends by showing what it changed: each plan and task file it
@@ -32,6 +43,7 @@ renames that section to the new version and date on each bump.
   is no `git diff` to run afterwards.
 
 ### Fixed
+- `promote` runs each **Tests** file the way your project runs it: `.sh` with bash, other files with the new `TEST_RUN` config (e.g. `TEST_RUN=scripts/pytest.sh {file}`), else `.py` with pytest and an executable directly. Before, every Tests file ran with bash, so a Python test always failed and its task never closed; fix tasks now name the same command.
 
 - Timed-out AI steps no longer leave a stray `sleep` process behind that could hold a command's output open.
 - `work --audit` and `--excellence` (and the new breaker) now run on a task the

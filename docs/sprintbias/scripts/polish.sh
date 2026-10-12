@@ -203,6 +203,24 @@ then: ▸ Breaker: <N> task(s) checked · <N> lost its proof — next: $_next"
   fi
 
   mkdir -p docs/tmp
+  # A plan: the members not yet checked, in parallel lanes (tasks sharing a code
+  # file run in turn), as promote does. Re-run one checked task by its id.
+  if [ -n "$_plan" ]; then
+    _jobs="$MAX_JOBS"
+    [ -z "$_JOBS" ] && sprintbias_fast_on && _jobs=4
+    _todo=0
+    for _p in "${_files[@]}"; do [ -n "$(sprintbias_break_line "$_p")" ] || _todo=$((_todo + 1)); done
+    if [ "$_todo" -eq 0 ]; then
+      echo "▸ Every landed member of plan $_plan has a Breaker line. Re-run one:  ./sprint.sh polish --break <id>"
+      echo "  next: $_next"
+      exit 0
+    fi
+    sprintbias_break_signoff "$_jobs" 0 "${_files[@]}"
+    _lost=0; for _id in $SPRINTBIAS_BREAK_LOST; do _lost=$((_lost + 1)); echo "    #$_id has no **Proof**: line — read its ## Test log"; done
+    echo ""
+    echo "▸ Breaker: $_todo task(s) checked · $_lost lost its proof — next: $_next"
+    exit 0
+  fi
   _unproven=0
   for _p in "${_files[@]}"; do
     _id="$(task_id "$_p")"

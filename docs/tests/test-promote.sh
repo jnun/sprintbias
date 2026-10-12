@@ -318,11 +318,54 @@ assert_eq "original closes once its fix is in done/" "true" "$(in_done 730-rejec
 # --- Test 10: --reject guards ----------------------------------------------
 echo "Test 10: --reject refuses a non-review/ task and an empty report"
 run_promote --reject 733 "broken"
-assert_eq "non-review/ id is refused" "1" "$RC"
-assert_contains "names why" "$OUT" "only a review/ task can be rejected"
+assert_eq "an unlanded id is refused" "1" "$RC"
+assert_contains "names why" "$OUT" "reject works on landed work (review/ or done/)"
+# Found broken after sign-off: a linked fix task is filed; the original stays done.
+run_promote --reject 730 "breaks on an empty file"
+assert_eq "a done/ task can be reported broken" "0" "$RC"
+assert_contains "says the original stays signed off" "$OUT" "#730 stays in done/ (signed off)"
+assert_not_contains "no close-later promise for a done/ task" "$OUT" "promote closes #730"
+assert_eq "original stays in done/" "true" "$(in_done 730-rejected.md)"
+_sfix=$(grep -l '^\*\*Fixes\*\*: #730$' "$BOARD"/docs/tasks/backlog/*.md 2>/dev/null | tail -1)
+assert_eq "the fix task links the original" "true" "$([ -n "$_sfix" ] && echo true || echo false)"
+assert_contains "the fix says it broke after sign-off" "$(cat "$_sfix" 2>/dev/null)" "was signed off, then found broken"
+assert_contains "the original's test log links the fix" "$(cat "$BOARD/docs/tasks/done/730-rejected.md")" "found broken after sign-off: breaks on an empty file"
 run_promote --reject 731
 assert_eq "missing report prints usage" "2" "$RC"
 assert_contains "usage names the report" "$OUT" 'promote --reject <id> "what is wrong"'
+
+# --- Test 10b: a **Tests** file runs the way the project runs it -----------
+echo "Test 10b: .py runs through TEST_RUN or pytest, an executable directly"
+setup
+printf 'import sys\nsys.exit(0)\n' > "$BOARD/docs/tests/green_check.py"
+printf 'import sys\nsys.exit(1)\n' > "$BOARD/docs/tests/red_check.py"
+make_review 760 py-green "**Tests**: docs/tests/green_check.py"
+make_review 761 py-red "**Tests**: docs/tests/red_check.py"
+printf '\nTEST_RUN=python3 {}\n' >> "$BOARD/docs/sprintbias/config"
+run_promote
+assert_eq "TEST_RUN runs a green .py: done/" "true" "$(in_done 760-py-green.md)"
+assert_eq "TEST_RUN runs a red .py: stays in review/" "true" "$(in_review 761-py-red.md)"
+assert_contains "red .py names its exit" "$OUT" "docs/tests/red_check.py → FAIL (exit 1)"
+# {file} is the name alone, run from the tests folder (scripts/pytest.sh style).
+printf '#!/usr/bin/env bash\ncd docs/tests && python3 "$1"\n' > "$BOARD/run-py.sh"
+sed -i.bak 's#^TEST_RUN=python3 {}$#TEST_RUN=bash run-py.sh {file}#' "$BOARD/docs/sprintbias/config"
+mv "$BOARD/docs/tasks/done/760-py-green.md" "$BOARD/docs/tasks/review/"
+run_promote 760
+assert_eq "TEST_RUN with {file}: done/" "true" "$(in_done 760-py-green.md)"
+# Not .sh, no TEST_RUN: an executable file runs directly (its own shebang).
+sed -i.bak '/^TEST_RUN=bash run-py.sh/d' "$BOARD/docs/sprintbias/config"
+printf '#!/usr/bin/env python3\nimport sys\nsys.exit(0)\n' > "$BOARD/docs/tests/exec_check"
+chmod +x "$BOARD/docs/tests/exec_check"
+make_review 762 exec-green "**Tests**: docs/tests/exec_check"
+run_promote 762
+assert_eq "an executable test runs by its shebang: done/" "true" "$(in_done 762-exec-green.md)"
+# The fix task's proof command names the same runner.
+printf '\nTEST_RUN=scripts/pytest.sh {file}\n' >> "$BOARD/docs/sprintbias/config"
+cp "$SPRINTBIAS_SRC/../tasks/.TEMPLATE-task.md" "$BOARD/docs/tasks/.TEMPLATE-task.md"
+run_promote --reject 761 "an empty row crashes"
+_fx=$(grep -l '^\*\*Fixes\*\*: #761$' "$BOARD"/docs/tasks/backlog/*.md 2>/dev/null | tail -1 || true)
+assert_contains "fix task proof uses the project's runner" "$(cat "$_fx")" '`scripts/pytest.sh red_check.py`'
+assert_not_contains "never bash on a .py" "$(cat "$_fx")" 'bash docs/tests/red_check.py'
 
 # --- Test 11-15: promote plan:N — the sign-off batch ------------------------
 # A plan member: landed (review/ + proof) unless STAGE says otherwise.

@@ -25,8 +25,11 @@ it; argument shape selects the mode:
                    The breaker alone on landed work (review/ or done/): a
                    fresh agent writes tests designed to fail, starting from
                    real use, then edge cases; fixes, re-decides or files what
-                   breaks. plan:N runs each landed member except the human
-                   test. No rework, no gate. (work runs it by default.)
+                   breaks. plan:N runs each landed member not yet checked
+                   (not the human test) in parallel lanes: tasks that
+                   changed a common code file run in turn (--jobs N, 4 in
+                   fast mode). Re-run a checked task by its id. No rework,
+                   no gate. (work runs it by default.)
 
 Argument shape selects the mode. A bare number is read id-first: if it names
 an existing task (in any lifecycle folder) it targets THAT task — the deep
@@ -166,7 +169,7 @@ Usage:
   ./sprint.sh polish --code <task.md> [max-passes]
   ./sprint.sh polish --code f1 f2 -- 3
   ./sprint.sh polish --break 874     # run the breaker on landed task 874
-  ./sprint.sh polish --break plan:9  # …on each landed member of plan 9
+  ./sprint.sh polish --break plan:9  # …on each unchecked landed member of plan 9
   ./sprint.sh polish --model <id>    # pin the model for this run only
 
 Provider for this run only (leading flags; does not rewrite config):

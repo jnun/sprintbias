@@ -30,7 +30,7 @@ not a lifecycle stage. A plan created with members bound (ids, `parent:N`,
 `**Status:** DRAFT`; flip it to `READY` once it is authored (`chat plan`).
 `plan start` then latches `**Status:** STARTED` (a one-way switch) as it commits
 members to `next/`. Once every member has landed, `./sprint.sh promote plan:<id>`
-signs them off into `done/`, and `./sprint.sh plan done <id>` retires the plan by deleting the file — there is no stored DONE.
+signs them off into `done/`, and `./sprint.sh plan done <id>` retires the plan into a history record in `docs/history/` and removes the plan file — there is no stored DONE.
 
 The plan gets an auto-assigned ID from a dedicated `sprint_PLAN_ID` counter
 in `docs/sprintbias/DOC_STATE.md` (bumped on creation, exactly like task and bug

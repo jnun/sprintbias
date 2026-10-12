@@ -139,6 +139,11 @@ assert_contains "Lead never answers the approval" "$out" "That approval is the h
 assert_contains "Board holds task now and next" "$out" "name, task now, task next, state"
 assert_contains "Members report landings" "$out" "report the landing (task id and proof line) to the lead by message"
 assert_contains "Board is the channel without messaging" "$out" "on the plan's ## Crew board when your CLI cannot message"
+echo "Test 6a3: the lead runs an active set, fills unowned lanes, and feeds passes (plan 33)"
+assert_contains "Board names the active set" "$out" "an Active: line naming the members this plan needs running"
+assert_contains "Unowned lane gets a member" "$out" "A task no member's May touch covers gets an owner: add one with ./sprint.sh crew add"
+assert_contains "Lead names the terminal to start" "$out" "tell the human the terminal to start (./sprint.sh crew <name>)"
+assert_contains "Landings reach pass members" "$out" "A member whose Job is a pass over landed work (stress, security) gets each landing"
 out="$(crew orcha)"
 assert_contains "Lead resumes its assigned plan" "$out" "Your work is plan 5"
 assert_contains "List shows the plan a lead holds" "$(crew)" "leads plan 5: iOS logout race"
@@ -176,12 +181,76 @@ assert_not_contains "Grok tuning not sent to Claude" "$out" "## Grok Build"
 assert_contains "Setup draws lanes for disjoint Touching" "$out" "split into disjoint **Touching:** sets"
 assert_contains "Setup names the one sign-off" "$out" "handing the human one sign-off"
 assert_contains "Claude: landings by message" "$out" "a member reports each landing the same way"
+assert_contains "Setup writes a file for every lane" "$out" "write a file for every lane, and"
+assert_contains "Setup names the active set" "$out" "name the active set for the first"
+assert_contains "Setup names the invariants" "$out" "Name its invariants too"
+assert_contains "Setup points at the Invariants line" "$out" "the map's **Invariants:** line"
+assert_contains "Setup files a task when no document holds them" "$out" "Write down the project's"
+assert_contains "Known edges stays the breakage record" "$out" "stays the record of cases that broke"
+assert_contains "Setup asks where each lane runs" "$out" "as a Mac for iOS"
+assert_contains "Pass members name their command" "$out" "polish --break"
+echo "Test 6d2: breaker cases for task 444 (active-set size, pass members, the board)"
+assert_contains "Active-set size defers to the CLI notes" "$out" "fewer where your CLI's notes below say so"
+guide="$SPRINTBIAS_SRC/guides/crew.md"
+assert_not_contains "Guide: pass members are not told they never edit code" "$(cat "$guide")" "files fix tasks instead of editing code"
+assert_contains "Guide: a pass fixes inline and files the rest" "$(cat "$guide")" "fixes what it can in that change and files the rest"
+cat > "$TMPDIR/docs/plans/77-board.md" <<'PLAN'
+# Plan 77: board round trip
+
+**Status:** active
+**Crew**: orcha
+
+## Member tasks
+
+- #412 — importer
+- #413 — migrations
+
+## Crew
+
+Approach: importer first.
+
+Active: dill, devops, cloudy
+
+- dill — #412 landed; now #415 (built on #412 (landed)); next #418
+- devops — #413 working (Touching: migrations/); next #416
+- Decided: added ios for #419; start ./sprint.sh crew ios
+PLAN
+ids="$(cd "$TMPDIR" && bash -c 'source docs/sprintbias/lib.sh; sprintbias_plan_member_ids docs/plans/77-board.md' | tr '\n' ' ')"
+assert_contains "Board lines add no plan members" "ids=$ids" "ids=412 413 "
+crewval="$(cd "$TMPDIR" && bash -c 'source docs/sprintbias/lib.sh; sprintbias_meta_value docs/plans/77-board.md Crew')"
+assert_contains "Board keeps the plan's Crew field" "crew=$crewval" "crew=orcha"
+rm -f "$TMPDIR/docs/plans/77-board.md"
 out="$(cd "$TMPDIR" && SPRINTBIAS_PROVIDER=grok-build SPRINTBIAS_MODE=emit bash docs/sprintbias/scripts/crew.sh setup 2>&1)"
 assert_contains "Grok tuning sent" "$out" "## Grok Build"
 assert_not_contains "Claude tuning not sent to Grok" "$out" "## Claude Code"
 assert_contains "Grok: landings go on the board" "$out" "Add to each member's Reports: \"write each landing (task id and proof"
 assert_contains "Grok: lead re-reads the board" "$out" "and ./sprint.sh plan check N each turn, then route what landed"
 assert_fails "setup is a reserved name" add setup "x"
+out="$(crew setup plan:5 || true)"
+assert_contains "setup with an argument prints usage" "$out" "Usage: ./sprint.sh crew"
+assert_not_contains "setup with an argument starts no session" "$out" "Build the smallest crew"
+assert_fails "setup with an argument exits non-zero" setup plan:5
+assert_fails "setup with an empty argument exits non-zero" setup ""
+assert_fails "setup with two arguments exits non-zero" setup a b
+out="$(crew setup --help)"; rc=$?
+assert_contains "setup --help prints usage" "$out" "Usage: ./sprint.sh crew"
+assert_not_contains "setup --help starts no session" "$out" "Build the smallest crew"
+assert_contains "setup --help exits 0" "rc=$rc" "rc=0"
+out="$(crew setup -h)"; rc=$?
+assert_contains "setup -h exits 0" "rc=$rc" "rc=0"
+out="$(crew setup help)"; rc=$?
+assert_contains "setup help (word form) exits 0" "rc=$rc" "rc=0"
+assert_not_contains "setup help starts no session" "$out" "Build the smallest crew"
+out="$(crew setup --help extra)"; rc=$?
+assert_not_contains "setup --help extra starts no session" "$out" "Build the smallest crew"
+assert_fails "setup with a flag-like argument exits non-zero" setup --plan
+assert_fails "setup with a quoted phrase exits non-zero" setup "for plan 5"
+# Through the launcher, as people type it: sprint.sh forwards the argument
+cp "$DOCS_SRC/../sprint.sh" "$TMPDIR/sprint.sh"
+rc=0; out="$(cd "$TMPDIR" && SPRINTBIAS_MODE=emit bash sprint.sh crew setup plan:5 </dev/null 2>&1)" || rc=$?
+assert_contains "sprint.sh crew setup plan:5 prints usage" "$out" "Usage: ./sprint.sh crew"
+assert_not_contains "sprint.sh crew setup plan:5 starts no session" "$out" "Build the smallest crew"
+assert_contains "sprint.sh crew setup plan:5 exits 1" "rc=$rc" "rc=1"
 
 echo "Test 6e: provider tuning dates are present (warns past 90 days)"
 while IFS= read -r d; do

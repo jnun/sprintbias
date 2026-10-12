@@ -7,13 +7,21 @@
 {
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
+
 # ── Argument parsing ────────────────────────────────────────────────
+# One plan-target reader (lib.sh): plan N / plan:N, and a bare number that
+# names no task but a plan.
+sprintbias_plan_args --bare "$@"
+set -- ${SPRINTBIAS_ARGS[@]+"${SPRINTBIAS_ARGS[@]}"}
 MAX_TASKS=999
 PARALLEL=0
 MAX_JOBS=2
 SPRINTBIAS_SKIP_DRIFT_CHECK=1
 RUN_AUDIT=0
 RUN_EXCELLENCE=0
+# The breaker runs by default; --no-break (or BREAK=off in config) skips it.
+NO_BREAK=0
 FORCE=0
 _NO_LIMITS=0
 _next_is_jobs=0
@@ -74,6 +82,7 @@ for arg in "$@"; do
     --drift)      SPRINTBIAS_SKIP_DRIFT_CHECK=0 ;;
     --audit)      RUN_AUDIT=1 ;;
     --excellence) RUN_EXCELLENCE=1 ;;
+    --no-break)   NO_BREAK=1 ;;
     --parallel) PARALLEL=1 ;;
     --fast)     PARALLEL=1; MAX_JOBS=4; export SPRINTBIAS_FAST=on ;;
     --steady)   export SPRINTBIAS_FAST=off; _STEADY=1 ;;
@@ -84,6 +93,7 @@ for arg in "$@"; do
     --model)    _next_is_model=1 ;;
     --verbose)  VERBOSE=1 ;;
     plan)       _next_is_plan=1 ;;
+    plan:[0-9]*) PLAN_ID="${arg#plan:}" ;;
     count)      _next_is_count=1 ;;
     # A bare number is a TASK ID — work just that task. Two ids is a usage
     # error, not "work both"; the count cap now lives behind `count N`.
@@ -161,13 +171,17 @@ FAIL_DELIM=$'\x1f'
 TO_FAIL=()
 
 # ── Config ───────────────────────────────────────────────────────────
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
+# (lib.sh is sourced at the top: the plan-target reader needs it.)
 
 # Fast mode runs the queue in parallel at 4 jobs with no flag. --jobs N sets
 # the count (whatever its position); --steady runs one task at a time.
 [ -n "$_JOBS" ] && MAX_JOBS="$_JOBS"
 sprintbias_fast_parallel "$_STEADY"
 unset _STEADY _JOBS
+
+# Breaker: a fresh-context agent tries to break each landed task (default on).
+RUN_BREAK=0
+[ "$NO_BREAK" -eq 0 ] && sprintbias_break_on && RUN_BREAK=1
 
 # Shared workability gate — same code `gate` and `plan start` run. `work N`
 # reuses it to screen-and-promote a named backlog/blocked task inline instead
@@ -439,7 +453,21 @@ if [ -n "$PLAN_ID" ]; then
   _PLAN_MEMBERS=" $(sprintbias_plan_member_ids "$_plan_file" | tr '\n' ' ')"
   echo "▸ Working plan $PLAN_ID: ${_plan_file##*/} (other next/ tasks wait)"
   echo ""
-  unset _plan_file
+  # Members still in backlog/ come in through plan start (the same gate,
+  # dependency check and human test), so `work plan N` needs no start first.
+  for _id in $_PLAN_MEMBERS; do
+    [ "$(sprintbias_task_stage "$_id" 2>/dev/null || true)" = "backlog" ] || continue
+    echo "▸ Plan $PLAN_ID has members in backlog/ — starting it first."
+    echo ""
+    bash "$(dirname "${BASH_SOURCE[0]}")/plan-start.sh" "$PLAN_ID"
+    echo ""
+    if [ "$AI_MODE" = "emit" ]; then
+      echo "▸ Run the gate above, then re-run: ./sprint.sh work plan $PLAN_ID"
+      exit 0
+    fi
+    break
+  done
+  unset _plan_file _id
 fi
 _queue_files() {
   local f
@@ -461,7 +489,7 @@ done < <(
 
 if [ ${#TASK_FILES[@]} -eq 0 ]; then
   if [ -n "$PLAN_ID" ]; then
-    echo "No plan $PLAN_ID tasks in $NEXT_DIR — start it first: ./sprint.sh plan start $PLAN_ID"
+    echo "No plan $PLAN_ID tasks to work in $NEXT_DIR — see: ./sprint.sh plan check $PLAN_ID"
   else
     echo "No tasks in $NEXT_DIR"
   fi
@@ -475,8 +503,8 @@ fi
 # can't ask clarifying questions, so ambiguity turns into wandering and failure.
 # So rather than skip an unvetted next/ task, work GATES it first — the same
 # gate `gate` runs on next/. The verdict then routes it: READY stays in next/ and
-# is worked below; BLOCKED (not defined well enough) goes to blocked/ with a
-# chat/define pointer; COMPLETE (already in the codebase) goes to review/.
+# is worked below; BLOCKED (cannot start) goes to blocked/ with a
+# chat <id> pointer; COMPLETE (already in the codebase) goes to review/.
 # Invariant: READY + open questions cannot stay in next/ — demote to blocked/
 # with a loud report (same path as work N). A dependency wait is separate:
 # unfinished **Depends on** keeps a fully-defined READY task in next/ until
@@ -520,7 +548,7 @@ if [ "$FORCE" -ne 1 ] && [ "$_SINGLE" -eq 0 ]; then
       echo ""
       echo "▸ Run the gate above, then re-run ./sprint.sh work:"
       echo "    READY    → worked on the next run"
-      echo "    BLOCKED  → not defined well enough; ./sprint.sh chat <id> or define it first"
+      echo "    BLOCKED  → cannot start; ./sprint.sh chat <id>, then ./sprint.sh work <id>"
       echo "    COMPLETE → routed to review/ (already in the codebase)"
       exit 0
     fi
@@ -536,17 +564,17 @@ if [ "$FORCE" -ne 1 ] && [ "$_SINGLE" -eq 0 ]; then
       sprintbias_gate_review "$_f"
       case "$SPRINTBIAS_GATE_VERDICT" in
         READY)    echo "    ✓ READY — queued for work" ;;
-        BLOCKED)  _blocked+=("$_name"); echo "    ⊘ BLOCKED → $BLOCKED_DIR/ — needs a decision" ;;
+        BLOCKED)  _blocked+=("$_name"); echo "    ⊘ BLOCKED → $BLOCKED_DIR/ — cannot start" ;;
         COMPLETE) echo "    ✓ COMPLETE → $REVIEW_DIR/ (already in the codebase)" ;;
         *)        echo "    ✗ ${SPRINTBIAS_GATE_VERDICT} — left in $NEXT_DIR/${SPRINTBIAS_GATE_LOG:+ (log: $SPRINTBIAS_GATE_LOG)}" ;;
       esac
     done
     if [ ${#_blocked[@]} -gt 0 ]; then
       echo ""
-      echo "⊘ ${#_blocked[@]} task(s) not defined well enough to work → $BLOCKED_DIR/:"
+      echo "⊘ ${#_blocked[@]} task(s) cannot start → $BLOCKED_DIR/ (each file's ## BLOCKED says why):"
       for _n in "${_blocked[@]}"; do echo "    $_n"; done
-      echo "  Settle the open decisions, then re-enter via the gate:"
-      echo "    ./sprint.sh chat <id>     # answer the questions, turn each into instruction"
+      echo "  Give each what it lacks, then work it:"
+      echo "    ./sprint.sh chat <id>     # then: ./sprint.sh work <id>"
     fi
     echo ""
     unset _blocked _n
@@ -575,7 +603,7 @@ fi
 #                 otherwise pull into the queue and re-run)
 #   next/       → frontier ordering; runs when READY and its own deps clear
 #   backlog/    → not auto-lifted (not fully vetted); surface chat <id>
-#   blocked/    → needs a decision; surface chat <id>
+#   blocked/    → cannot start; surface chat <id>
 # Dependents stay in next/ on hold until prereqs land (review/ + proof) or reach done/.
 #
 # Format a single unmet dep id for human messages (stage + next action).
@@ -615,7 +643,7 @@ _format_dep() {
       if [ -n "$oc" ]; then
         printf '%s (blocked/ — %s) — chat %s' "$id" "$oc" "$id"
       else
-        printf '%s (blocked/ — needs a decision; ./sprint.sh chat %s)' "$id" "$id"
+        printf '%s (blocked/ — cannot start; ./sprint.sh chat %s)' "$id" "$id"
       fi
       ;;
     review)
@@ -729,7 +757,7 @@ _collect_prereqs_from() {
       blocked)
         case "$_seen_advice" in *" x$id "*) continue ;; esac
         _seen_advice="$_seen_advice x$id "
-        _PREREQ_ADVICE+=("This task depends on $id, which still needs a decision in blocked/. Consider: ./sprint.sh chat $id")
+        _PREREQ_ADVICE+=("This task depends on $id, which cannot start yet (in blocked/). Consider: ./sprint.sh chat $id")
         ;;
     esac
   done
@@ -904,6 +932,18 @@ _task_tests_value() {
   printf '%s' "$v"
 }
 
+# The command that closes a review/ task: promote runs its Tests, --accept
+# closes one whose Tests is none.
+_close_cmd() {
+  local id tests
+  id=$(basename "$1" | grep -oE '^[0-9]+' || true)
+  id="${id:-$(basename "$1")}"
+  tests="$(_task_tests_value "$1")"
+  [ "$(printf '%s' "$tests" | tr '[:upper:]' '[:lower:]')" = "none" ] && tests=""
+  if [ -n "$tests" ]; then printf './sprint.sh promote %s' "$id"
+  else printf './sprint.sh promote --accept %s' "$id"; fi
+}
+
 # Task title from the "# Task N: Title" heading (falls back to the file name).
 _task_title() {
   local t
@@ -936,6 +976,16 @@ _print_decisions() {
   printf '%s\n' "$c" | sed "s/^/${indent}  /"
 }
 
+# Scope-outs that name no filed task: each '- Decided:' line saying "out of
+# scope" without a #<id> (or "task <id>") prints as the bare gap (Decided: and the reason after
+# "because" dropped), one per line. The finishing rule asks for "filed as #N".
+_unfiled_gaps() {
+  grep -iE '^[[:space:]]*-[[:space:]]*Decided:.*out of scope' "$1" 2>/dev/null \
+    | grep -viE '#[0-9]+|task [0-9]+' \
+    | sed -E 's/^[[:space:]]*-[[:space:]]*Decided:[[:space:]]*//; s/,?[[:space:]]+because .*//; s/[[:space:]]*\.?[[:space:]]*$//' \
+    | cut -c1-100 || true
+}
+
 # After the queue: one numbered checklist per task waiting on the human —
 # check the decisions, try the change, close it (or send it back).
 _report_human_review() {
@@ -963,6 +1013,14 @@ _report_human_review() {
       echo "       Want one changed? → ./sprint.sh newtask \"<the change you want>\""
       step=$((step + 1))
     fi
+    c="$(_unfiled_gaps "$path")"
+    if [ -n "$c" ]; then
+      echo "    $step. Out of scope but not filed — file each gap as a task:"
+      while IFS= read -r g; do
+        [ -n "$g" ] && echo "         Unfiled gap: $g → ./sprint.sh newtask \"$g\""
+      done <<< "$c"
+      step=$((step + 1))
+    fi
     if ! sprintbias_has_proof "$path"; then
       echo "    $step. Its tests have not passed yet — read ## Test log in $path"
       echo "       → ./sprint.sh work ${id:-$name}   # try again once you know why"
@@ -972,10 +1030,10 @@ _report_human_review() {
     echo "       → ./sprint.sh promote --reject ${id:-$name} \"what is wrong\""
     step=$((step + 1))
     if [ -n "$tests" ]; then
-      echo "    $step. Happy with it? Run its tests; green closes it:"
-      echo "       → ./sprint.sh promote ${id:-}"
+      echo "    $step. Happy with it? Sign it off (the breaker checks it, then its tests):"
+      echo "       → ./sprint.sh promote ${id:-$name}"
     else
-      echo "    $step. Happy with it? Close it:"
+      echo "    $step. Happy with it? Sign it off (the breaker checks it first):"
       echo "       → ./sprint.sh promote --accept ${id:-$name}"
     fi
   done
@@ -1002,7 +1060,6 @@ _report_failures() {
     _print_decisions "$dir/$name" "      "
     echo "      → ./sprint.sh chat ${id:-$name}   # rework or redefine with AI assistance"
   done
-  echo "  These need a fix or a clearer definition before they can run again."
   echo ""
 }
 
@@ -1098,6 +1155,25 @@ ${_fast}"
   _jobs_hint="in parallel, a few at a time"
   [ "$PARALLEL" -eq 1 ] && _jobs_hint="in parallel, up to $MAX_JOBS at a time"
 
+  # Breaker: a fresh context tries to break the change before it lands.
+  _break_step=""
+  if [ "$RUN_BREAK" -eq 1 ]; then
+    if sprintbias_orchestration_capable; then
+      _break_step="
+   Breaker (whenever the task has '## Completed', in doing/ or already moved
+   to review/ by the worker; <stage> is where it is now): launch one more
+   FRESH subagent whose entire instruction is:
+     \"$(sprintbias_subagent_no_nest)
+$(sprintbias_break_rule "docs/tasks/<stage>/<name>")\""
+    else
+      _break_step="
+   Breaker (whenever the task has '## Completed', in doing/ or already moved
+   to review/; <stage> is where it is now): reset your focus and act as a
+   fresh reviewer:
+$(sprintbias_break_rule "docs/tasks/<stage>/<name>")"
+    fi
+  fi
+
   _audit_step=""
   [ "$RUN_AUDIT" -eq 1 ] && _audit_step="
    c. If it landed in review/, run: ./sprint.sh polish --code docs/tasks/review/<name>"
@@ -1140,14 +1216,16 @@ For each task now in review/ (built — waiting on the human), one checklist:
        Want one changed? → ./sprint.sh newtask \"<the change you want>\"
     2. Try the change. Something wrong?
        → ./sprint.sh promote --reject <id> \"what is wrong\"
-    3. Happy with it? Close it:
+    3. Happy with it? Sign it off (the breaker checks it first):
        → ./sprint.sh promote --accept <id>
-  (when the task has no **Proof** line, add after step 1:
+  (for each '- Decided:' line saying out of scope with no #<id>, add after step 1:
+         Unfiled gap: <the gap> → ./sprint.sh newtask \"<the gap>\"
+   and when the task has no **Proof** line, add after step 1:
     2. Its tests have not passed yet — read ## Test log in docs/tasks/review/<name>
        → ./sprint.sh work <id>   # try again once you know why
    drop step 1 and renumber when there are no calls. When the
    task's Tests field names suite scripts, step 3 reads instead:)
-    3. Happy with it? Run its tests; green closes it:
+    3. Happy with it? Sign it off (the breaker checks it, then its tests):
        → ./sprint.sh promote <id>
 
 For each task that did NOT complete (landed in blocked/, or a hard fail left in doing/):
@@ -1156,7 +1234,6 @@ For each task that did NOT complete (landed in blocked/, or a hard fail left in 
       Why:   <the one-line Reason from that task's ## Outcome stamp>
       Where: <docs/tasks/blocked/<name>, or docs/tasks/doing/<name> for a hard fail>
       → ./sprint.sh chat <id>   # rework or redefine with AI assistance
-  These need a fix or a clearer definition before they can run again.
 
 When any task recorded '### Doc follow-ups', end with:
 ▸ Doc follow-ups recorded (<N>) — filed into one backlog task on the next
@@ -1186,13 +1263,14 @@ $_TASK_RULES
 
 $_parallel
 
-$_proof\"
-3. When the subagent returns, read docs/tasks/doing/<name> and route it:
+$_proof\"$_break_step
+3. When the subagent returns, read the task (docs/tasks/doing/<name>, or
+   docs/tasks/review/<name> when the worker moved it) and route it:
    a. contains a '## Completed' section → first DELETE any stale '## Outcome'
       block left by a prior failed attempt (a completed task must not carry a
-      contradictory failure stamp into review/), then git mv it to
-      docs/tasks/review/ || mv it to docs/tasks/review/
-      Then tell the user: Requires human review (or ./sprint.sh promote when **Tests** is set).
+      contradictory failure stamp into review/), then, unless it is already
+      there, git mv it to docs/tasks/review/ || mv it to docs/tasks/review/
+      Then tell the user: Requires human review; close it with ./sprint.sh promote <id> (or ./sprint.sh promote --accept <id> when its **Tests** line is none).
    b. otherwise → before moving, make sure the file ends with a durable
       ## Outcome stamp so every dependent's hold line can name the reason (keep
       one the worker wrote with **Result**: blocked; else append):
@@ -1227,13 +1305,13 @@ $_TASK_RULES
 
 $_parallel
 
-$_proof
+$_proof$_break_step
 3. Route it:
    a. you wrote a '## Completed' section → first DELETE any stale '## Outcome'
       block left by a prior failed attempt (a completed task must not carry a
-      contradictory failure stamp into review/), then git mv it to
-      docs/tasks/review/ || mv it to docs/tasks/review/
-      Then tell the user: Requires human review (or ./sprint.sh promote when **Tests** is set).
+      contradictory failure stamp into review/), then, unless it is already
+      there, git mv it to docs/tasks/review/ || mv it to docs/tasks/review/
+      Then tell the user: Requires human review; close it with ./sprint.sh promote <id> (or ./sprint.sh promote --accept <id> when its **Tests** line is none).
    b. otherwise → before moving, make sure the file ends with a durable
       ## Outcome stamp so every dependent's hold line can name the reason (keep
       one the worker wrote with **Result**: blocked; else append):
@@ -1319,6 +1397,59 @@ _run_task() {
   fi
 }
 
+# Breaker (exec): a fresh agent writes tests designed to fail against the
+# task's change, fixes what it can, and drops **Proof** for what it cannot.
+# Bounded turns and its own budget; a breaker crash never blocks the landing.
+_run_breaker() {
+  local file="$1" name="$2" log b
+  [ "$RUN_BREAK" -eq 1 ] || return 0
+  log="$(sprintbias_log_path break "$name")"
+  echo "  ▸ Breaker: trying to break the change (off: --no-break or BREAK=off)..."
+  if sprintbias_break_run "$file" "$log"; then
+    b="$(sprintbias_break_line "$file")"
+    echo "  ✓ Breaker done${b:+ — $b}"
+  else
+    echo "  ⚠ Breaker did not finish — landing as the worker left it (log: $log)"
+  fi
+  return 0
+}
+
+# Post-landing steps for a task this run completed, wherever it sits (doing/,
+# or review/ when the worker moved it itself): the breaker (default on), then
+# the opt-in code audit and excellence judge. Each step edits the file in
+# place and never moves it; none can fail the queue.
+_post_land() {
+  local file="$1" name="$2"
+  _run_breaker "$file" "$name"
+  if [ "$RUN_AUDIT" -eq 1 ] && [ -f "$POLISH_SCRIPT" ]; then
+    echo "  ▸ Running code audit..."
+    if bash "$POLISH_SCRIPT" --code "$file"; then
+      echo "  ✓ Audit passed"
+    else
+      echo "  ⚠ Audit completed with warnings (see task file)"
+    fi
+  fi
+  # Deep-judge (polish <file>) presumes correctness, so it runs AFTER the
+  # code audit. It appends its own '## Excellence' section to the task file.
+  # A BLOCKER verdict does NOT halt the queue — the task still routes to
+  # review/; the blocker is only counted in the end-of-run summary. Detect
+  # it by the appended verdict line, not the exit code: exit 1 also covers
+  # the UNCLEAR/parse-failure case, which is not a blocker.
+  if [ "$RUN_EXCELLENCE" -eq 1 ] && [ -f "$POLISH_SCRIPT" ]; then
+    echo "  ▸ Running excellence audit..."
+    if bash "$POLISH_SCRIPT" "$file"; then
+      echo "  ✓ Excellence audit passed"
+    else
+      echo "  ⚠ Excellence audit completed with findings (see task file)"
+    fi
+    if grep -q '^- \*\*Verdict\*\*: BLOCKER' "$file"; then
+      BLOCKERS=$((BLOCKERS + 1))
+      echo "  ⚠ Excellence: BLOCKER recorded — routing to review/ for human attention"
+    fi
+  fi
+  return 0
+}
+
 # Route a finished task to review/ or blocked/, or leave a crash in doing/.
 # Args: name  exit_code
 #
@@ -1331,7 +1462,7 @@ _run_task() {
 # ends by returning 0; the call sites also guard with `|| true` as a backstop.
 # Crash vocabulary is deliberate: a non-zero exit is a TOOL failure, stamped
 # 'failed' and LEFT in doing/ (the resumable state) — never filed in blocked/,
-# which means "a human owes a decision", not "the tool died".
+# which means "the task cannot start", not "the tool died".
 _route_result() {
   local name="$1" rc="$2" cur=""
   if   [ -f "$WORKING_DIR/$name" ]; then cur="$WORKING_DIR/$name"
@@ -1339,13 +1470,21 @@ _route_result() {
   elif [ -f "$BLOCKED_DIR/$name" ]; then cur="$BLOCKED_DIR/$name"
   fi
 
-  # Already promoted to review/ by a resumed run that finished the move itself:
-  # trust that terminal state — count it complete, don't re-move or re-audit.
+  # Landed in review/ by the worker itself (the proof rule says "move to
+  # review/"), or by a resumed run: trust that terminal state — count it
+  # complete and never re-move it. This run worked it, so the post-landing
+  # steps still run on the file where it is.
   if [ "$cur" = "$REVIEW_DIR/$name" ]; then
+    [ "$rc" -eq 0 ] && grep -q '^## Completed' "$cur" && _post_land "$cur" "$name"
     COMPLETED=$((COMPLETED + 1))
     _note_review "$name"
     _journal routed task "$name" dest review note already-promoted
-    echo "  ✓ Complete → $REVIEW_DIR/$name (already promoted during the run)"
+    echo "  ✓ Complete → $REVIEW_DIR/$name (moved there during the run)"
+    if [ -f "$cur" ]; then
+      sprintbias_has_proof "$cur" \
+        || echo "    No **Proof**: line — $SPRINTBIAS_UNPROVEN_LABEL; its dependents wait."
+      echo "    Requires human review → $(_close_cmd "$cur")"
+    fi
     return 0
   fi
 
@@ -1372,32 +1511,7 @@ _route_result() {
 
   # Normal case: the file is still in doing/ ($cur == $WORKING_DIR/$name).
   if [ "$rc" -eq 0 ] && grep -q '^## Completed' "$cur"; then
-    if [ "$RUN_AUDIT" -eq 1 ] && [ -f "$POLISH_SCRIPT" ]; then
-      echo "  ▸ Running code audit..."
-      if bash "$POLISH_SCRIPT" --code "$cur"; then
-        echo "  ✓ Audit passed"
-      else
-        echo "  ⚠ Audit completed with warnings (see task file)"
-      fi
-    fi
-    # Deep-judge (polish <file>) presumes correctness, so it runs AFTER the
-    # code audit. It appends its own '## Excellence' section to the task file.
-    # A BLOCKER verdict does NOT halt the queue — the task still routes to
-    # review/; the blocker is only counted in the end-of-run summary. Detect
-    # it by the appended verdict line, not the exit code: exit 1 also covers
-    # the UNCLEAR/parse-failure case, which is not a blocker.
-    if [ "$RUN_EXCELLENCE" -eq 1 ] && [ -f "$POLISH_SCRIPT" ]; then
-      echo "  ▸ Running excellence audit..."
-      if bash "$POLISH_SCRIPT" "$cur"; then
-        echo "  ✓ Excellence audit passed"
-      else
-        echo "  ⚠ Excellence audit completed with findings (see task file)"
-      fi
-      if grep -q '^- \*\*Verdict\*\*: BLOCKER' "$cur"; then
-        BLOCKERS=$((BLOCKERS + 1))
-        echo "  ⚠ Excellence: BLOCKER recorded — routing to review/ for human attention"
-      fi
-    fi
+    _post_land "$cur" "$name"
     # Completed cleanly — drop any stale failure stamp from a prior attempt so
     # it doesn't ride into review/ contradicting the ## Completed section.
     _strip_outcome "$cur"
@@ -1410,17 +1524,17 @@ _route_result() {
     # still lands here, but it releases nothing: say so instead of refusing it.
     sprintbias_has_proof "$REVIEW_DIR/$name" \
       || echo "    No **Proof**: line — $SPRINTBIAS_UNPROVEN_LABEL; its dependents wait."
-    echo "    Requires human review (or ./sprint.sh promote when **Tests** is set)"
+    echo "    Requires human review → $(_close_cmd "$REVIEW_DIR/$name")"
   elif [ "$rc" -eq 0 ] && [ "$(sprintbias_meta_value "$cur" Result | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')" = "blocked" ]; then
-    # The worker stopped on a decision and wrote its own ## Outcome
+    # The worker found the task cannot start and wrote its own ## Outcome
     # (sprintbias_proof_rule). Keep that Reason; it is the one a human needs.
     local why
     why="$(sprintbias_meta_value "$cur" Reason | head -1)"
     move_file "$cur" "$BLOCKED_DIR/$name"
     INCOMPLETE=$((INCOMPLETE + 1))
-    _note_fail "$name" blocked "$BLOCKED_DIR" "${why:-needs a decision (see ## Outcome)}"
+    _note_fail "$name" blocked "$BLOCKED_DIR" "${why:-cannot start (see ## Outcome)}"
     _journal routed task "$name" dest blocked reason worker-blocked
-    echo "  ⚠ Blocked — ${why:-needs a decision (see ## Outcome)}"
+    echo "  ⚠ Blocked — ${why:-cannot start (see ## Outcome)}"
     echo "    → Moved to $BLOCKED_DIR/$name (## Outcome kept, with its ## Test log)"
   elif [ "$rc" -eq 0 ]; then
     # Ran to completion but never wrote ## Completed. Stamp only what we
@@ -1526,7 +1640,7 @@ _report_held() {
           blocked)
             case "$_adv_seen" in *" x$id "*) continue ;; esac
             _adv_seen="$_adv_seen x$id "
-            _held_advice+=("This task depends on $id, which still needs a decision in blocked/. Consider: ./sprint.sh chat $id")
+            _held_advice+=("This task depends on $id, which cannot start yet (in blocked/). Consider: ./sprint.sh chat $id")
             ;;
           review)
             _held_unproven+=("$id")
@@ -1739,7 +1853,7 @@ Rules:
         COMPLETED=$((COMPLETED + 1))
         _note_review "$TASK_NAME"
         _journal routed task "$TASK_NAME" dest review reason drift-complete
-        echo "    Requires human review (or ./sprint.sh promote when **Tests** is set)"
+        echo "    Requires human review → $(_close_cmd "$REVIEW_DIR/$TASK_NAME")"
         echo ""
         continue
         ;;
@@ -1786,7 +1900,8 @@ Rules:
       OUTDATED)
         _drift_reason=$(echo "$DRIFT_VERDICT" | grep -i 'outdated' | head -1)
         echo "  ✗ Drift check: outdated — $_drift_reason"
-        echo "    → Moving to $BLOCKED_DIR/$TASK_NAME (needs decision or clarification)"
+        echo "    → Moving to $BLOCKED_DIR/$TASK_NAME (drift: outdated)"
+        echo "    ./sprint.sh chat $(task_id "$TASK_NAME")"
         _stamp_outcome "$WORKING_DIR/$TASK_NAME" blocked \
           "drift check: outdated — ${_drift_reason:-references stale codebase}"
         move_file "$WORKING_DIR/$TASK_NAME" "$BLOCKED_DIR/$TASK_NAME"

@@ -1,8 +1,8 @@
 Continuous task runner — **autopilot spine**: plan start refill + work drain.
 
 Wraps `work` to run one task at a time, each in a fresh CLI context.
-Failures don't halt the run — tasks that land in blocked/ (need a decision
-or clarification) are skipped and the loop continues to the next task.
+Failures don't halt the run — tasks that land in blocked/ (cannot start)
+are skipped and the loop continues to the next task.
 
 Usage:
   ./sprint.sh loop                       # drain next/ via work

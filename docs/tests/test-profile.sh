@@ -310,6 +310,66 @@ rm -f "$TMPDIR/docs/tasks/review/77-add-plans.md"
 _files=$(( $(awk '/^### Files changed/{f=1;next} /^#/{f=0} f && NF' "$TMPDIR/docs/tasks/review/7-add-plans.md" | wc -l) ))
 assert_exit_code "Files changed list stays separate" "1" "$_files"
 
+# Test 10: the map points at invariants; Known edges stays the breakage record
+echo "Test 10: invariants pointer"
+_src=$(cat "$SCRIPT_UNDER_TEST")
+assert_contains "Map format has an Invariants pointer" "$_src" '**Invariants:** \`...\` — rules every change keeps'
+assert_contains "Scan looks for the invariants document" "$_src" "holds the project's invariants"
+assert_contains "Rules stay out of Known edges" "$_src" "Rules never go under ## Known edges."
+
+# Breaker: a map written in the new format round-trips through its neighbors —
+# profile check path-checks the pointer, Known edges writers and counters
+# leave the Invariants line alone.
+echo "Test 10b: Breaker: Invariants line in a real map"
+setup
+mkdir -p "$TMPDIR/docs"
+touch "$TMPDIR/docs/INVARIANTS.md"
+cat > "$TMPDIR/docs/sprintbias/project.md" << 'EOF'
+# Project Profile
+**Language:** Bash
+
+## Sources of truth
+**Invariants:** `docs/INVARIANTS.md` — rules every change keeps
+- not an edge: a stray list line under Sources of truth
+
+**Checked:** 2026-10-11
+EOF
+rc=0
+output=$(bash "$TMPDIR/docs/sprintbias/scripts/profile.sh" check 2>&1) || rc=$?
+assert_exit_code "Breaker: map with an existing Invariants pointer checks clean" "0" "$rc"
+rm "$TMPDIR/docs/INVARIANTS.md"
+rc=0
+output=$(bash "$TMPDIR/docs/sprintbias/scripts/profile.sh" check 2>&1) || rc=$?
+assert_exit_code "Breaker: a missing Invariants document fails check" "1" "$rc"
+assert_contains "Breaker: names the missing Invariants document" "$output" "docs/INVARIANTS.md"
+touch "$TMPDIR/docs/INVARIANTS.md"
+
+# Two edges, added before and after a Known edges section exists.
+( cd "$TMPDIR" && source docs/sprintbias/lib.sh && SPRINTBIAS_PROJECT_MAP=docs/sprintbias/project.md \
+    && sprintbias_add_known_edge 5 "empty ledger posts a zero entry" \
+    && sprintbias_add_known_edge 6 "tenant id dropped on export" )
+_map=$(cat "$TMPDIR/docs/sprintbias/project.md")
+assert_contains "Breaker: Invariants line survives add_known_edge" "$_map" '**Invariants:** `docs/INVARIANTS.md` — rules every change keeps'
+_inv_count=$(grep -c '^\*\*Invariants:\*\*' <<<"$_map")
+assert_exit_code "Breaker: Invariants line stays single after two edges" "1" "$_inv_count"
+_edges=$(awk '/^## / { in_k = ($0 ~ /^## Known edges/); next } in_k && /^- / { n++ } END { print n + 0 }' "$TMPDIR/docs/sprintbias/project.md")
+assert_exit_code "Breaker: Known edges counts only the two edges" "2" "$_edges"
+_inv_sec=$(awk '/^## / { sec = $0 } /^\*\*Invariants:/ { print sec }' "$TMPDIR/docs/sprintbias/project.md")
+assert_contains "Breaker: Invariants stays under Sources of truth" "$_inv_sec" "## Sources of truth"
+rc=0
+output=$(bash "$TMPDIR/docs/sprintbias/scripts/profile.sh" check 2>&1) || rc=$?
+assert_exit_code "Breaker: map with Invariants and edges still checks clean" "0" "$rc"
+
+# Breaker: rules kept in one section of a larger file. The format names the
+# section after the backticked path, so profile check sees a real file.
+_src=$(cat "$SCRIPT_UNDER_TEST")
+assert_contains "Breaker: format shows the section form for Invariants" "$_src" '\`CLAUDE.md\` (## Invariants), never \`CLAUDE.md#invariants\`'
+touch "$TMPDIR/CLAUDE.md"
+sed -i.bak 's|^\*\*Invariants:\*\*.*|**Invariants:** `CLAUDE.md` (## Invariants) — rules every change keeps|' "$TMPDIR/docs/sprintbias/project.md"
+rc=0
+output=$(bash "$TMPDIR/docs/sprintbias/scripts/profile.sh" check 2>&1) || rc=$?
+assert_exit_code "Breaker: section-form Invariants pointer checks clean" "0" "$rc"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1

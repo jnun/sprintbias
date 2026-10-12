@@ -77,10 +77,20 @@
 #       for interactive CLI handoffs; falls back to /dev/tty
 #   sprintbias_run_interactive A… — like sprintbias_run, but the exec path is a live
 #       back-and-forth session (inherits the terminal) instead of one-shot
-#   sprintbias_proof_rule         — worker test loop: targeted tests, ## Test log,
-#       the **Proof**: line that lands a task (work + crew prompts)
+#   sprintbias_edge_cases         — the edge-case classes (gate, proof rule, breaker)
+#   sprintbias_proof_rule         — worker test loop: targeted tests, edge cases,
+#       ## Test log, the **Proof**: line that lands a task (work + crew prompts)
+#   sprintbias_break_on           — true when the breaker runs after work (BREAK)
+#   sprintbias_break_rule FILE    — the breaker's instruction for one landed task
+#   sprintbias_break_run FILE LOG — run the breaker headless (work, polish --break, promote)
+#   sprintbias_break_signoff JOBS DRY FILE… — breaker before promote sign-off
+#   sprintbias_plan_args [--bare] ARG… — normalize plan:N / plan N / bare plan id
+#       into SPRINTBIAS_ARGS (work, promote, polish, crew)
 #   sprintbias_change_manifest TASK_FILE [FILE…] — build audit change manifest;
 #       sets SPRINTBIAS_CHANGED_FILES and SPRINTBIAS_CONTEXT_SOURCE
+#   sprintbias_change_snapshot take|diff SNAP [ROOT…] — before/after snapshot of
+#       docs/tasks + docs/plans; diff prints new|edited|moved|deleted per file
+#       with +/- line counts (what an agent pass touched, no git needed)
 #   sprintbias_parse_verdict TOKENS — (stdin) last VERDICT token, case/format tolerant
 #   Dependency-graph helpers (pure, unit-testable — no AI):
 #     SPRINTBIAS_OPEN_STAGES        — stages still holding incomplete work
@@ -261,8 +271,10 @@ run_with_timeout() {
     disown "$watcher" 2>/dev/null
     wait "$pid" 2>/dev/null
     local ret=$?
-    kill "$watcher" 2>/dev/null
+    # Its sleep first: once the watcher dies the sleep is re-parented and
+    # pkill -P can no longer find it (it would linger, holding output open).
     pkill -P "$watcher" 2>/dev/null
+    kill "$watcher" 2>/dev/null
     return $ret
 }
 
@@ -611,9 +623,11 @@ sprintbias_orient() {
     printf 'Project instructions: %s (auto-loaded when present). SprintBias task workflow: DOCUMENTATION.md.\n' \
         "$(_sprintbias_instructions_file)"
     if [ -f "$SPRINTBIAS_PROJECT_MAP" ]; then
-        printf '%s' "Project map: $SPRINTBIAS_PROJECT_MAP — stack, code layout, commands, sources of truth, and environments. Start there and read the sources your work touches. Sources of truth are the authority: never change one to make your work fit it, and when your work conflicts with one, name the conflict instead of working around it. Deploys and secrets are human-owned."
+        printf '%s' "Project map: $SPRINTBIAS_PROJECT_MAP — stack, code layout, commands, sources of truth, and environments. Start there and read the sources your work touches; check docs/history/ first for why an area is the way it is. Sources of truth are the authority: never change one to make your work fit it, and when your work conflicts with one, name the conflict instead of working around it. Deploys and secrets are human-owned."
+        grep -q '^## Known edges' "$SPRINTBIAS_PROJECT_MAP" 2>/dev/null \
+            && printf '%s' " Its ## Known edges lists cases that broke before: test the ones your change touches."
     else
-        printf '%s' "Project map: none yet ($SPRINTBIAS_PROJECT_MAP, created with ./sprint.sh profile) — orient from the instructions file and the code. Deploys and secrets are human-owned."
+        printf '%s' "Project map: none yet ($SPRINTBIAS_PROJECT_MAP, created with ./sprint.sh profile) — orient from the instructions file and the code; check docs/history/ first for why an area is the way it is. Deploys and secrets are human-owned."
     fi
     return 0
 }
@@ -713,6 +727,22 @@ EOF
     return 0
 }
 
+# The edge-case classes every agent tests against: the gate (Done when checks),
+# the worker and crew (via sprintbias_proof_rule), and the breaker. One wording,
+# loaded once per prompt. Sent with every task, so keep it short.
+sprintbias_edge_cases() {
+    cat <<'EOF'
+Edge cases to test:
+1. Each case the task names, and the class its example stands for.
+2. Round trips: every form the project's docs, UI, templates or examples tell people
+   to write, and what the real tools people use emit (versions, locales, platforms).
+3. Again and after: run twice; state left by an earlier version, a half-finished run,
+   or a hand edit.
+4. Empty, one, many, malformed.
+5. Neighbors: other code that reads or writes the same data still works.
+EOF
+}
+
 # The test-and-proof loop (plan 28 Policy): targeted tests per task, a
 # ## Test log of failures, and the **Proof**: line that lands the task (the
 # format sprintbias_has_proof reads). Used by work (exec + emit) and crew next
@@ -723,16 +753,288 @@ Test loop:
 - Build the smallest testable outcome first, then grow it.
 - Run targeted tests: the ones ## Done when (automated) names, plus the tests
   for code your **Touching:** files feed. The full suite runs once, at plan close.
+- Before landing, add one assertion per ## Done when case and per realistic
+  edge case below in the code path you change. Fix each failure; file one in
+  another code path: ./sprint.sh newtask "<the failing case>". Decided and
+  Assumptions record choices between working options, never a known failure.
 - Log each failure under ## Test log (command, failing test, error excerpt).
   Audit the test first (a wrong test gets corrected, with why), fix any clear
   cause, and re-run until green. Still unexplained: land without **Proof**.
 - Work that cannot start (no reasonable reading, or access or credentials
   only the person holds): add ## Outcome with **Result**: blocked and a
   one-line **Reason**:. Stop.
-- To land, end ## Completed with the tests you ran, then move to review/:
+- To land, open ## Completed with **Summary**: <one plain sentence: what
+  changed, for someone reading the project's history>, end it with the tests
+  you ran, then move to review/:
   **Proof**: YYYY-MM-DD · <targeted test commands> · pass
   Without it the task is "in review, unproven" and holds its dependents.
+
 EOF
+    sprintbias_edge_cases
+}
+
+# The breaker: after a task lands, a fresh-context agent tries to break it.
+# On by default; BREAK=off (config / config.local, or env SPRINTBIAS_BREAK)
+# or `work --no-break` skips it. Used by work exec (_run_breaker) and both emit
+# prompts, so the wording is shared.
+sprintbias_break_on() {
+    local v="${SPRINTBIAS_BREAK:-$(sprintbias_cfg BREAK)}"
+    case "$v" in off|OFF|Off|0|false|no) return 1 ;; esac
+    return 0
+}
+
+# sprintbias_break_rule TASK_FILE — the breaker's whole instruction. Bounded:
+# targeted tests only. Includes the edge-case classes once.
+sprintbias_break_rule() {
+    cat <<EOF
+You are the breaker: a fresh pair of eyes on a task that just landed. Find
+what its change gets wrong before a person sees it.
+Task file: $1 — read its ## Done when and ## Completed (### Files changed),
+then the changed code (git diff on those files, or read them).
+- Start from real use: the commands and inputs as people type or paste them
+  (the project's README, docs, help and examples; shell quoting; the tools
+  they come from), and each form the docs promise. Reach for extremes after
+  those pass.
+- Write tests designed to fail, drawn from the edge cases below and aimed at
+  the changed code, next to the task's tests. Run only them and the task's
+  targeted tests.
+- A failure that is a real defect: fix the code, re-run the targeted tests,
+  and keep the **Proof**: line current. When a - Decided: line caused it,
+  re-decide it by best practice, fix, and replace that line (say what
+  changed). One in another code path, or one you cannot fix: file it with
+  ./sprint.sh newtask "<the failing case>". Cannot fix: also log it under
+  ## Test log (command, failing test, error excerpt) and remove **Proof**:.
+- A test left failing names its filed task (in its name or a comment such as
+  "fails until #N"); only then mark it expected-failure / skip / todo.
+- Add under ## Completed: **Breaker**: <N> cases tried · <N> fixed · <N> filed
+- Change only the task file, the changed code and its tests.
+
+EOF
+    sprintbias_edge_cases
+}
+
+# sprintbias_break_run FILE LOG — run the breaker headless on one landed task
+# (exec). Bounded: SPRINTBIAS_BREAK_MAX_TURNS (25) turns, BUDGET_BREAK where a
+# cap applies (an empty BUDGET_WORK, as --max sets, lifts it), MODEL_BREAK.
+# Returns the CLI's exit code; output goes to LOG. Used by work and polish --break.
+sprintbias_break_run() {
+    local file="$1" log="$2" model args
+    model="$(sprintbias_tier_model BREAK)"
+    args=(--tools "Read,Edit,Write,Bash,Grep,Glob" --permissions auto \
+        --max-turns "${SPRINTBIAS_BREAK_MAX_TURNS:-25}")
+    [ -n "$model" ] && args+=(--model "$model")
+    if sprintbias_budget_capable && [ -n "${SPRINTBIAS_BUDGET_BREAK:-}" ] \
+       && [ -n "${SPRINTBIAS_BUDGET_WORK-x}" ]; then
+        args+=(--budget "$SPRINTBIAS_BUDGET_BREAK")
+    fi
+    local rc=0
+    sprintbias_run -p "$(sprintbias_orient)
+
+$(sprintbias_break_rule "$file")" "${args[@]}" --output-format stream-json > "$log" 2>&1 || rc=$?
+    sprintbias_break_stamp_cost "$file" "$log"
+    return "$rc"
+}
+
+# sprintbias_run_cost LOG — the run's cost in USD (e.g. 1.37) from the last
+# stream-json result event in LOG; nothing when the provider reports none.
+sprintbias_run_cost() {
+    [ -f "$1" ] && command -v python3 >/dev/null 2>&1 || return 0
+    python3 - "$1" <<'PY' 2>/dev/null || true
+import json, sys
+cost = None
+for line in open(sys.argv[1], errors="replace"):
+    try:
+        e = json.loads(line)
+    except ValueError:
+        continue
+    if isinstance(e, dict) and e.get("type") == "result" and e.get("total_cost_usd") is not None:
+        cost = e["total_cost_usd"]
+if cost is not None:
+    print("%.2f" % float(cost))
+PY
+}
+
+# sprintbias_break_stamp_cost FILE LOG — append "· $N.NN" to FILE's **Breaker**:
+# line when LOG reports a cost and the line has none yet (status --edges sums it).
+sprintbias_break_stamp_cost() {
+    local file="$1" cost
+    [ -n "$(sprintbias_break_line "$file")" ] || return 0
+    grep -qE '^\*\*Breaker\*\*:.*· \$[0-9]' "$file" && return 0
+    cost="$(sprintbias_run_cost "$2")"
+    case "$cost" in ""|0.00) return 0 ;; esac
+    python3 - "$file" "$cost" <<'PY' || true
+import sys
+p, cost = sys.argv[1], sys.argv[2]
+lines = open(p).read().split("\n")
+for i, l in enumerate(lines):
+    if l.startswith("**Breaker**:"):
+        lines[i] = l.rstrip() + " · $" + cost
+        break
+open(p, "w").write("\n".join(lines))
+PY
+}
+
+# sprintbias_break_signoff JOBS DRY FILE… — the breaker before sign-off (promote).
+# Checks each FILE with no **Breaker**: line yet (the human test is skipped),
+# JOBS at a time, each bounded by SPRINTBIAS_BREAK_TIMEOUT seconds (900). A
+# crash or timeout never blocks: it warns and stamps the task checked-not-run.
+# DRY=1 lists what would be checked. Sets SPRINTBIAS_BREAK_LOST to the ids that
+# lost their **Proof**: line, and SPRINTBIAS_BREAK_EMIT=1 when, in emit mode,
+# the caller must hand the check to the agent first (the command is printed).
+# Returns 0; does nothing when BREAK is off.
+sprintbias_break_signoff() {
+    local jobs="$1" dry="$2" f todo=() i n id b today
+    shift 2
+    SPRINTBIAS_BREAK_LOST=""; SPRINTBIAS_BREAK_EMIT=0
+    sprintbias_break_on || return 0
+    for f in "$@"; do
+        [ -f "$f" ] || continue
+        sprintbias_is_human_task "$f" && continue
+        [ -n "$(sprintbias_break_line "$f")" ] && continue
+        todo+=("$f")
+    done
+    n=${#todo[@]}
+    [ "$n" -gt 0 ] || return 0
+    echo "▸ Checking $n task(s) before sign-off (breaker)…"
+    if [ "$dry" -eq 1 ]; then
+        for f in "${todo[@]}"; do echo "  #$(task_id "$f")  would be checked  $(task_title "$f")"; done
+        return 0
+    fi
+    if [ "$(sprintbias_ai_mode)" = "emit" ]; then
+        local ids=""
+        for f in "${todo[@]}"; do ids="$ids $(task_id "$f")"; done
+        echo "  Run the breaker first, then promote again (or skip it: --no-break):"
+        for id in $ids; do echo "    ./sprint.sh polish --break $id"; done
+        SPRINTBIAS_BREAK_EMIT=1
+        return 0
+    fi
+    mkdir -p docs/tmp
+    local tmp lane l=0 k pids=(); tmp="$(mktemp -d "${TMPDIR:-/tmp}/sb-break.XXXXXX")"
+    [ "${jobs:-1}" -ge 1 ] 2>/dev/null || jobs=1
+    # Tasks that changed a common file share a lane and run one after another,
+    # so two breakers never edit the same file at once; lanes run in parallel.
+    while IFS= read -r lane; do
+        [ -n "$lane" ] || continue
+        ( for k in $lane; do
+            f="${todo[$k]}"
+            had=0; sprintbias_has_proof "$f" && had=1
+            rc=0
+            # Detached from the caller's output: the timeout watcher must not
+            # hold a $(…) capture open.
+            run_with_timeout "${SPRINTBIAS_BREAK_TIMEOUT:-900}" sprintbias_break_run "$f" \
+                "$(sprintbias_log_path break "$(basename "$f")")" </dev/null >/dev/null 2>&1 || rc=$?
+            printf '%s %s\n' "$had" "$rc" > "$tmp/$k"
+          done ) &
+        pids+=("$!")
+        # A free slot: wait until fewer than JOBS lanes run (bash 3.2 has no wait -n).
+        while :; do
+            l=0
+            for k in "${pids[@]}"; do kill -0 "$k" 2>/dev/null && l=$((l + 1)); done
+            [ "$l" -lt "$jobs" ] && break
+            sleep 1
+        done
+    done <<EOT
+$(sprintbias_break_lanes "${todo[@]}")
+EOT
+    wait
+    today="${SPRINTBIAS_TODAY:-$(date +%Y-%m-%d)}"
+    i=0
+    for f in "${todo[@]}"; do
+        id="$(task_id "$f")"
+        local had=0 rc=1
+        [ -f "$tmp/$i" ] && read -r had rc < "$tmp/$i"
+        i=$((i + 1))
+        if [ "$rc" -ne 0 ] && [ -z "$(sprintbias_break_line "$f")" ]; then
+            printf '\n**Breaker**: not run (crashed or timed out, %s) — re-run: ./sprint.sh polish --break %s\n' "$today" "$id" >> "$f"
+            echo "  ⚠ #$id  breaker did not finish — checked, not run; signing off as it was"
+        else
+            b="$(sprintbias_break_line "$f")"
+            echo "  #$id  **Breaker**: ${b:-(no line written)}"
+        fi
+        if [ "$had" = "1" ] && ! sprintbias_has_proof "$f"; then
+            SPRINTBIAS_BREAK_LOST="$SPRINTBIAS_BREAK_LOST $id"
+        fi
+    done
+    rm -rf "$tmp"
+    SPRINTBIAS_BREAK_LOST="${SPRINTBIAS_BREAK_LOST# }"
+    return 0
+}
+
+# sprintbias_break_lanes FILE… — group tasks into lanes for parallel breakers:
+# one line per lane (longest first), the 0-based indexes of FILE… that run one
+# after another.
+# Tasks whose ### Files changed lists share a code path join one lane (.md prose
+# files do not join lanes); tasks with no list share one lane (unknown reach).
+sprintbias_break_lanes() {
+    python3 - "$@" <<'PY' 2>/dev/null || { local i=0 f; for f in "$@"; do echo "$i"; i=$((i + 1)); done; }
+import re, sys
+files = sys.argv[1:]
+paths = []
+for f in files:
+    try:
+        text = open(f, errors="replace").read()
+    except OSError:
+        text = ""
+    m = re.search(r"^### Files changed[ \t]*\n(.*?)(?=^#|\Z)", text, re.M | re.S)
+    if not m:
+        paths.append(None)
+        continue
+    got = set()
+    for line in m.group(1).splitlines():
+        if not re.match(r"\s*[-*]\s", line):
+            if got and not line.strip():
+                break
+            continue
+        for p in re.findall(r"[A-Za-z0-9_()./-]+\.[A-Za-z0-9]{1,6}", line.split(" (")[0]):
+            if not p.lower().endswith(".md"):
+                got.add(p.strip("`"))
+    paths.append(got)
+parent = list(range(len(files)))
+def find(i):
+    while parent[i] != i:
+        parent[i] = parent[parent[i]]
+        i = parent[i]
+    return i
+unknown = [i for i, p in enumerate(paths) if p is None]
+for i in range(len(files)):
+    for j in range(i):
+        if (paths[i] is not None and paths[j] is not None and paths[i] & paths[j]) \
+           or (i in unknown and j in unknown):
+            parent[find(i)] = find(j)
+lanes = {}
+for i in range(len(files)):
+    lanes.setdefault(find(i), []).append(str(i))
+# Longest lane first, so it starts while the short ones fill the other slots.
+for lane in sorted(lanes.values(), key=lambda l: (-len(l), int(l[0]))):
+    print(" ".join(lane))
+PY
+}
+
+# sprintbias_test_cmd PATH — the command that runs one **Tests** file, as the
+# project runs it: a .sh file with bash; any other file with config TEST_RUN
+# ({} is the path, {file} its name; no placeholder appends the path), else a
+# .py file with pytest, an executable directly, anything else with bash.
+sprintbias_test_cmd() {
+    local p="$1" run
+    case "$p" in *.sh) printf 'bash %s' "$p"; return 0 ;; esac
+    run="${SPRINTBIAS_TEST_RUN:-$(sprintbias_cfg TEST_RUN)}"
+    if [ -n "$run" ]; then
+        case "$run" in
+            *"{}"*|*"{file}"*) run="${run//\{\}/$p}"; printf '%s' "${run//\{file\}/${p##*/}}" ;;
+            *) printf '%s %s' "$run" "$p" ;;
+        esac
+    elif [ "${p%.py}" != "$p" ]; then
+        printf 'python3 -m pytest -q %s' "$p"
+    elif [ -x "$p" ]; then
+        case "$p" in /*) printf '%s' "$p" ;; *) printf './%s' "$p" ;; esac
+    else
+        printf 'bash %s' "$p"
+    fi
+}
+
+# sprintbias_break_line FILE — the **Breaker**: summary the breaker wrote, or nothing.
+sprintbias_break_line() {
+    grep -m1 '^\*\*Breaker\*\*:' "$1" 2>/dev/null | sed 's/^\*\*Breaker\*\*:[[:space:]]*//' || true
 }
 
 # sprintbias_assume_rule -> the finishing rule, one string for every mode:
@@ -751,6 +1053,8 @@ Finish the work:
   - Decided: X, because Y
   The person sees every call at the end and changes one with
   ./sprint.sh newtask "<the change you want>".
+  Decide and build each design choice inside the example's class (a rounding
+  rule, a format, a limit). A scope-out names its task: - Decided: X is out of scope, because Y; filed as #N
 - A check only a person can make (real hardware, a live device or account,
   look and feel) goes under ## Signoff (human); build to the most reasonable
   assumption, prove what a test can reach (simulate, stub, fake it), and land.
@@ -794,7 +1098,15 @@ sprintbias_file_doc_followups() {
         while IFS= read -r line; do
             [ -z "$line" ] && continue
             item="- [ ] ${line#- } (from #${id:-?})"
-            if [ -n "$trackers" ] && printf '%s\n' "$trackers" | xargs grep -qF -- "$item" 2>/dev/null; then
+            # Filed already when a tracker bullet holds "<text>" and
+            # "(from #N)", whatever its checkbox, strike (~~), or a note added
+            # around the text. The closing paren keeps #7 from matching #77.
+            if [ -n "$trackers" ] && printf '%s\n' "$trackers" \
+                | SB_FU_TEXT="${line#- }" SB_FU_FROM="(from #${id:-?})" xargs awk '
+                    BEGIN { t = ENVIRON["SB_FU_TEXT"]; gsub(/~~/, "", t); fr = ENVIRON["SB_FU_FROM"] }
+                    /^- / { l = $0; gsub(/~~/, "", l)
+                            if (index(l, t) && index(l, fr)) { found = 1; exit } }
+                    END { exit !found }' 2>/dev/null; then
                 continue
             fi
             new+=("$item")
@@ -854,13 +1166,22 @@ sprintbias_profile_check() {
         return 1
     fi
 
-    # Listed paths: backticked, space-free tokens outside ## Commands, each
-    # tagged with its section. Every path must exist; only paths outside
+    # ## Known edges (lines appended by promote --reject) is read on every task:
+    # past ~15 lines, ask for a prune.
+    local edges
+    edges=$(awk '/^## / { in_k = ($0 ~ /^## Known edges/); next } in_k && /^- / { n++ } END { print n + 0 }' "$map")
+    if [ "$edges" -gt 15 ]; then
+        echo "▸ Project map has $edges ## Known edges lines (keep ~15) — merge cases of one class, drop ones a test now covers: ./sprint.sh profile"
+        issues=1
+    fi
+
+    # Listed paths: backticked, space-free tokens outside ## Commands and
+    # ## Known edges, each tagged with its section. Every path must exist; only paths outside
     # ## Code are tracked for change (code folders change on every task).
     local tagged paths tracked
     tagged=$(awk '
         /^## / { sec = $0; next }
-        sec ~ /^## Commands/ || /^\*\*Checked:\*\*/ { next }
+        sec ~ /^## (Commands|Known edges)/ || /^\*\*Checked:\*\*/ { next }
         { t = (sec ~ /^## Code/) ? "code" : "src"
           while (match($0, /`[^` ]+`/)) { print t "\t" substr($0, RSTART + 1, RLENGTH - 2); $0 = substr($0, RSTART + RLENGTH) } }
     ' "$map" | grep -vE $'\t''([*<>$]|-|https?:)' || true)
@@ -969,8 +1290,8 @@ sprintbias_checklist_line() {
 }
 
 # ── Shared walkthrough: dependent in next/ held on an undefined task in blocked/ ──
-# Lexicon: <D> is DEPENDENT (on hold) — not blocked. <B> is BLOCKED (needs a
-# decision or clarification). The executor HOLDS <D> until every Depends-on
+# Lexicon: <D> is DEPENDENT (on hold) — not blocked. <B> is BLOCKED (cannot
+# start: no reasonable reading, or access or credentials the person holds). The executor HOLDS <D> until every Depends-on
 # prerequisite leaves blocked/ and lands (review/ with proof, or done/). Both the no-id
 # sprint walk (chat-sprint.sh) and the folder walk (chat next) surface this
 # edge the same way. Written once here so neither reimplements — and drifts
@@ -987,7 +1308,7 @@ sprintbias_checklist_line() {
 sprintbias_next_blocked_resolution() {
     local path_a
     if [ "$(sprintbias_ai_mode)" = "emit" ] && sprintbias_orchestration_capable; then
-        path_a="Hand this off to a FRESH context — do NOT resolve the dependency inline here. $(sprintbias_subagent_spawn_phrase "the dependency that needs a decision (in blocked/)" chain), aimed at the MOST-UPSTREAM one first (the dependency whose own '**Depends on**' has no unresolved blocked deps left; break ties by lowest id). Its entire instruction: 'Run ./sprint.sh chat <dep-id> and carry that task as far toward READY as you can on your own — read any *Context from chat* note in its file, refine it, decide each open question by the finishing rule, write the pick into the body, record it as - Decided: X, because Y, and report those calls back.' Tell the user you spun up a fresh agent for <dep-id> and say in one line what it is picking up."
+        path_a="Hand this off to a FRESH context — do NOT resolve the dependency inline here. $(sprintbias_subagent_spawn_phrase "the dependency that cannot start yet (in blocked/)" chain), aimed at the MOST-UPSTREAM one first (the dependency whose own '**Depends on**' has no unresolved blocked deps left; break ties by lowest id). Its entire instruction: 'Run ./sprint.sh chat <dep-id> and carry that task as far toward READY as you can on your own — read any *Context from chat* note in its file, refine it, decide each open question by the finishing rule, write the pick into the body, record it as - Decided: X, because Y, and report those calls back.' Tell the user you spun up a fresh agent for <dep-id> and say in one line what it is picking up."
     else
         path_a="Hand this off — do NOT resolve the dependency inline here. Tell the user the exact command to run in a FRESH window:  ./sprint.sh chat <dep-id>  (for the most-upstream dependency still in blocked/). Keeping each session's context small is the point of chaining out."
     fi
@@ -1073,6 +1394,31 @@ task_id() {
 # that would trip set -e in `x=$(task_title f)`).
 task_title() {
     { grep -m1 '^# ' "$1" 2>/dev/null || true; } | sed 's/^# *//; s/^Task [0-9]*: *//'
+}
+
+# sprintbias_task_summary FILE -> one sentence for a history record: the
+# **Summary**: line under ## Completed; else the first sentence of the prose
+# that opens ## Completed (before any ### heading or list); else empty.
+# Shared by `plan done` and `history record`.
+sprintbias_task_summary() {
+    # The **Summary**: line is taken whole (wrapped lines joined); only the
+    # prose fallback is cut to its first sentence. CRLF files read the same.
+    awk '
+      { sub(/\r$/, "") }
+      /^## / { if (on) exit; if ($0 ~ /^## Completed[ \t]*$/) on = 1; next }
+      !on { next }
+      insum {
+        if ($0 ~ /^[ \t]*$/ || /^#/ || /^\*\*[^*]+\*\*:/ || /^[ \t]*([-*+]|[0-9]+\.)[ \t]/) exit
+        sub(/^[ \t]+/, ""); summ = summ " " $0; next
+      }
+      /^\*\*Summary\*\*:/ { sub(/^\*\*Summary\*\*:[ \t]*/, ""); summ = $0; found = 1; insum = 1; next }
+      stop { next }
+      /^###/ || /^[ \t]*([-*+]|[0-9]+\.)[ \t]/ { stop = 1; next }
+      /^[ \t]*$/ { if (prose != "") stop = 1; next }
+      /^\*\*[^*]+\*\*:/ || /^<!--/ { next }
+      { prose = prose (prose == "" ? "" : " ") $0 }
+      END { if (found) print "S" summ; else print "P" prose }' "$1" \
+      | sed -E 's/^([SP])[[:space:]]+/\1/; /^P/s/([.!?])[[:space:]].*$/\1/; s/[[:space:]]+$//; s/^[SP]//'
 }
 
 # task_feature FILE -> value of the **Feature**: field (empty if absent).
@@ -1601,6 +1947,30 @@ sprintbias_add_test_log() {
     rm -f "$tmp"
 }
 
+# sprintbias_add_known_edge ID "report" — append one line to the project map's
+# ## Known edges (created when missing): the rejected case, so later work on
+# that area tests it. Silent no-op without a map. Called by promote --reject.
+sprintbias_add_known_edge() {
+    local id="$1" text map="$SPRINTBIAS_PROJECT_MAP" tmp
+    [ -f "$map" ] || return 0
+    text=$(printf '%s\n' "$2" | sed -E 's/^[[:space:]]*([-*]|[0-9]+[.)])[[:space:]]+//' \
+        | sed '/^[[:space:]]*$/d' | paste -sd' ' - | tr -s ' ')
+    [ -n "$text" ] || return 0
+    [ "${#text}" -gt 200 ] && text="${text:0:197}..."
+    tmp="$map.edge.$$"
+    SB_EDGE="- $text (#$id)" awk '
+        BEGIN { e = ENVIRON["SB_EDGE"] }
+        /^## / { if (in_k && !done) { print e; print ""; done = 1 } in_k = ($0 ~ /^## Known edges/) }
+        in_k && /^[[:space:]]*$/ && !done { blank++; next }
+        in_k && blank { for (; blank > 0; blank--) print "" }
+        { print }
+        END {
+            if (in_k && !done) { print e; done = 1 }
+            if (!done) { print ""; print "## Known edges"; print ""; print e }
+        }' "$map" > "$tmp" && mv "$tmp" "$map"
+    return 0
+}
+
 # sprintbias_file_fix_task ORIGINAL_ID "report" [TITLE] -> file a linked fix
 # task for a rejected review/ task (TITLE defaults to "Fix #ID: <its title>"). One shared path for promote --reject and for failing
 # suite output (plan sign-off). The fix task goes through create-task.sh, so its
@@ -1621,14 +1991,16 @@ sprintbias_add_test_log() {
 sprintbias_file_fix_task() {
     local orig_id="$1" report="$2" orig title out fix fid today
     local crew plan tests held items item first testable="" human="" proofcmd=""
-    local dep dpath stage p kind
+    local dep dpath stage p kind signed=0
     SPRINTBIAS_FIX_ID=""; SPRINTBIAS_FIX_TASK=""
     orig=$(sprintbias_task_path "$orig_id") || orig=""
     case "$orig" in
         docs/tasks/review/*) ;;
+        # Found broken after sign-off: the fix is linked, the original stays done.
+        docs/tasks/done/*) signed=1 ;;
         "") echo "✗ No task #$orig_id found." >&2; return 1 ;;
-        *)  echo "✗ #$orig_id is in ${orig#docs/tasks/}; only a review/ task can be rejected." >&2
-            echo "  ${orig%/*}/ is not review/ — reject works on landed work waiting for sign-off." >&2
+        *)  echo "✗ #$orig_id is in ${orig#docs/tasks/}; reject works on landed work (review/ or done/)." >&2
+            echo "  It has not landed yet — finish it first:  ./sprint.sh work $orig_id" >&2
             return 1 ;;
     esac
     if [ -z "$(printf '%s' "$report" | tr -d '[:space:]')" ]; then
@@ -1651,7 +2023,7 @@ sprintbias_file_fix_task() {
     [ -n "$tests" ] && _sprintbias_write_field "$fix" "Tests" "$tests"
     case "$tests" in ""|none|None) ;; *)
         for p in $(printf '%s' "$tests" | tr ',' ' '); do
-            proofcmd="${proofcmd:+$proofcmd, }\`bash $p\`"
+            proofcmd="${proofcmd:+$proofcmd, }\`$(sprintbias_test_cmd "$p")\`"
         done ;;
     esac
 
@@ -1686,20 +2058,25 @@ EOF
 "
 
     SB_DW="$testable" SB_SO="$human" SB_REP="$report" \
-    awk -v oid="$orig_id" -v otitle="$title" -v opath="$orig" -v today="$today" '
+    awk -v oid="$orig_id" -v otitle="$title" -v opath="$orig" -v today="$today" -v signed="$signed" '
         BEGIN { dw = ENVIRON["SB_DW"]; so = ENVIRON["SB_SO"]; rep = ENVIRON["SB_REP"] }
         /^## Problem[[:space:]]*$/ {
             print; print ""
-            print "Task #" oid " (" otitle ") was sent back from review on " today "."
-            print "The reported problems are under ## Test log. Fix them in this task; #" oid
-            print "stays in review/ (Held) and releases its dependents once this lands."
+            if (signed) {
+                print "Task #" oid " (" otitle ") was signed off, then found broken on " today "."
+                print "The reported problems are under ## Test log. Fix them in this task."
+            } else {
+                print "Task #" oid " (" otitle ") was sent back from review on " today "."
+                print "The reported problems are under ## Test log. Fix them in this task; #" oid
+                print "stays in review/ (Held) and releases its dependents once this lands."
+            }
             print ""; skip = 1; next }
         /^## Done when \(automated\)[[:space:]]*$/ { print; print ""; printf "%s", dw; print ""; skip = 1; next }
         /^## Signoff \(human\)[[:space:]]*$/ { print; print ""; if (so != "") { printf "%s", so; print "" } ; skip = 1; next }
         /^## References[[:space:]]*$/ {
             print; print ""; print opath; print ""
             print "## Test log"; print ""
-            print "- " today " · sent back from review (#" oid "):"; print ""
+            print "- " today " · " (signed ? "found broken after sign-off" : "sent back from review") " (#" oid "):"; print ""
             print "```"; print rep; print "```"; print ""
             skip = 1; next }
         /^## / { skip = 0 }
@@ -1722,12 +2099,20 @@ EOF
         sprintbias_set_task_plan "$fix" "$plan" >/dev/null || true ;;
     esac
 
+    SPRINTBIAS_FIX_ID="$fid"; SPRINTBIAS_FIX_TASK="$fix"
+    if [ "$signed" -eq 1 ]; then
+        # Already signed off: a log line links the fix; nothing is held.
+        sprintbias_add_test_log "$orig" "- $today · found broken after sign-off: $(printf '%s\n' "$report" | head -1) → fix #$fid"
+        echo "✓ Filed fix task #$fid → $fix"
+        echo "  **Fixes**: #$orig_id · **Crew**: ${crew:-none} · **Plan**: ${plan:-none}"
+        echo "  #$orig_id stays in done/ (signed off); the fix is linked in its ## Test log"
+        return 0
+    fi
     # The original stays in review/ and holds its dependents until the fix lands.
     held=$(sprintbias_meta_value "$orig" "Held")
     _sprintbias_write_field "$orig" "Held" "${held:+$held, }fix #$fid" || true
     sprintbias_add_test_log "$orig" "- $today · sent back: $(printf '%s\n' "$report" | head -1) → fix #$fid"
 
-    SPRINTBIAS_FIX_ID="$fid"; SPRINTBIAS_FIX_TASK="$fix"
     echo "✓ Filed fix task #$fid → $fix"
     echo "  **Fixes**: #$orig_id · **Crew**: ${crew:-none} · **Plan**: ${plan:-none}"
     echo "  #$orig_id stays in review/ with **Held**: fix #$fid"
@@ -2250,6 +2635,42 @@ sprintbias_find_plan() {
     return 1
 }
 
+# sprintbias_plan_args [--bare] ARG… — the one plan-target reader. Fills
+# SPRINTBIAS_ARGS with ARG… where `plan:N` and `plan N` both become `plan:N`.
+# With --bare, a bare number in target position is a task id first: no task but
+# a plan N → `plan:N` (one line says so); both → the task, with a one-line hint.
+# A number right after count / --jobs / --rounds / --model, or after `--`, is
+# left alone. Messages go to stderr. Used by work, promote, polish and crew.
+sprintbias_plan_args() {
+    local bare=0 a skip=0 rest=0 prev_plan=0
+    [ "${1:-}" = "--bare" ] && { bare=1; shift; }
+    SPRINTBIAS_ARGS=()
+    for a in "$@"; do
+        if [ "$prev_plan" -eq 1 ]; then
+            prev_plan=0
+            case "$a" in ''|*[!0-9]*) SPRINTBIAS_ARGS+=("plan") ;; *) SPRINTBIAS_ARGS+=("plan:$a"); continue ;; esac
+        fi
+        if [ "$rest" -eq 1 ] || [ "$skip" -eq 1 ]; then skip=0; SPRINTBIAS_ARGS+=("$a"); continue; fi
+        case "$a" in
+            --) rest=1 ;;
+            count|--jobs|--rounds|--model) skip=1 ;;
+            plan) prev_plan=1; continue ;;
+            [0-9]*)
+                if [ "$bare" -eq 1 ] && [[ "$a" =~ ^[0-9]+$ ]] && sprintbias_find_plan "$a" >/dev/null; then
+                    if sprintbias_task_path "$a" >/dev/null; then
+                        echo "(plan $a also exists: plan $a)" >&2
+                    else
+                        echo "▸ No task $a — using plan $a." >&2
+                        a="plan:$a"
+                    fi
+                fi ;;
+        esac
+        SPRINTBIAS_ARGS+=("$a")
+    done
+    [ "$prev_plan" -eq 1 ] && SPRINTBIAS_ARGS+=("plan")
+    return 0
+}
+
 # sprintbias_plan_member_rollup PLAN_FILE -> "done/total" counts from live folders.
 sprintbias_plan_member_rollup() {
     local f="$1" mid stage done=0 total=0
@@ -2511,7 +2932,7 @@ sprintbias_plan_ensure_human_test() {
         new=""
         while IFS= read -r line; do
             [ -n "$line" ] || continue
-            printf '%s\n' "$have" | grep -qxF -- "${line#- \[ \] }" && continue
+            grep -qxF -- "${line#- \[ \] }" <<<"$have" && continue
             new="$new$line
 "
         done <<EOT
@@ -2567,6 +2988,16 @@ EOT
     printf '%s' "$fix"
 }
 
+# sprintbias_human_test_failures HT -> the "- fail: …" lines under ## Results
+# (comments skipped), one per line. Read-only; used by filing and --dry-run.
+sprintbias_human_test_failures() {
+    awk '/^## Results[[:space:]]*$/ { cap = 1; next } cap && /^## / { exit }
+         !cap { next }
+         incom { if (index($0, "-->")) incom = 0; next }
+         index($0, "<!--") { if (!index($0, "-->")) incom = 1; next }
+         /^[[:space:]]*[-*][[:space:]]*[Ff][Aa][Ii][Ll]:/ { print }' "$1" 2>/dev/null
+}
+
 # sprintbias_human_test_file_failures HT_FILE -> file one fix task per
 # '- fail: …' line under the human test's ## Results and mark the line
 # '- filed #N: …' so it is never filed twice. Prints how many it filed.
@@ -2584,11 +3015,7 @@ sprintbias_human_test_file_failures() {
         echo "    fix #$SPRINTBIAS_FIX_ID ← $text" >&2
         n=$((n + 1))
     done <<EOT
-$(awk '/^## Results[[:space:]]*$/ { cap = 1; next } cap && /^## / { exit }
-       !cap { next }
-       incom { if (index($0, "-->")) incom = 0; next }
-       index($0, "<!--") { if (!index($0, "-->")) incom = 1; next }
-       /^[[:space:]]*[-*][[:space:]]*[Ff][Aa][Ii][Ll]:/ { print }' "$ht" 2>/dev/null)
+$(sprintbias_human_test_failures "$ht")
 EOT
     printf '%s' "$n"
 }
@@ -3278,6 +3705,110 @@ sprintbias_hash_stdin() {
     printf '%s\n' "${h:0:16}"
 }
 
+# sprintbias_change_snapshot take SNAP [ROOT…]  -> record ROOTs into dir SNAP.
+# sprintbias_change_snapshot diff SNAP          -> what changed since `take`.
+# A before/after view of the working tree that a script takes itself, so it can
+# report what an agent pass touched without trusting the agent's say-so and
+# without git (new files are untracked; already-dirty files would show old
+# edits). ROOTs default to docs/tasks docs/plans. `take` writes SNAP/index
+# (hash<TAB>path per file: one batched git hash-object, sprintbias_hash_stdin
+# per file as the fallback), SNAP/roots, and
+# a copy of each file under SNAP/tree/ for the line counts. `diff` re-hashes the
+# same roots and prints one TSV line per changed file, sorted by path:
+#   STATUS<TAB>PATH<TAB>FROM<TAB>ADDED<TAB>REMOVED
+# STATUS is new | edited | moved | deleted. FROM is the old path for moved
+# (a path gone and a path new with the same basename pair up as one move),
+# "-" otherwise (a placeholder `read` will not collapse). ADDED/REMOVED are
+# diff line counts. A file already dirty before `take` appears only if it
+# changed again. Always returns 0.
+sprintbias_change_snapshot() {
+    local mode="${1:-}" snap="${2:-}" root f
+    [ -n "$snap" ] || return 0
+    _snap_index() {  # _snap_index ROOT… -> hash<TAB>path per file, sorted by path
+        local list hashes
+        list="$(for root in "$@"; do
+                    [ -d "$root" ] && find "$root" -type f ! -name '.DS_Store' 2>/dev/null
+                done | LC_ALL=C sort)"
+        [ -n "$list" ] || return 0
+        # One git process for every file; sprintbias_hash_stdin per file if not.
+        hashes="$(printf '%s\n' "$list" | git hash-object --stdin-paths 2>/dev/null || true)"
+        if [ "$(printf '%s\n' "$hashes" | grep -c .)" = "$(printf '%s\n' "$list" | grep -c .)" ]; then
+            paste <(printf '%s\n' "$hashes" | cut -c1-16) <(printf '%s\n' "$list")
+        else
+            printf '%s\n' "$list" | while IFS= read -r f; do
+                printf '%s\t%s\n' "$(sprintbias_hash_stdin < "$f")" "$f"
+            done
+        fi
+    }
+    _snap_count() {  # ADDED<TAB>REMOVED between two files (either may be absent)
+        local a="${1:-/dev/null}" b="${2:-/dev/null}" out
+        [ -f "$a" ] || a=/dev/null
+        [ -f "$b" ] || b=/dev/null
+        out="$(diff "$a" "$b" 2>/dev/null || true)"
+        printf '%s\t%s' \
+            "$(printf '%s\n' "$out" | grep -c '^>' || true)" \
+            "$(printf '%s\n' "$out" | grep -c '^<' || true)"
+    }
+    case "$mode" in
+        take)
+            shift 2
+            [ "$#" -gt 0 ] || set -- docs/tasks docs/plans
+            mkdir -p "$snap/tree"
+            printf '%s\n' "$@" > "$snap/roots"
+            _snap_index "$@" > "$snap/index"
+            [ -s "$snap/index" ] && cut -f2 "$snap/index" | tar -cf - -T - 2>/dev/null \
+                | tar -xf - -C "$snap/tree" 2>/dev/null || true
+            ;;
+        diff)
+            [ -f "$snap/index" ] || return 0
+            local now edited gone added paired="" path from base roots=()
+            while IFS= read -r root; do [ -n "$root" ] && roots+=("$root"); done < "$snap/roots"
+            now="$(_snap_index ${roots[@]+"${roots[@]}"})"
+            # One join: E<TAB>path (hash moved), G<TAB>path (gone), A<TAB>path (added).
+            local joined
+            joined="$(awk -F'\t' '
+                NR == FNR { old[$2] = $1; next }
+                $2 == "" { next }
+                ($2 in old) { if (old[$2] != $1) print "E\t" $2; seen[$2] = 1; next }
+                { print "A\t" $2 }
+                END { for (p in old) if (!(p in seen)) print "G\t" p }
+            ' "$snap/index" <(printf '%s\n' "$now") | LC_ALL=C sort)"
+            edited="$(printf '%s\n' "$joined" | sed -n 's/^E\t//p')"
+            gone="$(printf '%s\n' "$joined" | sed -n 's/^G\t//p')"
+            added="$(printf '%s\n' "$joined" | sed -n 's/^A\t//p')"
+            {
+                while IFS= read -r path; do
+                    [ -n "$path" ] || continue
+                    printf 'edited\t%s\t-\t%s\n' "$path" "$(_snap_count "$snap/tree/$path" "$path")"
+                done <<< "$edited"
+                while IFS= read -r path; do
+                    [ -n "$path" ] || continue
+                    base="${path##*/}" from=""
+                    while IFS= read -r f; do
+                        [ -n "$f" ] || continue
+                        [ "${f##*/}" = "$base" ] || continue
+                        case $'\n'"$paired"$'\n' in *$'\n'"$f"$'\n'*) continue ;; esac
+                        from="$f"; break
+                    done <<< "$gone"
+                    if [ -n "$from" ]; then
+                        paired="${paired}${from}"$'\n'
+                        printf 'moved\t%s\t%s\t%s\n' "$path" "$from" "$(_snap_count "$snap/tree/$from" "$path")"
+                    else
+                        printf 'new\t%s\t-\t%s\n' "$path" "$(_snap_count "" "$path")"
+                    fi
+                done <<< "$added"
+                while IFS= read -r f; do
+                    [ -n "$f" ] || continue
+                    case $'\n'"$paired"$'\n' in *$'\n'"$f"$'\n'*) continue ;; esac
+                    printf 'deleted\t%s\t-\t%s\n' "$f" "$(_snap_count "$snap/tree/$f" "")"
+                done <<< "$gone"
+            } | LC_ALL=C sort -t$'\t' -k2,2
+            ;;
+    esac
+    unset -f _snap_index _snap_count
+    return 0
+}
+
 # sprintbias_excellence_state_key TASK_FILE -> print the stamped Code state hash.
 # Reads the `- **Code state**:` field from the EXACT '## Excellence' block only
 # (an aborted note or another heading is skipped), so the guard compares like
@@ -3528,6 +4059,15 @@ SPRINTBIAS_BUDGET_WORK="${SPRINTBIAS_BUDGET_WORK:-$(sprintbias_cfg BUDGET_WORK)}
 
 SPRINTBIAS_BUDGET_AUDIT="${SPRINTBIAS_BUDGET_AUDIT:-$(sprintbias_cfg BUDGET_AUDIT)}"
 : "${SPRINTBIAS_BUDGET_AUDIT:=3.00}"
+
+SPRINTBIAS_BUDGET_BREAK="${SPRINTBIAS_BUDGET_BREAK:-$(sprintbias_cfg BUDGET_BREAK)}"
+: "${SPRINTBIAS_BUDGET_BREAK:=2.00}"
+
+SPRINTBIAS_BREAK_MAX_TURNS="${SPRINTBIAS_BREAK_MAX_TURNS:-$(sprintbias_cfg BREAK_MAX_TURNS)}"
+: "${SPRINTBIAS_BREAK_MAX_TURNS:=25}"
+
+SPRINTBIAS_BREAK_TIMEOUT="${SPRINTBIAS_BREAK_TIMEOUT:-$(sprintbias_cfg BREAK_TIMEOUT)}"
+: "${SPRINTBIAS_BREAK_TIMEOUT:=900}"
 
 SPRINTBIAS_AUDIT_MAX_PASSES="${SPRINTBIAS_AUDIT_MAX_PASSES:-$(sprintbias_cfg AUDIT_MAX_PASSES)}"
 : "${SPRINTBIAS_AUDIT_MAX_PASSES:=2}"

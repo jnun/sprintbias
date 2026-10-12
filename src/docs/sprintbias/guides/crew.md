@@ -16,14 +16,17 @@ Several kinds of work at once that you want to steer							a crew
 Work that needs different powers (production access, the database, the build)	a crew, one member per power
 A big problem that spans many tasks and needs one plan held in mind				a crew with a lead
 
-A crew costs one AI session per member. Two to four members is the usual size.
+A crew costs one AI session per member running. Member files cost nothing, so
+write one for every lane and run only the members a plan needs: about four to
+six per lead.
 
 ## Recommended crews
 
 Build the smallest crew that gives every lane one owner. A lane is a kind of
-work with its own files or powers (a codebase, the database, production), never
-a single task. Not sure? `./sprint.sh crew setup` reads the project, asks up to
-three questions, proposes one of these, and fills the member files.
+work with its own files or powers (a codebase, the database, production), or a
+pass over landed work (stress, security), never a single task. Not sure?
+`./sprint.sh crew setup` reads the project, asks up to three questions,
+proposes one of these, and fills the member files.
 
 Project shape										Crew (lead first)			Who owns what
 One codebase, a clear queue							none						./sprint.sh work, or loop
@@ -31,9 +34,20 @@ One codebase, work you want to steer				lead, builder, checker		builder: product
 Two codebases sharing a contract (API + app)		lead, api, app				each its own codebase; the contract has one owner (usually api)
 Any of these, plus production you deploy			add ops						ops: the only member with production credentials
 A bug backlog to burn down							lead, fixer-a, fixer-b		split May touch by folder so fixers never meet
+One API, several clients (web, iOS, Android)		lead, api, data, web, app		api owns the API contract; data owns schema and migrations
+Money or regulated data (a ledger, tenants)			add checker					checker: tests the invariants, reviews each landing that touches them
+A plan you ship to real users						add stress, security		passes over review/ work: polish --break, polish --code; filed fixes go to the builder
 
 The lead's file arrives filled in from `crew add <name> "<role>" --lead`. A
 member's file arrives with Reports filled in; you write its Job and May touch.
+
+Lanes run in parallel because their files never overlap. Passes run in order
+over the same work, so a pass member runs its command on landed work in its
+lanes: it fixes what it can in that change and files the rest as fix tasks for
+the builder. A lane that builds only on one
+kind of machine (iOS needs a Mac with Xcode) runs its member there, even when
+the rest of the crew shares a server. Every member's Reads first points at the
+document that holds the project's invariants (the map's **Invariants:** line).
 
 ## Quick start
 
@@ -86,6 +100,9 @@ Hold the central idea	Writes the approach in the plan file under ## Crew
 Route work				Sets each task's Crew field to the member whose role fits, then messages them. Routes all of wave 1 at once
 Route on landing		When a member reports a landing, checks the **Proof**: line (plan check shows it landed) and routes the tasks it releases in that same turn. Landed releases; done/ is never the wait
 Keep everyone busy		Every member has a task now and one queued next on the board. A blocked member hands the blocker to its owner and starts its next
+Run the active set		Writes Active: on the board: the members this plan needs running. You start those terminals
+Send work to passes		In a plan with pass members, routes each landing in their lanes to them before plan close
+Fill an unowned lane	A task no member's May touch covers gets a member: crew add, its Job and May touch filled, a Decided: line on the board, and the terminal for you to start
 Trace unsigned work		Marks each released task "built on #N (landed)", so a rejection of #N shows everything it affects
 Close the plan			When ./sprint.sh plan check N reads LANDED, runs the full suite once or delegates it, routes each fix task to the member who built the original, then hands the human one sign-off: ./sprint.sh promote plan:N
 Escalate				Raises decisions for the human one at a time. The sign-off approval is always the human's
@@ -97,6 +114,8 @@ A ## Crew board in a plan file looks like this:
 
 Approach: fix duplicate detection in the importer first, then the dashboard
 count, so the count reads the fixed data. One owner per file.
+
+Active: dill, devops, cloudy
 
 - dill — #412 landed; now #415 (built on #412 (landed)); next #418
 - devops — #413 working (Touching: migrations/); next #416

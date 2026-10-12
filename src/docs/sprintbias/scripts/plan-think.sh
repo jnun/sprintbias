@@ -115,6 +115,9 @@ fi
 # Key the review file to THIS plan so a prior plan's analysis can never be
 # mistaken for — or satisfy the completion gate of — this run.
 REVIEW_FILE="docs/tmp/plan-think-${PLAN_ID}.md"
+# Script-owned change report, separate from the agent-owned analysis so the
+# agent can never clobber or reorder it.
+CHANGES_FILE="docs/tmp/plan-think-${PLAN_ID}-changes.md"
 DISCUSS_FILE="$(sprintbias_plan_discuss_file "$PLAN_ID")"
 
 # Member IDs from the plan file (- #N or - [ ] #N lines)
@@ -216,7 +219,7 @@ One line per singular issue: plan-level calls first, then each member's lines in
 
 Write the plan-level analysis to $REVIEW_FILE with:
 1. **Reality check** — one line per member: #id — verdict (KEEP / TRIM / DONE ALREADY / NOT REAL / OFF GOAL, or FINISHED for doing/review/done) — the code evidence (file:line) behind it.
-2. **What changed** — the edits you applied to the plan and to each member, and why (name the lens).
+2. **What changed** — one line per file you created, edited, moved or deleted, starting with its repo-relative path: \`- <path> — <what changed, in a few words> (lens: <which lens drove it>)\`. For a moved file, start with its new path. Write no separate Changes section — the script builds its change report from these lines and its own before/after snapshot.
 3. **Final order** — the committed execution sequence, one-line rationale per position.
 4. **Cut / deferred** — any members removed from the plan and why.
 5. **Delta tasks filed** — any new tasks you created for a finished member that the plan now needs more from (id + one line + which member it builds on), or \"none\".
@@ -253,6 +256,8 @@ _model_args=()
 if [ "$AI_MODE" = "emit" ]; then
   PROMPT="$PROMPT
 
+**Final message:** print your **What changed** lines (one per file you touched, starting with its repo-relative path) so the person sees what changed without opening git.
+
 **After the completion marker:** if $DISCUSS_FILE holds items, you are also the chat session. Run the work loop in docs/sprintbias/ai/conversation.md (Many decisions: one issue at a time) over its unchecked lines: one issue per message with numbered options and a (suggested) pick; do the updates it calls for (plan, member tasks, docs), note the decision under the line, check it off, re-read the file, and take the next unchecked line. Delete $DISCUSS_FILE when none remain."
   sprintbias_run -p "$PROMPT" \
     ${_model_args[@]+"${_model_args[@]}"} \
@@ -265,6 +270,7 @@ if [ "$AI_MODE" = "emit" ]; then
   echo "  ## Plan Think on each member, analysis in $REVIEW_FILE,"
   echo "  every call it made listed under ## Decided in $PLAN_FILE, then any held goal"
   echo "  question is raised one at a time from $DISCUSS_FILE."
+  echo "  The agent's final message lists what changed, one line per file."
   echo "  Next: ./sprint.sh plan start $PLAN_ID"
   exit 0
 fi
@@ -274,6 +280,83 @@ fi
 # readable progress on the terminal. --output-format stream-json is translated
 # per profile by sprintbias_run (Claude keeps it; others map/drop as needed).
 LOG_FILE="$(sprintbias_log_path plan-think "$PLAN_ID")"
+
+# Snapshot docs/tasks + docs/plans before the pass; the change report diffs it
+# against the tree afterwards (sprintbias_change_snapshot). The snapshot is the
+# truth; the agent's **What changed** lines only add the words.
+SNAP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sprintbias-plan-think.XXXXXX")"
+trap 'rm -rf "$SNAP_DIR"' EXIT
+sprintbias_change_snapshot take "$SNAP_DIR" docs/tasks docs/plans
+
+# change_summary PATH -> the agent's one-line summary for PATH from the
+# **What changed** section of $REVIEW_FILE, or empty.
+change_summary() {
+  local want="$1"
+  [ -f "$REVIEW_FILE" ] || return 0
+  awk -v want="$want" '
+    /What changed/ { on=1; next }
+    on && (/^#/ || /^[0-9]+\. / || /^\*\*[A-Z]/) { on=0 }
+    !on { next }
+    {
+      line=$0
+      sub(/^[[:space:]]*[-*][[:space:]]+/, "", line)
+      gsub(/`/, "", line)
+      n=index(line, want)
+      if (n != 1) next
+      rest=substr(line, length(want)+1)
+      if (rest != "" && rest !~ /^([[:space:]]|:|—|–|-)/) next
+      sub(/^[[:space:]]*(→[[:space:]]*[^[:space:]]+)?[[:space:]]*(:|—|–|-)?[[:space:]]*/, "", rest)
+      print rest; exit
+    }' "$REVIEW_FILE" 2>/dev/null || true
+}
+
+# print_change_report RESULT -> write $CHANGES_FILE and print it under a
+# "Changes" banner. RESULT names how the pass ended (complete, partial, ...).
+print_change_report() {
+  local result="$1" changes count st path from add rem summary where id hit fpath
+  local members unchanged=""
+  changes="$(sprintbias_change_snapshot diff "$SNAP_DIR")"
+  count=$(printf '%s\n' "$changes" | grep -c . || true)
+  {
+    echo "# plan think $PLAN_ID — changes"
+    echo ""
+    echo "Run: $result. Compared docs/tasks/ and docs/plans/ before and after the pass."
+    echo ""
+    if [ "$count" -eq 0 ]; then
+      echo "Changes: none — the pass left every plan and task file as it was."
+    else
+      echo "Changes ($count):"
+      while IFS=$'\t' read -r st path from add rem; do
+        [ -n "$path" ] || continue
+        [ "$from" = "-" ] && from=""
+        summary="$(change_summary "$path")"
+        [ -z "$summary" ] && [ -n "$from" ] && summary="$(change_summary "$from")"
+        [ -n "$summary" ] || summary="(no summary)"
+        where="$path"
+        [ -n "$from" ] && where="$from → $path"
+        printf -- '- %-7s %s  +%s −%s — %s\n' "$st" "$where" "$add" "$rem" "$summary"
+      done <<< "$changes"
+    fi
+    echo ""
+    members=$(grep -oE '^- (\[[ xX]\] )?#[0-9]+' "$PLAN_FILE" 2>/dev/null | grep -oE '[0-9]+' | sort -un || true)
+    for id in $members; do
+      hit=$(sprintbias_find_task "$id" \
+              docs/tasks/backlog docs/tasks/next docs/tasks/doing \
+              docs/tasks/blocked docs/tasks/review docs/tasks/done 2>/dev/null) || continue
+      fpath="${hit%%$'\t'*}"
+      grep -qxF "$fpath" <<< "$(cut -f2 <<< "$changes")" && continue
+      unchanged="${unchanged:+$unchanged, }#$id"
+    done
+    echo "Unchanged members: ${unchanged:-none}"
+  } > "$CHANGES_FILE"
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "▸ Changes"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  sed '1,2d' "$CHANGES_FILE" | sed 's/^/  /'
+  echo ""
+  echo "  Report: $CHANGES_FILE"
+}
 
 if sprintbias_run -p "$PROMPT" \
   ${_model_args[@]+"${_model_args[@]}"} \
@@ -285,8 +368,9 @@ if sprintbias_run -p "$PROMPT" \
   if [ ! -f "$REVIEW_FILE" ] || ! grep -q "^PLAN THINK COMPLETE — plan $PLAN_ID," "$REVIEW_FILE"; then
     echo ""
     echo "⚠ plan think ended without a completion marker — the run may be partial."
-    echo "  This pass edits files in place: $PLAN_FILE and its backlog/next members"
-    echo "  may be half-updated. Review 'git diff' before acting; 'git restore' undoes it."
+    print_change_report "partial (no completion marker)"
+    echo ""
+    echo "  The files above may be half-updated. 'git restore <path>' undoes a tracked edit."
     echo "  Analysis (may be missing/partial): $REVIEW_FILE"
     echo "  Full run log: $LOG_FILE"
     echo "  Re-run it:  ./sprint.sh plan think $PLAN_ID"
@@ -302,6 +386,9 @@ if sprintbias_run -p "$PROMPT" \
   echo "  Member tasks:  backlog/next aligned; finished members annotated (never reopened)"
   echo "  Plan analysis: $REVIEW_FILE  (see 'Delta tasks filed')"
   echo "  Calls made:    ## Decided in $PLAN_FILE — change one: ./sprint.sh newtask \"<the change you want>\""
+  echo "  Change report: $CHANGES_FILE"
+
+  print_change_report "complete"
   echo ""
 
   _open="$(sprintbias_discuss_open_count "$DISCUSS_FILE")"
@@ -311,6 +398,7 @@ if sprintbias_run -p "$PROMPT" \
       echo "  Opening chat plan $PLAN_ID to raise them one at a time..."
       echo ""
       _CHAT_PLAN="$(dirname "${BASH_SOURCE[0]}")/chat-plan.sh"
+      rm -rf "$SNAP_DIR"  # exec skips the EXIT trap
       if [ -x "$_CHAT_PLAN" ]; then exec "$_CHAT_PLAN" "$PLAN_ID"; else exec bash "$_CHAT_PLAN" "$PLAN_ID"; fi
     fi
     echo "  Walk them one at a time: ./sprint.sh chat plan $PLAN_ID"
@@ -318,13 +406,15 @@ if sprintbias_run -p "$PROMPT" \
   fi
 
   echo "Next steps:"
-  echo "  1. Review edits — git diff $PLAN_FILE and members; git status for any new delta tasks"
+  echo "  1. Read what changed — the Changes list above, kept in $CHANGES_FILE"
   [ "$_open" -gt 0 ] && echo "  2. Decide the held items with ./sprint.sh chat plan $PLAN_ID" \
                      || echo "  2. Refine with ./sprint.sh chat plan $PLAN_ID if needed"
   echo "  3. Commit with ./sprint.sh plan start $PLAN_ID when READY"
 else
   echo ""
   echo "✗ plan think failed"
+  print_change_report "failed"
+  echo ""
   echo "  Run log: $LOG_FILE"
   echo "  Re-run it:  ./sprint.sh plan think $PLAN_ID"
   exit 1

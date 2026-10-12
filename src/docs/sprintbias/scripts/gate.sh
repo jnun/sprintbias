@@ -150,7 +150,7 @@ a brief one-line reason on the second line:
 
 COMPLETE - The work described is already present in the codebase (verdict COMPLETE, not the done/ folder)
 OUTDATED - The task references files, patterns, or features that no longer exist or are unrecognizable
-UNDEFINED - The task is not defined well enough to work (missing problem statement, success criteria, or actionable details)
+UNDEFINED - The task has no reasonable reading to work from (missing problem statement, success criteria, or actionable details)
 KEEP - The task is still relevant, well-defined, and not yet completed
 
 Rules:
@@ -296,8 +296,8 @@ _chat_line() {
   printf '    ./sprint.sh chat %-4s %-44s%s\n' "$id" "$title" "$tail"
 }
 
-# Turn the tasks that need a decision/clarification this run into a
-# dependency-ordered chat queue. An open decision is often on an UPSTREAM task,
+# Turn the tasks that cannot start this run into a
+# dependency-ordered chat queue. What stops them is often an UPSTREAM task,
 # so a flat "these are blocked" list hides the real work. This orders it
 # top-down: dependency-free items and unresolved upstream deps first; dependents
 # that wait on them come after. Chat the top of the list and the rest often fall
@@ -320,8 +320,8 @@ _chat_queue() {
     if [ -z "$deps" ]; then roots="$roots $id"; else waiters="$waiters $id"; fi
   done
 
-  # Upstream deps that aren't in blocked/ themselves but still need a decision
-  # or definition (not yet stamped READY). Surface them ABOVE the blocked tasks
+  # Upstream deps that aren't in blocked/ themselves but cannot start yet
+  # (not yet stamped READY). Surface them ABOVE the blocked tasks
   # that depend on them. A READY-but-unfinished dep only needs `work` to run it
   # (dependent/on hold), not chat, so it's left off this list.
   local upstream="" d dfile _res
@@ -334,12 +334,12 @@ _chat_queue() {
   done
 
   echo ""
-  echo "▸ Chat queue — settle decisions/clarifications, top-down:"
-  echo "  (the AI raises the questions, you make the calls)"
+  echo "▸ Chat queue — give each what it lacks, top-down:"
+  echo "  (each file's ## BLOCKED says why it cannot start)"
   echo ""
   local first_group=1
   if [ -n "$upstream$roots" ]; then
-    echo "  Chat these first — no open prerequisite decisions ahead of them:"
+    echo "  Chat these first — nothing they wait on is ahead of them:"
     for d in $(printf '%s' "$upstream" | tr ' ' '\n' | grep -E '^[0-9]+$' | sort -un); do
       _res="$(sprintbias_find_task "$d")" && _chat_line "$d" "${_res%%$'\t'*}" ""
     done
@@ -352,14 +352,14 @@ _chat_queue() {
   if [ -n "$waiters" ]; then
     [ "$first_group" -eq 0 ] && echo ""
     echo "  Then these — they depend on the tasks above (dependent / on hold for sequencing,"
-    echo "  and still need their own decisions settled):"
+    echo "  and each still lacks something of its own):"
     for id in $(printf '%s' "$waiters" | tr ' ' '\n' | grep -E '^[0-9]+$' | sort -un); do
       f="$(find "$BLOCKED_DIR" -maxdepth 1 -name "${id}-*.md" 2>/dev/null | head -1)"
       _chat_line "$id" "$f" "$(sprintbias_unmet_deps "$f")"
     done
   fi
   echo ""
-  echo "  Once decisions are settled, re-enter next/ only through the gate:"
+  echo "  Once each can start, re-enter next/ only through the gate:"
   echo "    bash docs/sprintbias/scripts/promote-to-sprint.sh $BLOCKED_DIR/<file>"
 }
 
@@ -395,7 +395,7 @@ for i in $(seq 0 $((COUNT - 1))); do
       BLOCKED=$((BLOCKED + 1))
       BLOCKED_TASKS+=("$TASK_NAME")
       echo ""
-      echo "⊘ Blocked (needs decision or clarification) → $BLOCKED_DIR/$TASK_NAME"
+      echo "⊘ Blocked (cannot start) → $BLOCKED_DIR/$TASK_NAME"
       echo "  Why (the file's ## BLOCKED section):"
       _show_blocked "$BLOCKED_DIR/$TASK_NAME"
       echo "  Next: chat it through, or answer the questions inline, then re-enter via the gate:"
@@ -439,7 +439,7 @@ echo "▸ Done: $READY ready, $COMPLETE complete, $BLOCKED blocked, $ERRS errors
 
 if [ "$BLOCKED" -gt 0 ]; then
   echo ""
-  echo "⊘ Blocked (need decision or clarification) — each file's ## BLOCKED section says why:"
+  echo "⊘ Blocked (cannot start) — each file's ## BLOCKED section says why:"
   for _t in ${BLOCKED_TASKS[@]+"${BLOCKED_TASKS[@]}"}; do
     echo "    $BLOCKED_DIR/$_t"
   done

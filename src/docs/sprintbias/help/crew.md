@@ -26,11 +26,14 @@ the AI CLI supports messaging between sessions.
 How do I:
   set up a crew           ./sprint.sh crew setup, or by hand: a lead with --lead,
                           then one member per lane (a kind of work with its own
-                          files or powers); fill in Job and May touch so each
-                          lane has one owner. Shapes: guide → Recommended crews
+                          files or powers, or a pass such as security); fill in
+                          Job and May touch so each lane has one owner. Shapes:
+                          guide → Recommended crews
   start the day           ./sprint.sh crew <lead> plan:N in one terminal, then
-                          crew <name> for each member it routes work to; later,
-                          crew <lead> alone resumes its plan (one plan per lead)
+                          crew <name> for each member on the board's Active:
+                          line; later, crew <lead> alone resumes its plan (one
+                          plan per lead)
+                          (plan:N, plan N, or a bare N when no task N exists)
   hand a task to someone  set the task's **Crew** field to their name (the
                           lead does this) and tell them
   see who holds what      ./sprint.sh crew (tasks) or ./sprint.sh agents (sessions)

@@ -30,12 +30,15 @@ SCAN_INSTRUCTION="Start by scanning the project to auto-detect what you can:
   a few source files for error handling and patterns.
 - Code: the top-level layout — what lives where, and where new code goes.
 - Commands: how to run, test, lint, and build (manifest scripts, Makefile,
-  justfile, README, CI steps).
+  justfile, README, CI steps). The full test command is also TEST_SUITE in
+  docs/sprintbias/config (run once at plan sign-off); note when the two differ.
 - Sources of truth: documents that hold authority — README, CONTRIBUTING,
   architecture notes, decision records (docs/adr, decisions/), glossary /
   lexicon / taxonomy files, API specs (openapi, graphql schema, proto), design
   system docs, SECURITY.md, style guides. Include the instruction files the
   project owns (CLAUDE.md, AGENTS.md, .cursorrules, …) as sources, read-only.
+  Note the document that holds the project's invariants, the rules every change
+  keeps (tenant isolation, money that must balance, records never edited).
 - Environments: local setup (docker-compose, devcontainer, .env.example —
   variable NAMES only), CI (.github/workflows, .gitlab-ci.yml, …), and deploy
   (deploy workflows, Dockerfile, IaC such as *.tf, platform config such as
@@ -168,7 +171,7 @@ Sources of truth for any other authority document you confirm.
 
 ## Commands
 **Run:** \`...\`
-**Test:** \`...\`
+**Test:** \`...\` — the full suite; set the same command as TEST_SUITE in \`docs/sprintbias/config\`
 **Lint:** \`...\`
 **Build:** \`...\`
 
@@ -178,6 +181,7 @@ Sources of truth for any other authority document you confirm.
 **Decisions:** \`...\` — ...
 **API:** \`...\` — ...
 **Security:** \`...\` — ...
+**Invariants:** \`...\` — rules every change keeps
 **Instructions:** \`CLAUDE.md\` — agent instructions the project owns
 
 ## Environments
@@ -185,11 +189,21 @@ Sources of truth for any other authority document you confirm.
 **CI:** \`...\` — ...
 **Deploy:** \`...\` — who may deploy (default: human-owned)
 
+## Known edges
+- <class>: <the concrete case that broke> (#id)
+
 $_CHECKED_LINE
 \`\`\`
 
 RULES:
 - Pointers and one-line facts only; never copy a document's content into the map.
+- **Invariants:** points at the document that already holds the rules; leave
+  the line out when none does. Rules never go under ## Known edges. When the
+  rules are one section of a larger file, name it after the path:
+  \`CLAUDE.md\` (## Invariants), never \`CLAUDE.md#invariants\`.
+- ## Known edges: cases that broke before (promote --reject adds them; agents
+  test those their change touches). Keep its cases on update, merging lines
+  of one class, at ~15 lines. Leave the section out when there are none.
 - Record variable NAMES, never secret values. Do not open .env files that hold real values.
 - End the file with exactly this line: $_CHECKED_LINE
 - You may only write to $PROFILE_REL. Do not modify any other files.

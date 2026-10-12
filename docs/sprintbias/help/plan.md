@@ -128,7 +128,8 @@ changing nothing:
     `abandoned` (a stale `doing/` claim left with a failure stamp — the state
     `work` reclaims).
 
-Bare `plan check` reports the sole plan, or lists plans to choose from. Use it
+Bare `plan check` reports the sole plan; with several it lists them and asks
+which to check — Enter checks them all (without a terminal it checks them all). Use it
 any time to see a plan's standing without spending AI budget or moving a file.
 
 **plan polish [id] [--force] [--model <id>]** — excellence-judge the plan's

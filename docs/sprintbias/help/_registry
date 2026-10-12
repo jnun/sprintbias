@@ -40,6 +40,7 @@ polish        | work     | [limit/id/file] [--code] [--break] [--model] | After 
 promote       | work     | [id] [--dry-run] [--audit [--move]] [--accept <id>] [--reject <id> "what is wrong"] [plan N [--fresh]] [--no-break] | Close review/ → done/: the breaker first checks each task not yet checked (--no-break skips), then default runs each task's **Tests** (green → done/); --accept <id> is your sign-off for a task with no Tests; --audit is an AI acceptance judge (add --move to close); --reject files a linked fix task and holds the original; plan:N signs off a LANDED plan — full suite once (a green run on an unchanged tree is reused; --fresh re-runs), one approval | promote
 
 status        | look     |                     | Show project status | status
+status        | look     | --edges [plan:N]    | Edge-case scorecard — defects the agents caught vs defects you found, with and without the breaker (no AI)
 agents        | look     | [label] [--local] [--host H] [--json] | Every AI session running here and on your servers — name, state, terminal, project@branch, uptime, last activity, model, context, CPU/memory, topic; label titles each terminal with its name (no AI)
 search        | look     | <keyword>           | Search tasks by keyword | search
 history       | look     | [--since <date / ref>] / record | Finished work from docs/history/, newest first; --since prints Markdown release notes for the work finished since a date or git ref · record: write done/ tasks no plan record covers (planless or retired plan) into a dated record (no AI)

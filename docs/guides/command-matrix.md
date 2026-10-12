@@ -104,7 +104,7 @@ artifact, never only in the chat.
 Command		Does
 plan think [id] [--model]	Automated dual-persona critique of a plan; decides and applies each finding (listed under ## Decided in the plan), holds only goal questions in docs/tmp/plan-<id>_discuss.md and hands off to chat plan <id>
 plan start [id] [--model]	Gate every workable member and commit into `next/` (deps must be in sprint or co-promoted; no hard size cap; warn over 10; latches STARTED; `--model` pins the gate model); gathers every Signoff (human) item into one human test (`**Owner**: human`, review/)
-plan check [id]	Read-only health report — computed plan state (STARTED / LANDED / SIGNED OFF), open · landed · signed off counts, flags for review/ without proof and open fix tasks, member lifecycle rollup, and per-member definition state (undefined / defined / in process / abandoned). No AI, no moves (`plan-check.sh`)
+plan check [id]	Read-only health report — computed plan state (STARTED / LANDED / SIGNED OFF), open · landed · signed off counts, flags for review/ without proof and open fix tasks, member lifecycle rollup, and per-member definition state (undefined / defined / in process / abandoned). Bare: list plans and pick one, Enter checks all. No AI, no moves (`plan-check.sh`)
 plan polish [id] [--model]	Excellence-judge the plan's finished members (`review/` + `done/`) — routes each through the shared deep-judge (`polish-judge.sh`), files enhancements to `backlog/`, skips already-judged members unless `--force`
 plan done [id]	Retire — write the plan's history record to `docs/history/` and remove the plan file once every member is in `done/`; prints a changelog line
 
@@ -138,7 +138,7 @@ promote [id]	Test-gated close: the breaker once per task without a **Breaker** l
 promote plan N	Same as plan:N; a bare N with no task N reads as plan N (one plan-target reader: work, promote, polish, crew)
 promote --accept \<id\>	Your sign-off for one task with no **Tests** → done/ (named Tests still run; holds apply)
 			--audit: AI acceptance judge (Done when (automated) → DONE/NOT-DONE); --move closes DONE → done/
-			--reject <id> "what is wrong": file a linked fix task (**Fixes**), hold the original (**Held**), trace its dependents
+			--reject <id> "what is wrong": file a linked fix task (**Fixes**), hold the original (**Held**), trace its dependents; on a done/ task (found broken later) the fix is linked and nothing is held
 			plan:N: sign off a LANDED plan — files a fix task per `- fail:` line in the human test's ## Results first; full suite (config TEST_SUITE) once; failure files fix tasks; pass shows the human test, one y → every member and the human test done/; a green run on an unchanged tree is reused (--fresh re-runs)
 
 Happy path: `plan start` → `work`. `plan start` already gates on commit, so
@@ -203,6 +203,7 @@ via `plan done` (which retires the plan into a history record). See
 
 Command		Does
 status			Board counts, blocked/ (cannot start), in-progress, features, bugs, per-plan state and open · landed · signed off counts
+status --edges [plan:N]	Edge-case scorecard, no AI: defects the breaker caught (Breaker lines) vs defects you found (**Fixes** tasks from --reject and human tests), split by breaker-checked vs unchecked, with catch rate, breaker cost and the escapes to learn from
 search \<kw\>		Find tasks by keyword
 history			Finished work from docs/history/ (plan records and tasks records), newest first, no AI
 history --since \<date|ref\>	Markdown release notes for the work finished since a date or git ref (oldest first; writes nothing)

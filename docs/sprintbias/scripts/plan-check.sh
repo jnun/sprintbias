@@ -3,6 +3,9 @@
 #
 # Invoked as: ./sprint.sh plan check [id]
 #
+# Bare `plan check` lists the plans and asks which to check; Enter checks them
+# all. Without a terminal it checks them all (the sole plan is checked directly).
+#
 # Pure shell, NO AI. Reads a plan and its members and prints one glance at where
 # the plan stands. Changes NOTHING — no task or plan file is created, edited,
 # moved, or deleted, and no model is called. This is the read-only inverse of
@@ -94,86 +97,6 @@ def_state() {
   fi
 }
 
-# ── Pick / resolve plan ──────────────────────────────────────────────
-
-if [ -z "$PLAN_ID" ]; then
-  if ! ls "$PLANS_DIR"/*.md >/dev/null 2>&1; then
-    echo "No plans to check."
-    exit 1
-  fi
-  # Sole plan → check it. Otherwise list, and prompt when interactive.
-  _only=$(find "$PLANS_DIR" -maxdepth 1 -name '*.md' 2>/dev/null \
-            ! -name '.TEMPLATE-*' ! -name 'TEMPLATE-*')
-  if [ "$(printf '%s\n' "$_only" | grep -c .)" -eq 1 ]; then
-    PLAN_ID=$(sprintbias_plan_file_id "$_only")
-  else
-    echo "▸ plan check — read-only plan health report"
-    echo ""
-    echo "Plans:"
-    list_plans
-    echo ""
-    if [ -t 0 ] && [ -t 1 ]; then
-      printf "Plan id to check (or blank to cancel): "
-      read -r PLAN_ID </dev/tty 2>/dev/null || PLAN_ID=""
-    else
-      echo "Usage: ./sprint.sh plan check <id>"
-      exit 1
-    fi
-    [ -n "$PLAN_ID" ] || { echo "Cancelled."; exit 0; }
-  fi
-fi
-
-if ! [[ "$PLAN_ID" =~ ^[0-9]+$ ]]; then
-  echo "Error: '$PLAN_ID' is not a plan id."
-  echo "Usage: ./sprint.sh plan check [id]   # plan id, not a task id"
-  exit 1
-fi
-
-if ! PLAN_FILE="$(find_plan "$PLAN_ID")"; then
-  echo "Error: No plan found with ID $PLAN_ID in $PLANS_DIR/"
-  echo "Existing plans:"
-  list_plans
-  exit 1
-fi
-
-PLAN_TITLE=$(grep -m1 '^# ' "$PLAN_FILE" 2>/dev/null | sed 's/^# *//')
-STATUS=$(plan_status "$PLAN_FILE")
-
-# ── Collect members and tally ────────────────────────────────────────
-
-MEMBER_IDS=$(sprintbias_plan_member_ids "$PLAN_FILE")
-
-echo "▸ Plan $PLAN_ID health — ${PLAN_TITLE:-$(basename "$PLAN_FILE")}"
-echo ""
-
-if [ -z "$MEMBER_IDS" ]; then
-  echo "  Plan state:  empty (no member tasks)  [**Status:** $STATUS]"
-  echo ""
-  echo "  Add members with: ./sprint.sh chat plan $PLAN_ID"
-  exit 0
-fi
-
-# Old bash (3.2, macOS default) has no associative arrays. Collect one
-# "id stage dstate standing" record per member into an indexed array; derive
-# every count by filtering that list, so no `declare -A` is needed.
-RECORDS=()
-UNPROVEN_IDS=""
-HELD_LINES=""
-
-for id in $MEMBER_IDS; do
-  if ! stage="$(sprintbias_task_stage "$id")"; then
-    RECORDS+=("$id missing missing missing")
-    continue
-  fi
-  file="$(sprintbias_task_path "$id")"
-  dstate="$(def_state "$file" "$stage")"
-  standing="$(sprintbias_member_standing "$id")"
-  [ "$standing" = "unproven" ] && UNPROVEN_IDS="$UNPROVEN_IDS #$id"
-  [ "$standing" = "held" ] && HELD_LINES="$HELD_LINES    #$id $(sprintbias_held_label "$id")
-"
-  RECORDS+=("$id $stage $dstate $standing")
-done
-
 # count_field N VALUE -> how many records have VALUE in whitespace field N (2|3).
 count_field() {
   local n="$1" val="$2" c=0 rec
@@ -183,91 +106,184 @@ count_field() {
   printf '%s' "$c"
 }
 
-# ── Plan state ───────────────────────────────────────────────────────
-# Computed from the folders by lib.sh (sprintbias_plan_state), never stamped:
-# STARTED (work open) · LANDED (every member landed — ready for the full suite
-# and sign-off) · SIGNED OFF (every member in done/ — plan done retires it).
-# The **Status:** latch shown in brackets is plan start's, unchanged here.
-read -r OPEN LANDED SIGNED UNPROVEN MISSING TOTAL FIXES _moved HELD _human <<EOF
+# report_plan ID -> print one plan's health report (the plan file must exist).
+report_plan() {
+  local PLAN_ID="$1" PLAN_FILE PLAN_TITLE STATUS MEMBER_IDS PLAN_STATE
+  local UNPROVEN_IDS="" HELD_LINES="" id stage file dstate standing rec
+  local OPEN LANDED SIGNED UNPROVEN MISSING TOTAL FIXES _moved HELD _human
+  local _counts _roll _def _ht c d
+  PLAN_FILE="$(find_plan "$PLAN_ID")" || return 1
+
+  PLAN_TITLE=$(grep -m1 '^# ' "$PLAN_FILE" 2>/dev/null | sed 's/^# *//')
+  STATUS=$(plan_status "$PLAN_FILE")
+
+  # ── Collect members and tally ────────────────────────────────────────
+
+  MEMBER_IDS=$(sprintbias_plan_member_ids "$PLAN_FILE")
+
+  echo "▸ Plan $PLAN_ID health — ${PLAN_TITLE:-$(basename "$PLAN_FILE")}"
+  echo ""
+
+  if [ -z "$MEMBER_IDS" ]; then
+    echo "  Plan state:  empty (no member tasks)  [**Status:** $STATUS]"
+    echo ""
+    echo "  Add members with: ./sprint.sh chat plan $PLAN_ID"
+    return 0
+  fi
+
+  # Old bash (3.2, macOS default) has no associative arrays. Collect one
+  # "id stage dstate standing" record per member into an indexed array; derive
+  # every count by filtering that list, so no `declare -A` is needed.
+  RECORDS=()
+  UNPROVEN_IDS=""
+  HELD_LINES=""
+
+  for id in $MEMBER_IDS; do
+    if ! stage="$(sprintbias_task_stage "$id")"; then
+      RECORDS+=("$id missing missing missing")
+      continue
+    fi
+    file="$(sprintbias_task_path "$id")"
+    dstate="$(def_state "$file" "$stage")"
+    standing="$(sprintbias_member_standing "$id")"
+    [ "$standing" = "unproven" ] && UNPROVEN_IDS="$UNPROVEN_IDS #$id"
+    [ "$standing" = "held" ] && HELD_LINES="$HELD_LINES    #$id $(sprintbias_held_label "$id")
+  "
+    RECORDS+=("$id $stage $dstate $standing")
+  done
+
+  # ── Plan state ───────────────────────────────────────────────────────
+  # Computed from the folders by lib.sh (sprintbias_plan_state), never stamped:
+  # STARTED (work open) · LANDED (every member landed — ready for the full suite
+  # and sign-off) · SIGNED OFF (every member in done/ — plan done retires it).
+  # The **Status:** latch shown in brackets is plan start's, unchanged here.
+  read -r OPEN LANDED SIGNED UNPROVEN MISSING TOTAL FIXES _moved HELD _human <<EOF
 $(sprintbias_plan_counts "$PLAN_FILE")
 EOF
-PLAN_STATE="$(sprintbias_plan_state "$PLAN_FILE")"
-case "$PLAN_STATE" in
-  "not started") PLAN_STATE="not started ($STATUS)" ;;
-esac
+  PLAN_STATE="$(sprintbias_plan_state "$PLAN_FILE")"
+  case "$PLAN_STATE" in
+    "not started") PLAN_STATE="not started ($STATUS)" ;;
+  esac
 
-echo "  Plan state:  $PLAN_STATE  [**Status:** $STATUS]"
-_counts="open $OPEN · landed $LANDED · signed off $SIGNED  (of $TOTAL)"
-[ "$HELD" -gt 0 ] && _counts="$_counts · held $HELD"
-[ "$UNPROVEN" -gt 0 ] && _counts="$_counts · $SPRINTBIAS_UNPROVEN_LABEL $UNPROVEN"
-[ "$MISSING" -gt 0 ] && _counts="$_counts · missing $MISSING"
-echo "  Counts:      $_counts"
-echo ""
-
-# ── Lifecycle rollup ─────────────────────────────────────────────────
-_roll=""
-for stage in "${SPRINTBIAS_STAGES[@]}" missing; do
-  c=$(count_field 2 "$stage")
-  [ "$c" -gt 0 ] && _roll="$_roll  $stage:$c"
-done
-echo "  Lifecycle: $_roll"
-
-# ── Definition rollup ────────────────────────────────────────────────
-_def=""
-for d in undefined defined in-process abandoned; do
-  c=$(count_field 3 "$d")
-  [ "$c" -gt 0 ] && _def="$_def  $d:$c"
-done
-echo "  Definition:$_def"
-echo ""
-
-# ── Per-member table ─────────────────────────────────────────────────
-echo "  Member Folder    Definition  Standing"
-for rec in "${RECORDS[@]}"; do
-  set -- $rec
-  if [ "$2" = "missing" ]; then
-    printf '  #%-5s %-8s  %s\n' "$1" "missing" "no task file found"
-  elif [ "$4" = "held" ]; then
-    printf '  #%-5s %-8s  %-10s  %s\n' "$1" "$2" "$3" "$(sprintbias_held_label "$1")"
-  elif [ "$4" = "human" ]; then
-    printf '  #%-5s %-8s  %-10s  %s\n' "$1" "$2" "$3" "human test — yours to run"
-  else
-    printf '  #%-5s %-8s  %-10s  %s\n' "$1" "$2" "$3" "${4/-/ }"
-  fi
-done
-
-# ── Flags: what keeps the plan from LANDED ───────────────────────────
-if [ -n "$HELD_LINES" ]; then
+  echo "  Plan state:  $PLAN_STATE  [**Status:** $STATUS]"
+  _counts="open $OPEN · landed $LANDED · signed off $SIGNED  (of $TOTAL)"
+  [ "$HELD" -gt 0 ] && _counts="$_counts · held $HELD"
+  [ "$UNPROVEN" -gt 0 ] && _counts="$_counts · $SPRINTBIAS_UNPROVEN_LABEL $UNPROVEN"
+  [ "$MISSING" -gt 0 ] && _counts="$_counts · missing $MISSING"
+  echo "  Counts:      $_counts"
   echo ""
-  echo "  ⚠ Held (review/ with proof, waiting on its fix task):"
-  printf '%s' "$HELD_LINES"
-  echo "    Work the fix task; the original lands when every fix it names lands."
-fi
-if [ -n "$UNPROVEN_IDS" ]; then
-  echo ""
-  echo "  ⚠ $SPRINTBIAS_UNPROVEN_LABEL (review/, no **Proof**: line):$UNPROVEN_IDS"
-  echo "    Add the proof line under ## Completed once the targeted tests pass."
-fi
-if [ "$FIXES" -gt 0 ]; then
-  echo ""
-  echo "  ⚠ Open fix tasks (**Fixes**: field):"
-  sprintbias_plan_open_fixes "$PLAN_FILE" | while read -r _fid _tid; do
-    echo "    #$_fid fixes #$_tid — in $(sprintbias_task_stage "$_fid")/"
+
+  # ── Lifecycle rollup ─────────────────────────────────────────────────
+  _roll=""
+  for stage in "${SPRINTBIAS_STAGES[@]}" missing; do
+    c=$(count_field 2 "$stage")
+    [ "$c" -gt 0 ] && _roll="$_roll  $stage:$c"
   done
-fi
-if [ "$MISSING" -gt 0 ]; then
-  echo ""
-  echo "  ⚠ $MISSING member(s) have no task file — listed in the plan but not on disk."
-fi
-case "$PLAN_STATE" in
-  LANDED)
-    echo ""
-    _ht="$(sprintbias_plan_human_test "$PLAN_FILE")"
-    [ -n "$_ht" ] && echo "  Run the human test: $_ht (failures go under its ## Results)."
-    echo "  Every member landed. Sign the plan off (full suite once, one approval): ./sprint.sh promote plan:$PLAN_ID" ;;
-  "SIGNED OFF")
-    echo ""
-    echo "  Every member signed off. Retire it: ./sprint.sh plan done $PLAN_ID" ;;
-esac
+  echo "  Lifecycle: $_roll"
 
+  # ── Definition rollup ────────────────────────────────────────────────
+  _def=""
+  for d in undefined defined in-process abandoned; do
+    c=$(count_field 3 "$d")
+    [ "$c" -gt 0 ] && _def="$_def  $d:$c"
+  done
+  echo "  Definition:$_def"
+  echo ""
+
+  # ── Per-member table ─────────────────────────────────────────────────
+  echo "  Member Folder    Definition  Standing"
+  for rec in "${RECORDS[@]}"; do
+    set -- $rec
+    if [ "$2" = "missing" ]; then
+      printf '  #%-5s %-8s  %s\n' "$1" "missing" "no task file found"
+    elif [ "$4" = "held" ]; then
+      printf '  #%-5s %-8s  %-10s  %s\n' "$1" "$2" "$3" "$(sprintbias_held_label "$1")"
+    elif [ "$4" = "human" ]; then
+      printf '  #%-5s %-8s  %-10s  %s\n' "$1" "$2" "$3" "human test — yours to run"
+    else
+      printf '  #%-5s %-8s  %-10s  %s\n' "$1" "$2" "$3" "${4/-/ }"
+    fi
+  done
+
+  # ── Flags: what keeps the plan from LANDED ───────────────────────────
+  if [ -n "$HELD_LINES" ]; then
+    echo ""
+    echo "  ⚠ Held (review/ with proof, waiting on its fix task):"
+    printf '%s' "$HELD_LINES"
+    echo "    Work the fix task; the original lands when every fix it names lands."
+  fi
+  if [ -n "$UNPROVEN_IDS" ]; then
+    echo ""
+    echo "  ⚠ $SPRINTBIAS_UNPROVEN_LABEL (review/, no **Proof**: line):$UNPROVEN_IDS"
+    echo "    Add the proof line under ## Completed once the targeted tests pass."
+  fi
+  if [ "$FIXES" -gt 0 ]; then
+    echo ""
+    echo "  ⚠ Open fix tasks (**Fixes**: field):"
+    sprintbias_plan_open_fixes "$PLAN_FILE" | while read -r _fid _tid; do
+      echo "    #$_fid fixes #$_tid — in $(sprintbias_task_stage "$_fid")/"
+    done
+  fi
+  if [ "$MISSING" -gt 0 ]; then
+    echo ""
+    echo "  ⚠ $MISSING member(s) have no task file — listed in the plan but not on disk."
+  fi
+  case "$PLAN_STATE" in
+    LANDED)
+      echo ""
+      _ht="$(sprintbias_plan_human_test "$PLAN_FILE")"
+      [ -n "$_ht" ] && echo "  Run the human test: $_ht (failures go under its ## Results)."
+      echo "  Every member landed. Sign the plan off (full suite once, one approval): ./sprint.sh promote plan:$PLAN_ID" ;;
+    "SIGNED OFF")
+      echo ""
+      echo "  Every member signed off. Retire it: ./sprint.sh plan done $PLAN_ID" ;;
+  esac
+}
+
+# ── Pick / resolve plan ──────────────────────────────────────────────
+
+if [ -z "$PLAN_ID" ]; then
+  if ! ls "$PLANS_DIR"/*.md >/dev/null 2>&1; then
+    echo "No plans to check."
+    exit 1
+  fi
+  ALL_IDS=$(sprintbias_list_plans | awk '{print $1}')
+  if [ "$(printf '%s\n' "$ALL_IDS" | grep -c .)" -eq 1 ]; then
+    PLAN_ID="$ALL_IDS"
+  else
+    if [ -t 0 ] && [ -t 1 ]; then
+      echo "▸ plan check — read-only plan health report"
+      echo ""
+      echo "Plans:"
+      list_plans
+      echo ""
+      printf "Plan id to check (Enter checks them all): "
+      read -r PLAN_ID </dev/tty 2>/dev/null || PLAN_ID=""
+    fi
+    if [ -z "$PLAN_ID" ]; then
+      _first=1
+      for _id in $ALL_IDS; do
+        [ "$_first" -eq 1 ] || { echo ""; echo "────────"; echo ""; }
+        _first=0
+        report_plan "$_id"
+      done
+      exit 0
+    fi
+  fi
+fi
+
+if ! [[ "$PLAN_ID" =~ ^[0-9]+$ ]]; then
+  echo "Error: '$PLAN_ID' is not a plan id."
+  echo "Usage: ./sprint.sh plan check [id]   # plan id, not a task id"
+  exit 1
+fi
+
+if ! find_plan "$PLAN_ID" >/dev/null; then
+  echo "Error: No plan found with ID $PLAN_ID in $PLANS_DIR/"
+  echo "Existing plans:"
+  list_plans
+  exit 1
+fi
+
+report_plan "$PLAN_ID"
 exit 0

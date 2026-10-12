@@ -8,6 +8,10 @@ if [ -z "${BASH_VERSION:-}" ]; then
     exit 1
 fi
 
+# Bash reads a script as it runs. A `work` or `loop` run can outlive edits to
+# this file (an agent's task, or a setup.sh update), so the braces make bash
+# parse the whole script before running any of it.
+{
 set -euo pipefail
 
 # SprintBias CLI
@@ -149,7 +153,128 @@ show_help() {
     echo ""
     echo "  help                             Show this message"
     echo "  help <command>                   Show details for a command (e.g. help work)"
+    echo "  help <plain words>               Find the command for it (e.g. help new idea)"
     echo ""
+}
+
+# Registry commands whose name and summary hold every plain word asked (no AI).
+# Prints one name per line, in registry order: the matches whose name holds the
+# most of the words. Empty when nothing matches. Words are lowercased, filler
+# words dropped, and a plural s ignored, so "idea", "Ideas?" and "an idea" agree.
+help_matches() {
+    [ -f "$REGISTRY" ] || return 0
+    awk -F'|' -v q="$*" '
+        function norm(s) { s = tolower(s); gsub(/[^a-z0-9]+/, " ", s); return s }
+        function stem(w) { return (length(w) > 3 && w ~ /s$/) ? substr(w, 1, length(w) - 1) : w }
+        BEGIN {
+            split("a an the to i my me we you your do does did how what which where when why who is are be it its of for in on into and or with can could get use run want would like should will this that from by at about need make please command commands sh", sw, " ")
+            for (i in sw) stop[sw[i]] = 1
+            n = split(norm(q), raw, " ")
+            for (i = 1; i <= n; i++) if (!(raw[i] in stop)) qw[++nq] = stem(raw[i])
+        }
+        /^[[:space:]]*(#|$)/ { next }
+        {
+            cmd = $1; gsub(/[[:space:]]/, "", cmd)
+            if (!(cmd in text)) order[++nc] = cmd
+            text[cmd] = text[cmd] " " norm($3 " " $4)
+        }
+        END {
+            if (nq == 0) exit
+            best = -1
+            for (c = 1; c <= nc; c++) {
+                cmd = order[c]
+                split("", words)
+                m = split(text[cmd], tw, " ")
+                for (j = 1; j <= m; j++) words[stem(tw[j])] = 1
+                score = 0; ok = 1
+                for (i = 1; i <= nq; i++) {
+                    w = qw[i]
+                    if (w == cmd || (length(w) >= 4 && index(cmd, w))) score++
+                    else if (!(w in words)) { ok = 0; break }
+                }
+                if (!ok) continue
+                sc[cmd] = score; hit[++nh] = cmd
+                if (score > best) best = score
+            }
+            for (h = 1; h <= nh; h++) if (sc[hit[h]] == best) print hit[h]
+        }' "$REGISTRY"
+}
+
+# One-line registry summary for a command (its first row).
+registry_summary() {
+    local want="$1" cmd group usage summary demo
+    while IFS='|' read -r cmd group usage summary demo; do
+        cmd="${cmd//[[:space:]]/}"
+        [ "$cmd" = "$want" ] || continue
+        summary="${summary#"${summary%%[![:space:]]*}"}"; summary="${summary%"${summary##*[![:space:]]}"}"
+        printf '%s' "$summary"
+        return 0
+    done < "$REGISTRY"
+}
+
+# help <words>: exact name, then the words joined (new idea → newidea), then a
+# keyword match over the registry. One hit prints its page; several print a
+# short list (exit 0); none prints one line and the pointer (exit 1). Sets
+# HELP_RESULT to page, list or miss for the terminal prompt.
+HELP_RESULT=""
+help_resolve() {
+    local helpdir="$PROJECT_ROOT/docs/sprintbias/help" joined matches m
+    local -a hits=()
+    joined="$(printf '%s' "$*" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+    if [ $# -eq 1 ] && [[ "$1" =~ ^[a-z0-9-]+$ ]] && [ -f "$helpdir/$1.md" ]; then
+        HELP_RESULT=page; show_command_help "$1"; return 0
+    fi
+    if [[ "$joined" =~ ^[a-z0-9-]+$ ]] && [ -f "$helpdir/$joined.md" ]; then
+        HELP_RESULT=page; show_command_help "$joined"; return 0
+    fi
+    matches="$(help_matches "$@")"
+    while IFS= read -r m; do [ -n "$m" ] && hits+=("$m"); done <<<"$matches"
+    case ${#hits[@]} in
+        0)
+            HELP_RESULT=miss
+            echo "No command matches '$*'. Run ./sprint.sh help for a list of commands."
+            return 1
+            ;;
+        1)
+            HELP_RESULT=page; show_command_help "${hits[0]}"; return 0
+            ;;
+    esac
+    HELP_RESULT=list
+    echo "Commands that match '$*':"
+    local summary
+    for m in "${hits[@]}"; do
+        summary="$(registry_summary "$m")"
+        [ ${#summary} -le 66 ] || summary="${summary:0:65}…"
+        printf "  %-10s %s\n" "$m" "$summary"
+    done
+    echo "Run ./sprint.sh help <command> for one."
+}
+
+# A person at a terminal gets the live prompt after the list. Agents, pipes and
+# CI get the static list only. SPRINTBIAS_HELP_TTY=1/0 forces it for tests.
+help_is_terminal() {
+    case "${SPRINTBIAS_HELP_TTY:-}" in 1) return 0 ;; 0) return 1 ;; esac
+    [ -t 0 ] && [ -t 1 ]
+}
+
+# Bare help at a terminal: ask, resolve the answer, and offer the read-only AI
+# (scripts/help-ask.sh) when the words found no single command.
+help_prompt() {
+    local answer="" reply=""
+    local -a words=()
+    printf 'What command would you like to understand better? (Enter to skip) '
+    IFS= read -r answer || true
+    read -r -a words <<<"$answer" || true
+    [ ${#words[@]} -gt 0 ] || return 0
+    echo ""
+    help_resolve "${words[@]}" || true
+    [ "$HELP_RESULT" = page ] && return 0
+    echo ""
+    printf 'Ask the AI instead? [y/N] '
+    IFS= read -r reply || true
+    case "$reply" in
+        y|Y|yes|Yes|YES) run_script "help-ask.sh" "$answer" ;;
+    esac
 }
 
 show_command_help() {
@@ -194,6 +319,8 @@ cmd_newplan() {
 }
 
 cmd_status() {
+    # --edges: the edge-case scorecard (edges.sh); bare: the project status.
+    if [ "${1:-}" = "--edges" ]; then run_script "edges.sh" "$@"; return; fi
     local root="$PROJECT_ROOT"
     local tasks="$root/docs/tasks"
 
@@ -223,9 +350,11 @@ cmd_status() {
     blocked_count=$(count_files "$tasks/blocked")
     if [ "$blocked_count" -gt 0 ]; then
         echo ""
-        echo -e "${RED}Blocked (needs decision or clarification):${NC}"
+        echo -e "${RED}Blocked (cannot start):${NC}"
         for task in "$tasks"/blocked/*.md; do
-            [ -f "$task" ] && echo "  $(basename "$task" .md)"
+            [ -f "$task" ] || continue
+            echo "  $(basename "$task" .md)"
+            echo "    ./sprint.sh chat $(basename "$task" | grep -oE '^[0-9]+')"
         done
     fi
 
@@ -371,6 +500,10 @@ cmd_search() {
 
 cmd_profile() {
     run_script "profile.sh" "$@"
+}
+
+cmd_history() {
+    run_script "history.sh" "$@"
 }
 
 # With a task id: chat that one task through (chat.sh). With NO id: walk the
@@ -557,9 +690,10 @@ case "$CMD" in
     newplan)       shift; cmd_newplan "$@" ;;
     newbug)        shift; cmd_newbug "$@" ;;
     newtest)       shift; cmd_newtest "$@" ;;
-    status)        cmd_status ;;
+    status)        shift; cmd_status "$@" ;;
     profile)       shift; cmd_profile "$@" ;;
     search)        shift; cmd_search "$@" ;;
+    history)       shift; cmd_history "$@" ;;
     learn)         shift; cmd_learn "$@" ;;
     chat)          shift; cmd_chat "$@" ;;
     plan)          shift; cmd_plan "$@" ;;
@@ -580,7 +714,15 @@ case "$CMD" in
     validate)      shift; cmd_validate "$@" ;;
     cleanup)       shift; cmd_cleanup "$@" ;;
     align)         cmd_align ;;
-    help|--help|-h) shift; if [ -n "${1:-}" ]; then show_command_help "$1"; else show_help; fi ;;
+    help|--help|-h)
+        shift
+        if [ $# -gt 0 ]; then
+            help_resolve "$@"
+        else
+            show_help
+            if help_is_terminal; then help_prompt; fi
+        fi
+        ;;
     "") show_help ;;
     *)
         echo -e "${RED}Unknown command: $CMD${NC}"
@@ -588,3 +730,5 @@ case "$CMD" in
         exit 1
         ;;
 esac
+exit
+}

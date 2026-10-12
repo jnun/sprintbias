@@ -7,6 +7,14 @@ ways:
 - **Default (test-gated, pure shell)** — a task whose **Tests** field names suite
   scripts that all run green closes itself; everything else waits for a human.
   Automation never *guesses* a task is done; it demands a passing suite.
+- **The breaker first** — before signing off, promote runs the breaker once on
+  each landed task without a `**Breaker**:` line (the human test is skipped),
+  2 at a time (4 in fast mode; `--steady` one at a time, `--jobs N` sets it). A
+  task whose proof the breaker removed stays in `review/` with the reason and
+  `./sprint.sh work <id>`. A breaker crash or timeout never blocks: the task is
+  stamped checked-not-run and signs off as it was. `--dry-run` lists what would
+  be checked; inside an AI session promote prints the `polish --break` command
+  to run first. Off: `BREAK=off` in config, or `--no-break`.
 - **`--audit` (AI acceptance judge, opt-in)** — for work without an automated
   suite, an AI reads each task's **Done when (automated)** and judges whether the work
   that landed meets them. It reports by default and moves nothing; add `--move`
@@ -16,7 +24,8 @@ ways:
   **Depends on** holds still apply. This is the close line work's end-of-run
   checklist prints.
 - **`--reject <id> "what is wrong"`** — send a `review/` task back as a
-  linked fix task. See **Reject** below.
+  linked fix task, or report a `done/` task found broken later. See
+  **Reject** below.
 - **`plan:N`** — sign off a whole plan in one batch: the full suite once, then
   one approval. See **Plan sign-off** below.
 
@@ -63,14 +72,17 @@ For each task in `review/` (or just `[id]`):
    **Depends on**: any prerequisite not yet in `review/`/`done/` (still in
    `backlog/next/doing/blocked`, folded, or missing) → *hold* the task, name the
    open prereq and its stage, and leave it in `review/`. Holds self-clear.
-3. Run each named test (once per run, even if two tasks share it).
+3. Run each named test (once per run, even if two tasks share it), the way
+   the project runs it: `.sh` with bash; other files with config `TEST_RUN`
+   (`{}` = path, `{file}` = name, e.g. `TEST_RUN=scripts/pytest.sh {file}`),
+   else `.py` with `python3 -m pytest -q`, an executable directly.
 4. Every test green **and** every prerequisite closed → `git mv review/… done/`
    (`|| mv`). Messaging may say “proven green”; the field name is still
    **Tests**. Any test failing, missing, or out-of-tree → stay in `review/`,
    report why.
 
 After promoting, it names any plan whose every member now sits in `done/` so you
-can retire it. Retirement stays explicit — promote never deletes a plan:
+can retire it. Retirement stays explicit — promote never retires a plan itself:
 
     ./sprint.sh plan done <id>
 
@@ -95,6 +107,13 @@ moves nothing:
 - Every dependent that has landed (`review/` with proof) or is signed off
   (`done/`) gets a re-check line in its `## Test log`. `done/` dependents are
   flagged in the output and stay where they are.
+- When a project map exists (docs/sprintbias/project.md), the report becomes
+  one line under its `## Known edges` (the section is created when missing),
+  so later work in that area tests the case. Phrase it as class and case:
+  "re-import: the same file twice duplicates contacts". No map, no line.
+- **Found broken after sign-off** (the task is in `done/`): the same fix task
+  and Known edges line; the original stays in `done/`, nothing is held, and
+  its `## Test log` links the fix. the status scorecard counts it as an escape.
 
 Output:
 
@@ -113,6 +132,8 @@ Scripts reuse the same path: `sprintbias_file_fix_task ID "report"` in
 
 Signs off a whole plan at once: the full suite runs once, and you approve the
 plan's human test with one answer.
+`plan:N --dry-run` previews it: your results, what the breaker would check,
+the batch, and whether the suite would run. Nothing runs or moves.
 
 0. **Your results first.** When the plan's human test (the `**Owner**: human`
    task `plan start` made) has `- fail: <what you saw>` lines under
@@ -204,6 +225,10 @@ AI passes, and `SPRINTBIAS_MODEL_ACCEPT` / config `MODEL_ACCEPT` pin its model.
 
     ./sprint.sh promote              # gate every review/ task with **Tests**
     ./sprint.sh promote 293          # only task #293
+    ./sprint.sh promote plan 28      # same as plan:28; a bare 28 with no task 28 means the plan
+    ./sprint.sh promote plan 28 --dry-run  # preview the plan sign-off, move nothing
+    ./sprint.sh promote --no-break   # sign off without the breaker pass
+    ./sprint.sh promote --steady     # breaker one task at a time (--jobs N: N at a time)
     ./sprint.sh promote --dry-run    # run the tests, report verdicts, move nothing
     ./sprint.sh promote --audit      # AI acceptance judge: report DONE/NOT-DONE, move nothing
     ./sprint.sh promote --audit --move    # …and close the DONE ones to done/

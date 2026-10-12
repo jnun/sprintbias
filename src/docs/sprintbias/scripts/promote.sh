@@ -6,7 +6,9 @@
 #             ./sprint.sh promote --reject <id> "what is wrong"
 #             ./sprint.sh promote plan:N [--fresh]   (sign off a whole LANDED plan)
 #
-# Pure shell, NO AI. This is the one automated way a task leaves review/ for
+# Pure shell, except the breaker: before sign-off, each landed task with no
+# **Breaker**: line gets one breaker pass (sprintbias_break_signoff; off with
+# BREAK=off or --no-break). This is the one automated way a task leaves review/ for
 # done/. For each task in docs/tasks/review/, read its **Tests**: field (legacy
 # alias **Proven by**) — one or more docs/tests/*.sh paths that prove the work.
 # Run them. Every named test green → git mv review/ → done/. A task whose field
@@ -36,7 +38,7 @@
 #
 # After promoting, name any plan whose every member now sits in done/ so the
 # developer can retire it with `./sprint.sh plan done <id>`. Retirement stays an
-# explicit step — promote never deletes a plan.
+# explicit step — promote never retires a plan itself.
 
 # Bash reads a script as it runs. A long run can outlive edits to this file
 # (an agent's task, or a setup.sh update), so the braces make bash parse the
@@ -66,11 +68,26 @@ ACCEPT=0
 REPORT=""
 PLAN_ID=""
 FRESH=0
+NO_BREAK=0
+BREAK_JOBS=""
+_STEADY=0
+_next_is_jobs=0
+# One plan-target reader (lib.sh): plan N / plan:N, and a bare number that
+# names no task but a plan.
+sprintbias_plan_args --bare "$@"
+set -- ${SPRINTBIAS_ARGS[@]+"${SPRINTBIAS_ARGS[@]}"}
 for _arg in "$@"; do
   if [ "$REJECT" -eq 1 ] && [ -n "$ONLY_ID" ] && [ -z "$REPORT" ]; then
     REPORT="$_arg"; continue
   fi
+  if [ "$_next_is_jobs" -eq 1 ]; then
+    case "$_arg" in ''|*[!0-9]*|0) echo "✗ --jobs needs a number 1 or greater" >&2; exit 2 ;; esac
+    BREAK_JOBS="$_arg"; _next_is_jobs=0; continue
+  fi
   case "$_arg" in
+    --no-break) NO_BREAK=1 ;;
+    --jobs)    _next_is_jobs=1 ;;
+    --steady)  _STEADY=1 ;;
     --reject)  REJECT=1 ;;
     --accept)  ACCEPT=1 ;;
     --dry-run) DRY_RUN=1 ;;
@@ -84,6 +101,16 @@ for _arg in "$@"; do
   esac
 done
 unset _arg
+[ "$_next_is_jobs" -eq 1 ] && { echo "✗ --jobs needs a number" >&2; exit 2; }
+# The breaker before sign-off runs in parallel: 4 at a time in fast mode, 2
+# otherwise; --steady one at a time; --jobs N sets the count.
+if [ -z "$BREAK_JOBS" ]; then
+  if [ "$_STEADY" -eq 1 ]; then BREAK_JOBS=1
+  elif sprintbias_fast_on; then BREAK_JOBS=4
+  else BREAK_JOBS=2; fi
+fi
+[ "$NO_BREAK" -eq 1 ] && export SPRINTBIAS_BREAK=off
+unset _STEADY _next_is_jobs
 
 # --move only means anything under --audit; the default mode has --dry-run.
 if [ "$MOVE" -eq 1 ] && [ "$AUDIT" -eq 0 ]; then
@@ -114,6 +141,7 @@ fi
 # ── --reject: send a review/ task back as a linked fix task ──────────
 # The original stays in review/ with **Held**: fix #N; the fix task carries
 # **Fixes**, the report as tests to add, and the original's Crew and Plan.
+# The report also becomes one ## Known edges line in the project map.
 if [ "$REJECT" -eq 1 ]; then
   if [ -z "$ONLY_ID" ] || [ -z "$REPORT" ]; then
     echo "Usage: ./sprint.sh promote --reject <id> \"what is wrong\"" >&2
@@ -124,9 +152,16 @@ if [ "$REJECT" -eq 1 ]; then
     exit 2
   fi
   sprintbias_file_fix_task "$ONLY_ID" "$REPORT" || exit 1
+  # The rejected case joins the project map's ## Known edges, so later work in
+  # that area tests it (no map: nothing to add to).
+  if [ -f "$SPRINTBIAS_PROJECT_MAP" ]; then
+    sprintbias_add_known_edge "$ONLY_ID" "$REPORT"
+    echo "▸ Added to ## Known edges in $SPRINTBIAS_PROJECT_MAP"
+  fi
   echo ""
   echo "  Next: shape and run the fix —  ./sprint.sh work $SPRINTBIAS_FIX_ID"
-  echo "  promote closes #$ONLY_ID once #$SPRINTBIAS_FIX_ID is in done/."
+  case "$(sprintbias_task_path "$ONLY_ID" 2>/dev/null)" in docs/tasks/review/*)
+    echo "  promote closes #$ONLY_ID once #$SPRINTBIAS_FIX_ID is in done/." ;; esac
   exit 0
 fi
 
@@ -255,7 +290,7 @@ run_test() {  # prints exit code, running the test at most once per path
     [ "${RC_PATHS[$i]}" = "$p" ] && { printf '%s' "${RC_CODES[$i]}"; return; }
   done
   set +e
-  bash "$p" >/dev/null 2>&1
+  bash -c "$(sprintbias_test_cmd "$p")" >/dev/null 2>&1
   rc=$?
   set -e
   RC_PATHS+=("$p"); RC_CODES+=("$rc")
@@ -346,8 +381,8 @@ tree_fingerprint() {
 }
 
 if [ -n "$PLAN_ID" ]; then
-  if [ -n "$ONLY_ID" ] || [ "$DRY_RUN" -eq 1 ] || [ "$AUDIT" -eq 1 ] || [ "$MOVE" -eq 1 ] || [ "$REJECT" -eq 1 ]; then
-    echo "✗ plan:N stands alone (only --fresh may join it): ./sprint.sh promote plan:$PLAN_ID" >&2
+  if [ -n "$ONLY_ID" ] || [ "$AUDIT" -eq 1 ] || [ "$MOVE" -eq 1 ] || [ "$REJECT" -eq 1 ]; then
+    echo "✗ plan:N stands alone (only --fresh or --dry-run may join it): ./sprint.sh promote plan:$PLAN_ID" >&2
     exit 2
   fi
   PLAN_FILE=$(sprintbias_find_plan "$PLAN_ID") || {
@@ -368,6 +403,14 @@ if [ -n "$PLAN_ID" ]; then
   HT=$(sprintbias_plan_human_test "$PLAN_FILE")
   if [ -n "$HT" ]; then
     echo "  Human test #$(task_id "$HT"): reading ## Results"
+    if [ "$DRY_RUN" -eq 1 ]; then
+      FAILS=$(sprintbias_human_test_failures "$HT" | grep -c . || true)
+      if [ "${FAILS:-0}" -gt 0 ]; then
+        echo "  (dry-run) $FAILS failure(s) under ## Results would become fix tasks. Nothing ran and nothing moved."
+        exit 0
+      fi
+      echo ""
+    else
     FILED=$(sprintbias_human_test_file_failures "$HT")
     if [ "${FILED:-0}" -gt 0 ]; then
       echo ""
@@ -377,6 +420,7 @@ if [ -n "$PLAN_ID" ]; then
       exit 1
     fi
     echo ""
+    fi
   fi
 
   if [ "$STATE" != "LANDED" ]; then
@@ -408,7 +452,8 @@ EOF
 
   # The human test gathers every person-only check; refreshed so assumptions
   # recorded since plan start are on it. Created here for an older plan.
-  HT=$(sprintbias_plan_ensure_human_test "$PLAN_FILE") || exit 1
+  if [ "$DRY_RUN" -eq 1 ]; then HT=$(sprintbias_plan_human_test "$PLAN_FILE")
+  else HT=$(sprintbias_plan_ensure_human_test "$PLAN_FILE") || exit 1; fi
 
   # ── Batch: landed members in review/, in dependency order ──────────
   BATCH=" "
@@ -456,12 +501,43 @@ EOF
     exit 0
   fi
 
+  # ── The breaker, once per member that has not had it ──────────────
+  BREAK_FILES=()
+  for mid in $ORDER; do BREAK_FILES+=("$(sprintbias_task_path "$mid")"); done
+  sprintbias_break_signoff "$BREAK_JOBS" "$DRY_RUN" "${BREAK_FILES[@]}"
+  if [ "$SPRINTBIAS_BREAK_EMIT" -eq 1 ]; then
+    echo ""
+    echo "  Nothing moved. Then:  ./sprint.sh promote plan:$PLAN_ID"
+    exit 0
+  fi
+  if [ -n "$SPRINTBIAS_BREAK_LOST" ]; then
+    echo ""
+    echo "  The breaker found failures it could not fix; these lost their **Proof**: line:"
+    for mid in $SPRINTBIAS_BREAK_LOST; do
+      echo "    #$mid  read ## Test log in $(sprintbias_task_path "$mid") → ./sprint.sh work $mid"
+    done
+    echo ""
+    echo "  Nothing moved. Land the fixes, then:  ./sprint.sh promote plan:$PLAN_ID"
+    exit 1
+  fi
+  [ ${#BREAK_FILES[@]} -gt 0 ] && echo ""
+
   N_BATCH=$(printf '%s' "$ORDER" | wc -w | tr -d ' ')
   echo "  Plan $PLAN_ID is LANDED. $N_BATCH task(s) to sign off, in dependency order:"
   for mid in $ORDER; do
     echo "    #$mid  $(task_title "$(sprintbias_task_path "$mid")")"
   done
   echo ""
+  if [ "$DRY_RUN" -eq 1 ]; then
+    SUITE="$(sprintbias_cfg TEST_SUITE)"
+    STAMP_FP=""; [ -f "docs/tmp/promote-plan-$PLAN_ID-suite.pass" ] && read -r STAMP_FP _ < "docs/tmp/promote-plan-$PLAN_ID-suite.pass" || true
+    if [ -z "$SUITE" ]; then echo "  (dry-run) No full suite: TEST_SUITE is empty."
+    elif [ "$FRESH" -eq 0 ] && [ -n "$STAMP_FP" ] && [ "$STAMP_FP" = "$(tree_fingerprint "$SUITE")" ]; then
+      echo "  (dry-run) The full suite would be reused: nothing changed since its last green run."
+    else echo "  (dry-run) The full suite would run once:  $SUITE"; fi
+    echo "  (dry-run) Nothing ran and nothing moved. Sign off:  ./sprint.sh promote plan:$PLAN_ID"
+    exit 0
+  fi
 
   # ── The full suite, once ────────────────────────────────────────────
   SUITE="$(sprintbias_cfg TEST_SUITE)"
@@ -746,7 +822,7 @@ End with the next command (./sprint.sh status when nothing else is left)."
     VERDICT=$(printf '%s' "$SPRINTBIAS_RUN_VERDICT_TEXT" | sprintbias_parse_verdict 'DONE|NOT-DONE')
     # NOT-DONE contains DONE as a substring — parse_verdict returns the first
     # token it matched, so guard the order explicitly.
-    if printf '%s' "$SPRINTBIAS_RUN_VERDICT_TEXT" | grep -qiE 'VERDICT:[[:space:]]*NOT-DONE'; then
+    if grep -qiE 'VERDICT:[[:space:]]*NOT-DONE' <<<"$SPRINTBIAS_RUN_VERDICT_TEXT"; then
       VERDICT="NOT-DONE"
     fi
 
@@ -811,6 +887,25 @@ echo "▸ promote  ${DRY_LABEL}review/ → done/ (test-gated)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
+# ── The breaker, before sign-off, on each task this run could close ──
+BREAK_FILES=()
+for f in "${TASKS[@]}"; do
+  [ -z "$(task_held_by "$f")" ] || continue
+  _t=$(task_tests "$f")
+  if [ "$ACCEPT" -eq 1 ] || { [ -n "$_t" ] && [ "$(printf '%s' "$_t" | tr '[:upper:]' '[:lower:]')" != "none" ]; }; then
+    BREAK_FILES+=("$f")
+  fi
+done
+unset _t
+sprintbias_break_signoff "$BREAK_JOBS" "$DRY_RUN" ${BREAK_FILES[@]+"${BREAK_FILES[@]}"}
+if [ "$SPRINTBIAS_BREAK_EMIT" -eq 1 ]; then
+  echo ""
+  _again="./sprint.sh promote"; [ "$ACCEPT" -eq 1 ] && _again="$_again --accept"
+  echo "  Nothing moved. Then:  $_again${ONLY_ID:+ $ONLY_ID}"
+  exit 0
+fi
+[ ${#BREAK_FILES[@]} -gt 0 ] && echo ""
+
 PROMOTED=0; FAILED=0; SKIPPED=0; HELD=0
 declare -a PROMOTED_IDS=()
 declare -a SKIP_IDS=()   # skipped (no Tests) ids — each gets its --accept line
@@ -819,6 +914,14 @@ for f in "${TASKS[@]}"; do
   name=$(basename "$f")
   id=$(echo "$name" | grep -oE '^[0-9]+' || true)
   proven=$(task_tests "$f")
+
+  # The breaker found a failure it could not fix and removed the proof line.
+  case " $SPRINTBIAS_BREAK_LOST " in *" $id "*)
+    echo "  ✗ #$id  stays in review/: the breaker found a failure it could not fix"
+    echo "        read ## Test log in $f → ./sprint.sh work $id"
+    FAILED=$((FAILED + 1))
+    continue ;;
+  esac
 
   # A rejected original (**Held**) is held before anything else, so the
   # no-Tests hint never invites a hand move ahead of its fix.
@@ -931,7 +1034,8 @@ echo "▸ ${DRY_LABEL}$PROMOTED promoted, $FAILED failed, $HELD held (dep), $SKI
 unproven_note
 if [ "$SKIPPED" -eq 0 ] && [ "$FAILED" -eq 0 ] && [ "$HELD" -eq 0 ]; then
   if [ "$DRY_RUN" -eq 1 ]; then
-    echo "  Run it for real:  ./sprint.sh promote${ONLY_ID:+ $ONLY_ID}"
+    _real="./sprint.sh promote"; [ "$ACCEPT" -eq 1 ] && _real="$_real --accept"
+    echo "  Run it for real:  $_real${ONLY_ID:+ $ONLY_ID}"
   else
     echo "  Next: ./sprint.sh status   # see what is left to build or sign off"
   fi

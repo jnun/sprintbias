@@ -9,6 +9,7 @@ genuinely open.
 
 1. **Probe.** Read the relevant artifacts first — ground yourself before you
    converse. Draw out what the user is after; restate the emerging shape.
+   Check `docs/history/` first for why an area is the way it is.
 
 2. **Ground.** Weigh project philosophy and prior decisions plus industry
    conventions and documented standards. Name trade-offs honestly, including

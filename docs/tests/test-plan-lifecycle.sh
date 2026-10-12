@@ -493,6 +493,14 @@ make_plan 124 DRAFT "- [ ] #860 — a" >/dev/null
 make_task 860 backlog
 assert_contains "not started while the latch is DRAFT" "$(plan_check 124)" "Plan state:  not started (DRAFT)"
 
+echo "Test: bare plan check with several plans and no terminal checks them all"
+make_plan 125 DRAFT "- [ ] #861 — b" >/dev/null
+make_task 861 backlog
+out=$( (cd "$TMPDIR" && bash docs/sprintbias/scripts/plan-check.sh </dev/null 2>&1) ; echo "rc=$?")
+assert_contains "bare check reports the first plan" "$out" "Plan 124 health"
+assert_contains "bare check reports the second plan" "$out" "Plan 125 health"
+assert_contains "bare check exits 0" "$out" "rc=0"
+
 # --- history record: plan done writes docs/history/<date>-plan-N-<slug>.md ---
 echo "Test: plan done writes a history record before removing the plan"
 setup

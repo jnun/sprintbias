@@ -161,7 +161,7 @@ def act2():
     print()
 
     # #74 no Tests → waits for your sign-off
-    note(f"#74  no **Tests** — waits for your sign-off:  ./sprint.sh promote --accept 74")
+    line(f"  {YELLOW}○{RESET} #74  no **Tests** — waits for your sign-off:  ./sprint.sh promote --accept 74")
     line(f"      {DIM}promote never invents proof; no Tests means you are the judge{RESET}")
     print()
 

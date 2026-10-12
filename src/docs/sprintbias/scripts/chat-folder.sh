@@ -85,8 +85,36 @@ echo -e "${CYAN}=== Sweep $STAGE/: $total task(s), one at a time ===${NC}"
 # sweep all resolve a dependency that points into blocked/ identically.
 NEXT_BLOCKED_RESOLUTION="$(sprintbias_next_blocked_resolution)"
 
+# record_decided FILE RECOMMENDATION -> when the sweep decided an open choice
+# ('- Decided: X, because Y' in its RECOMMENDATION), write that line at the end
+# of the task's ## Notes, so the call is in the file before [w] gates it.
+record_decided() {
+  python3 - "$1" "$2" <<'PY_DECIDED' || true
+import re, sys
+path, rec = sys.argv[1], sys.argv[2]
+m = re.search(r"Decided:\s*(.+?,\s*because\s+.+?)['\u2019`]?(?:\s+to record\b.*)?\.?\s*$", rec)
+if not m:
+    sys.exit(0)
+line = "- Decided: " + m.group(1).strip().rstrip(".")
+text = open(path, encoding="utf-8").read()
+if line in text:
+    sys.exit(0)
+nm = re.search(r"(?m)^## Notes\s*$", text)
+if nm:
+    nxt = re.search(r"(?m)^## ", text[nm.end():])
+    at = nm.end() + nxt.start() if nxt else len(text)
+    text = text[:at].rstrip() + "\n" + line + "\n\n" + text[at:].lstrip("\n")
+else:
+    q = list(re.finditer(r"(?m)^## Questions\s*$", text))
+    at = q[-1].start() if q else len(text)
+    text = text[:at].rstrip() + "\n\n## Notes\n\n" + line + "\n\n" + text[at:]
+open(path, "w", encoding="utf-8").write(text.rstrip("\n") + "\n")
+print("  ▸ Recorded in ## Notes: " + line)
+PY_DECIDED
+}
+
 # blocked_deps FILE -> space-separated dependency ids that currently sit in
-# blocked/ (need a decision or clarification). The dependent is on hold until
+# blocked/ (work that cannot start yet). The dependent is on hold until
 # those resolve; the sweep lifts them via the shared resolution above.
 blocked_deps() {
   local file="$1" u out=""
@@ -116,7 +144,8 @@ For EACH task in order:
 2. Give a fast VERDICT: task name, stage ($STAGE/), a STATUS (COMPLETE/BLOCKED/UNDEFINED/READY/STALE), a one-sentence summary, and a one-sentence recommendation. Keep it tight — this is the cheap sort pass.
    COMPLETE = work already in the codebase (not "file is in done/").
    READY = clear enough to work. Open **Depends on** alone is NOT blocked — the task is dependent (on hold); work holds ordered tasks until deps finish.
-   BLOCKED = a decision or clarification is needed on THIS task. UNDEFINED = too thin to act on yet. Never mark BLOCKED only because another task is still open.
+   BLOCKED = THIS task cannot start: no reasonable reading of it, or it needs access or credentials only the person holds. An open choice with a reasonable pick is not BLOCKED: decide it, record it in the task's ## Notes as '- Decided: X, because Y', and carry on. UNDEFINED = too thin to act on yet. Never mark BLOCKED only because another task is still open.
+   For a BLOCKED task, name the next step: ./sprint.sh chat <id>.
 3. Offer the developer the choice:
    [w] work it   — depends on stage:
                    next/ → start it (git mv next/ → doing/)
@@ -130,8 +159,8 @@ For EACH task in order:
    [q] quit      — stop the sweep
 4. Act on the choice within the task pipeline. Entry into next/ is ONLY via promote-to-sprint.sh (gate). Other moves: git mv SRC DEST || mv SRC DEST. Always delete with: git rm -f PATH || rm -f PATH. Then continue to the next task.
 
-DEPENDENCY RESOLUTION — only when a dep sits in blocked/ (needs a decision or clarification), not for ordinary open deps:
-When a swept task's '**Depends on**:' names a task that currently sits in blocked/, that dependency still needs a decision and must be resolved before the dependent can run. Resolve it per the shared rule below. A dep that is merely still in backlog/next/doing is normal ordering — the dependent is on hold, not BLOCKED; do not force a define on the dependent.
+DEPENDENCY RESOLUTION — only when a dep sits in blocked/ (cannot start yet), not for ordinary open deps:
+When a swept task's '**Depends on**:' names a task that currently sits in blocked/, that dependency cannot start yet and must be resolved before the dependent can run. Resolve it per the shared rule below. A dep that is merely still in backlog/next/doing is normal ordering — the dependent is on hold, not BLOCKED; do not force a define on the dependent.
 
 $NEXT_BLOCKED_RESOLUTION
 
@@ -181,8 +210,9 @@ RECOMMENDATION: <one sentence telling the user what to do with it>
 
 Status definitions:
 - COMPLETE: Work has already been completed on this task (already present in the codebase). Not the same as the done/ folder — the file may still sit in $STAGE/ until the developer moves it.
-- BLOCKED: A decision or clarification is needed on THIS task before work can start (unresolved choice, open question, contradiction, or hollow criteria that force a human answer). An open **Depends on** line alone is NOT blocked — that is dependent/on hold.
-- UNDEFINED: Too thin to act on yet — lacks a clear problem statement or actionable success criteria (prefer UNDEFINED for thin writing; BLOCKED when a concrete decision/clarification is required).
+- BLOCKED: THIS task cannot start — no reasonable reading of it, or it needs access or credentials only the person holds. An open **Depends on** line alone is NOT blocked — that is dependent/on hold.
+- UNDEFINED: Too thin to act on yet — lacks a clear problem statement or actionable success criteria (prefer UNDEFINED for thin writing; BLOCKED only when the task cannot start).
+- An open choice, open question or contradiction with a reasonable pick is NOT blocked: decide it and say READY, with the RECOMMENDATION naming the pick as '- Decided: X, because Y' to record in the task's ## Notes.
 - READY: The task is well-defined, relevant, and ready to be worked. Unfinished prerequisites listed under **Depends on** mean the task is dependent (on hold) — normal pipeline ordering; ./sprint.sh work holds it until those deps finish. Still say READY (not BLOCKED).
 - STALE: The task is not wrong but feels low-priority or superseded by other work
 
@@ -223,7 +253,7 @@ Rules:
   elif [ "$status" = "COMPLETE" ]; then
     echo -e "  Status: ${CYAN}COMPLETE${NC} — work already completed on this task"
   elif [ "$status" = "BLOCKED" ]; then
-    echo -e "  Status: ${RED}BLOCKED${NC} — needs a decision or clarification (not merely waiting on a dep)"
+    echo -e "  Status: ${RED}BLOCKED${NC} — cannot start (not merely waiting on a dep); ./sprint.sh chat $(task_id "$file")"
   elif [ "$status" = "UNDEFINED" ]; then
     echo -e "  Status: ${RED}UNDEFINED${NC} — too thin; needs definition before it can be worked"
   elif [ "$status" = "STALE" ]; then
@@ -236,8 +266,8 @@ Rules:
   echo "  $summary"
   echo -e "  ${DIM}$recommendation${NC}"
   if [ -n "$bdeps" ]; then
-    # Dep in the blocked/ *folder* (needs decision/clarification) — not ordinary open Depends on.
-    echo -e "  ${RED}⚠ depends on $bdeps (in blocked/ — needs decision/clarification); [d] lifts it${NC}"
+    # Dep in the blocked/ *folder* (cannot start yet) — not ordinary open Depends on.
+    echo -e "  ${RED}⚠ depends on $bdeps (in blocked/ — cannot start yet); [d] lifts it${NC}"
   fi
   echo ""
   case "$STAGE" in
@@ -251,6 +281,7 @@ Rules:
   # ── Act ────────────────────────────────────────────────────────────
   case "$choice" in
     w|W)
+      record_decided "$file" "$recommendation"
       case "$STAGE" in
         blocked|backlog)
           # Invariant: nothing enters next/ without the shared workability gate.

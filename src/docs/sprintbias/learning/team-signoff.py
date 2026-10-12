@@ -217,7 +217,7 @@ def act2():
         real(f"  {GREEN}✓{RESET}{GREY} #{tid} → done/")
     real(f"  {GREEN}✓{RESET}{GREY} #92 → done/")
     print()
-    real(f"  Plan 14 is {GREEN}SIGNED OFF{RESET}{GREY}. Retire it:  {CYAN}./sprint.sh plan done 14")
+    real(f"  Plan 14 is {GREEN}SIGNED OFF{RESET}{GREY}. Retire it into docs/history/:  {CYAN}./sprint.sh plan done 14")
     print()
     nextstep("you read the diffs, commit, and ship — the agents edit files and stop")
 

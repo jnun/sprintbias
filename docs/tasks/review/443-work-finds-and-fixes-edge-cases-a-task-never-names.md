@@ -137,10 +137,23 @@ docs/tests/test-profile.sh
 docs/tests/test-proof-loop.sh
 docs/tests/test-tasks-excellence.sh
 docs/tests/test-finish-rule.sh
+docs/sprintbias/scripts/edges.sh
+sprint.sh
+docs/sprintbias/help/status.md
+docs/guides/field-trial.md
+
+### Field trial (2026-10-11)
+- `status --edges [plan:N]` (edges.sh, no AI): caught (Breaker lines) vs found by you (**Fixes** tasks from --reject and human tests), split breaker vs no breaker, catch rate, cost, escapes listed by their report.
+- `promote --reject` takes a done/ task found broken later (linked fix, Known edge, nothing held).
+- Breaker cost stamped on its line (stream-json result); BREAK_MAX_TURNS / BREAK_TIMEOUT config keys.
+- Parallel breakers run in lanes: tasks sharing a code file in ### Files changed run in turn; a free-slot pool (bash 3.2 safe). `polish --break plan:N` uses it and checks unchecked members only.
+- `promote` runs a Tests file as the project does (`sprintbias_test_cmd`, config TEST_RUN); before, `.py` Tests always failed under bash.
+- Verified on a scratch ship + setup into a copy of heavymetal (update 0.0.137 → 0.0.138, config kept): plan 67's 11 tasks ran in 5 lanes with a stub CLI, no lane overlap, 14 s vs 22 s serial; status --edges and --reject on done/ checked there.
+- Gap filed: #449 (Tests values with arguments).
 
 ### Assumptions
 - Decided: the crew landing path carries the edge-case list through the proof rule but runs no separate breaker, because decision 3 names the work exec and emit paths and a crew member already lands through its own session.
 - Decided: a Known edges line is the reject report as written (bullets joined, 200 chars max) plus `(#id)`; help asks people to phrase it as "class: case", because a no-AI step cannot classify the report.
 - Decided: setup.sh's MODEL_* migration list is left alone (it is outside docs/); a missing BREAK / MODEL_BREAK / BUDGET_BREAK key falls back to on / tier default / $2.
 
-**Proof**: 2026-10-10 · bash docs/tests/test-edge-cases.sh, bash docs/tests/test-profile.sh, bash docs/tests/run-all.sh, ./sprint.sh validate --commands, ./sprint.sh validate --docs · pass
+**Proof**: 2026-10-11 · bash docs/tests/test-edge-cases.sh, bash docs/tests/test-promote.sh, bash docs/tests/test-profile.sh, bash docs/tests/run-all.sh, ./sprint.sh validate --commands, ./sprint.sh validate --docs · pass

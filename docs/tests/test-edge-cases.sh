@@ -79,7 +79,7 @@ for f in docs/tasks/doing/*.md docs/tasks/review/*.md docs/tasks/done/*.md; do
       [ "${STUB_MOVE:-0}" = "1" ] && mv "$f" docs/tasks/review/ ;;
   esac
 done
-printf '{"type":"result","subtype":"success","num_turns":1,"duration_ms":10,"total_cost_usd":0}\n'
+printf '{"type":"result","subtype":"success","num_turns":1,"duration_ms":10,"total_cost_usd":%s}\n' "${STUB_COST:-0}"
 STUBEOF
     chmod +x "$STUB"
 }
@@ -259,8 +259,13 @@ has "single id: summary and next command" "$out" "▸ Breaker: 1 task(s) checked
 lacks "single id: no worker prompt" "$(prompts)" "Test loop:"
 : > "$SANDBOX/docs/tmp/prompts.log"
 out="$(pol plan:9 || true)"
-is  "plan: two landed members broken" "$(count_of "$(prompts)" "You are the breaker")" "2"
+is  "plan: only the unchecked member is broken (#300 already has a Breaker line)" "$(count_of "$(prompts)" "You are the breaker")" "1"
 has "plan: done/ member included" "$(prompts)" "Task file: docs/tasks/done/301-save.md"
+has "plan: prints each checked member's line" "$out" "#301  **Breaker**: 4 cases tried"
+: > "$SANDBOX/docs/tmp/prompts.log"
+out="$(pol plan:9 || true)"
+is  "plan: every member checked — no run" "$(prompts)" ""
+has "plan: names the single-task re-run" "$out" "Re-run one:  ./sprint.sh polish --break <id>"
 lacks "plan: human test skipped" "$(prompts)" "302-human-test.md"
 lacks "plan: unlanded member skipped" "$(prompts)" "303-later.md"
 has "plan: next is plan check, then promote plan:N" "$out" "next: ./sprint.sh plan check 9   # then sign off: ./sprint.sh promote plan:9"
@@ -378,6 +383,81 @@ mkdir -p "$SANDBOX/docs/crew"; printf '# Crew member: lea\n\n**Role**: lead\n' >
 has "crew plan 31: plan target" "$(cd "$SANDBOX" && SPRINTBIAS_MODE=emit bash docs/sprintbias/scripts/crew.sh lea plan 31 2>&1 || true)" "Your work is plan 31"
 has "crew 31 (no task): uses the plan" "$(cd "$SANDBOX" && SPRINTBIAS_MODE=emit bash docs/sprintbias/scripts/crew.sh lea 31 2>&1 || true)" "▸ No task 31 — using plan 31."
 has "polish sweep limit untouched (no --break)" "$(cd "$SANDBOX" && SPRINTBIAS_MODE=emit bash docs/sprintbias/scripts/polish.sh 31 2>&1 || true)" "No tasks"
+
+echo "Test 9: breaker caps from config, cost on the Breaker line, status --edges"
+setup
+rm -f "$SANDBOX/docs/tasks/next/100-import.md"
+printf 'BREAK_MAX_TURNS=40\nBREAK_TIMEOUT=1200\nBUDGET_BREAK=5.00\n' > "$SANDBOX/docs/sprintbias/config.local"
+caps="$(cd "$SANDBOX" && env -u SPRINTBIAS_BREAK_MAX_TURNS -u SPRINTBIAS_BREAK_TIMEOUT -u SPRINTBIAS_BUDGET_BREAK \
+    bash -c 'source docs/sprintbias/lib.sh; echo "$SPRINTBIAS_BREAK_MAX_TURNS $SPRINTBIAS_BREAK_TIMEOUT $SPRINTBIAS_BUDGET_BREAK"')"
+is  "config.local raises the breaker caps" "$caps" "40 1200 5.00"
+rm -f "$SANDBOX/docs/sprintbias/config.local"
+caps="$(cd "$SANDBOX" && env -u SPRINTBIAS_BREAK_MAX_TURNS -u SPRINTBIAS_BREAK_TIMEOUT \
+    bash -c 'source docs/sprintbias/lib.sh; echo "$SPRINTBIAS_BREAK_MAX_TURNS $SPRINTBIAS_BREAK_TIMEOUT"')"
+is  "defaults: 25 turns, 900 seconds" "$caps" "25 900"
+printf '# Task 300: Parse input\n\n**Plan**: 9\n\n## Completed\n\n**Proof**: 2026-10-10 · bash t.sh · pass\n' > "$SANDBOX/docs/tasks/review/300-parse.md"
+(cd "$SANDBOX" && STUB_COST=1.234 SPRINTBIAS_MODE=exec SPRINTBIAS_CLI="$STUB" NO_COLOR=1 \
+    bash docs/sprintbias/scripts/polish.sh --break 300 >/dev/null 2>&1) || true
+is  "cost stamped on the Breaker line" "$(sprintbias_break_line "$SANDBOX/docs/tasks/review/300-parse.md")" '4 cases tried · 1 fixed · 0 filed · $1.23'
+printf '# Task 307: Free run\n\n## Completed\n\n**Proof**: 2026-10-10 · bash t.sh · pass\n' > "$SANDBOX/docs/tasks/review/307-free.md"
+(cd "$SANDBOX" && SPRINTBIAS_MODE=exec SPRINTBIAS_CLI="$STUB" NO_COLOR=1 \
+    bash docs/sprintbias/scripts/polish.sh --break 307 >/dev/null 2>&1) || true
+is  "no cost reported: line left as written" "$(sprintbias_break_line "$SANDBOX/docs/tasks/review/307-free.md")" '4 cases tried · 1 fixed · 0 filed'
+rm -f "$SANDBOX/docs/tasks/review/307-free.md"
+# The board: #300 breaker-checked (plan 9), #301 unchecked, #303 breaker not run,
+# #302 plan 9's human test. Fix tasks: #304 rejects #300, #305 rejects #301,
+# #306 a human-test failure (plan 9 is checked).
+printf '# Task 300: Parse input\n\n**Plan**: 9\n\n## Completed\n\n**Proof**: 2026-10-10 · bash t.sh · pass\n**Breaker**: 10 cases tried · 3 fixed · 1 filed — trims input · $2.00\n' > "$SANDBOX/docs/tasks/review/300-parse.md"
+printf '# Task 301: Save input\n\n**Plan**: none\n' > "$SANDBOX/docs/tasks/done/301-save.md"
+printf '# Task 302: Human test\n\n**Owner**: human\n**Plan**: 9\n' > "$SANDBOX/docs/tasks/review/302-human-test.md"
+printf '# Task 303: Load input\n\n**Breaker**: not run (crashed or timed out, 2026-10-11) — re-run: ./sprint.sh polish --break 303\n' > "$SANDBOX/docs/tasks/done/303-load.md"
+printf '# Task 304: Fix #300: Parse input\n\n**Fixes**: #300\n**Plan**: 9\n' > "$SANDBOX/docs/tasks/backlog/304-fix.md"
+printf '# Task 305: Fix #301: Save input\n\n**Fixes**: #301\n' > "$SANDBOX/docs/tasks/backlog/305-fix.md"
+printf '# Task 306: Fix #302: empty file crashes\n\n**Fixes**: #302\n**Plan**: 9\n' > "$SANDBOX/docs/tasks/next/306-fix.md"
+edges() { (cd "$SANDBOX" && NO_COLOR=1 bash docs/sprintbias/scripts/edges.sh "$@" 2>&1); }
+out="$(edges || true)"
+has "landed split: 1 checked, 2 unchecked (not run counts unchecked)" "$out" "Tasks landed (review/ + done/)              1   2"
+has "escapes split: 2 past the breaker, 1 without" "$out" "Found by you (escaped)                      2   1"
+has "reject escapes" "$out" "via promote --reject                      1   1"
+has "human-test escapes count for a checked plan" "$out" "via a human test                          1   0"
+has "breaker totals" "$out" "Breaker on 1 task(s): 10 cases tried · 3 fixed · 1 filed"
+has "catch rate counts fixed + filed" "$out" "Catch rate: 67% — agents found 4, you found 2"
+has "cost and cost per defect" "$out" 'Breaker cost: $2.00 over 1 run(s) · $0.50 per defect caught'
+has "not-run count with the re-run command" "$out" "Breaker not run (crash or timeout): 1"
+has "lists the escape from a reject" "$out" "#304 (rejected #300, backlog)"
+has "lists the escape from a human test" "$out" "#306 (human test #302, next)"
+lacks "an unchecked escape is not in the learn list" "$out" "#305 ("
+has "no map: points at profile" "$out" "./sprint.sh profile"
+out="$(edges plan:9 || true)"
+has "plan scope" "$out" "Scope: plan 9"
+has "plan scope drops other tasks" "$out" "Tasks landed (review/ + done/)              1   0"
+printf '# Project map\n\n## Known edges\n\n- #300: empty file crashes\n- #301: BOM header\n\n## Commands\n\n- x\n' > "$SANDBOX/docs/sprintbias/project.md"
+has "counts known edges in the map" "$(edges || true)" "Known edges in docs/sprintbias/project.md: 2"
+rc=0; edges plan:x >/dev/null || rc=$?
+is  "bad plan id: exits 2" "$rc" "2"
+has "status --edges dispatches to the scorecard" "$(cd "$SANDBOX" && cp "$REPO/sprint.sh" . && NO_COLOR=1 bash sprint.sh status --edges 2>&1 || true)" "=== Edge cases: caught by agents vs found by you ==="
+
+echo "Test 10: parallel breakers never share a code file (lanes)"
+L="$(mktemp -d)"
+printf '# Task 1\n\n## Completed\n\n### Files changed\n- api/import.py\n- docs/guide.md\n\nTests run: `pytest api/shared.py`\n' > "$L/1.md"
+printf '# Task 2\n\n## Completed\n\n### Files changed\n- `api/import.py` (edited)\n- web/page.tsx\n' > "$L/2.md"
+printf '# Task 3\n\n## Completed\n\n### Files changed\n- docs/guide.md\n- web/other.tsx\n' > "$L/3.md"
+printf '# Task 4\n\n## Completed\n\n### Files changed\n- api/shared.py\n' > "$L/4.md"
+printf '# Task 5\n\nNo list.\n' > "$L/5.md"
+printf '# Task 6\n\nNo list either.\n' > "$L/6.md"
+printf '# Task 7\n\n## Completed\n\n### Files changed\n- web/page.tsx\n' > "$L/7.md"
+lanes="$(sprintbias_break_lanes "$L"/{1,2,3,4,5,6,7}.md)"
+is  "shared code file chains 1, 2 and 7 (longest lane first)" "$(sed -n 1p <<<"$lanes")" "0 1 6"
+is  "tasks with no list share one lane" "$(grep -cx '4 5' <<<"$lanes")" "1"
+is  "a shared .md file alone does not join a lane" "$(grep -cx '2' <<<"$lanes")" "1"
+lacks "a path in prose after the list does not join a lane" "$lanes" "0 1 3"
+is  "seven tasks make 4 lanes" "$(wc -l <<<"$lanes" | tr -d ' ')" "4"
+# Bare path lines (the common form) count the same as list items.
+printf '# Task 8\n\n## Completed\n\n### Files changed\ndocs/sprintbias/lib.sh\nsprint.sh\n' > "$L/8.md"
+printf '# Task 9\n\n## Completed\n\n### Files changed\n- docs/sprintbias/help/_registry\n- `sprint.sh`\n' > "$L/9.md"
+printf '# Task 10\n\n## Completed\n\n### Files changed\ndocs/sprintbias/help/_registry\n' > "$L/10.md"
+is  "bare path lines join a lane, extensionless paths too" "$(sprintbias_break_lanes "$L"/{8,9,10}.md)" "0 1 2"
+rm -rf "$L"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

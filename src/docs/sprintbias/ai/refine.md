@@ -35,7 +35,8 @@ when a *second execution pass* would close the gap.
   do NOT touch the `**Reworked**:` header — the runner owns that counter and
   increments it when it confirms your reopen.
 - **Judge against the project's own rules first.** Check CLAUDE.md and
-  `docs/sprintbias/project.md` before flagging a design choice. A finding that
+  `docs/sprintbias/project.md` before flagging a design choice; check
+  `docs/history/` first for why an area is the way it is. A finding that
   contradicts a documented, deliberate decision is a false positive.
 
 ## Method

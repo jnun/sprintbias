@@ -216,9 +216,9 @@ else
 fi
 
 # ── Demote-the-other-way: the symmetric partner of close-the-loop. blocked/
-# means a decision or clarification is needed — so a task that ENDS the session
-# with a real open question shouldn't keep sitting in a workable stage pretending
-# to be ready. Only meaningful when the task is NOT already in blocked/ (a
+# means the task cannot start — so a task that ENDS the session with no
+# reasonable reading, or waiting on access only the person holds, shouldn't keep
+# sitting in a workable stage pretending to be ready. Only meaningful when the task is NOT already in blocked/ (a
 # blocked task that stays unresolved is handled by close-the-loop's own "leave
 # it in blocked/" branch), so this is empty for blocked/ and the closing prompt
 # reads clean. chat states the demotion plainly because a user who ran chat on
@@ -259,7 +259,7 @@ else
 fi
 
 # ── Chain to the next dependency in a FRESH context. Defining one task often
-# surfaces that it depends on another task that still needs a decision; walking
+# surfaces that it depends on another task that cannot start yet; walking
 # that chain in THIS conversation piles context up and burns tokens. So we hand
 # the next task off through its FILE (a durable note the fresh session reads)
 # and start clean:

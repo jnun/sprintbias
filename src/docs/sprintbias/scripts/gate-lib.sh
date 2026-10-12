@@ -106,7 +106,7 @@ sprintbias_gate_init() {
 After writing the verdict, act on it. Always move with: git mv SRC DEST || mv SRC DEST
 (git mv first; plain mv finishes when the file is untracked).
 Route by the stamp you wrote (the contract above says when each applies):
-- BLOCKED → git mv the task file to $SPRINTBIAS_GATE_BLOCKED_DIR/ || mv it there
+- BLOCKED → git mv the task file to $SPRINTBIAS_GATE_BLOCKED_DIR/ || mv it there (skip when it is already there)
 - COMPLETE → git mv the task file to $SPRINTBIAS_GATE_REVIEW_DIR/ || mv it there
   (COMPLETE = work already in the codebase; not docs/tasks/done/)
 $ready_instr
@@ -126,7 +126,7 @@ Then, when its ## Grounding lists conflicts, print them for the human:
     SPRINTBIAS_GATE_SPRINT_BLOCK="
 
 Other tasks already in this sprint (next/) and the backlog — a prerequisite this
-task builds on is very likely one of these, NOT a missing decision on THIS task:
+task builds on is very likely one of these, NOT a reason to block THIS task:
 $idx"
   fi
 }
@@ -185,8 +185,13 @@ Fill the brief first (before stamping READY):
   (name its path). READY requires this (the shell enforces it).
 - Template blanks with a clear title, Notes, References or code: write a
   concise Problem and a testable Done when (automated) from them.
+- A Done when line that lists cases names a check per case, drawn from the
+  edge cases below. A gap you find in another code path: ./sprint.sh newtask
+  "<the failing case>".
 - Notes may hold short hints and the calls you made. Leave ## Completed /
   ### Files changed for after work.
+
+$(sprintbias_edge_cases)
 
 $(sprintbias_grounding_rule)
 
@@ -369,8 +374,8 @@ sprintbias_gate_review() {
 
     # Route by the review's verdict stamp (anchored — body text that merely
     # mentions the verdict vocabulary cannot mis-route, see lib.sh).
-    # Open questions still on the list keep the task BLOCKED until each is
-    # answered and turned into body instruction.
+    # An open question with a (Suggestion: …) is taken as answered below; one
+    # with no suggestion leaves the task unable to start, so it stays BLOCKED.
     _verdict="$(sprintbias_review_verdict "$task_file")"
     # Invariant: a question with no suggestion means BLOCKED — rewrite the
     # stamp (not only the route) so next/ never keeps a READY file work refuses.
@@ -474,7 +479,7 @@ sprintbias_promote_summary() {
     EMIT)     echo "▸ Gate review emitted for $name — run the prompt above (READY → next/)." ;;
     NOSTAMP)  echo "✗ gate NOSTAMP: $name — left in place (no verdict written) → retry: ./sprint.sh work ${name%%-*}" ;;
     FAILED)
-      echo "✗ gate FAILED: $name — left in place"
+      echo "✗ gate FAILED: $name — left in place → retry: ./sprint.sh work ${name%%-*}"
       [ -n "${SPRINTBIAS_GATE_ERROR:-}" ] && echo "  ${SPRINTBIAS_GATE_ERROR}"
       [ -n "${SPRINTBIAS_GATE_LOG:-}" ] && echo "  log: $SPRINTBIAS_GATE_LOG"
       ;;

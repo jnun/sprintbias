@@ -131,8 +131,9 @@ people type or paste them, every form the docs promise), extremes after — fixe
 tests and keeping the proof line), files what lives elsewhere, and removes the
 proof line for what it cannot fix — the task then lands in review, unproven,
 with the failure under `## Test log`. It adds `**Breaker**: N cases tried · N
-fixed · N filed` under `## Completed`. Bounded: targeted tests only, 25 turns,
-BUDGET_BREAK ($2) where caps apply; MODEL_BREAK picks its model. Turn it off
+fixed · N filed · $cost` under `## Completed`. Bounded: targeted tests only,
+BREAK_MAX_TURNS (25) turns, BREAK_TIMEOUT (900 s) at sign-off, BUDGET_BREAK ($2)
+where caps apply; MODEL_BREAK picks its model. The status scorecard scores it. Turn it off
 with `BREAK=off` in docs/sprintbias/config, or `--no-break` for one run.
 A `- Decided:` call that caused a defect is re-decided and fixed (the line is
 replaced, saying what changed); a test left failing names its filed task

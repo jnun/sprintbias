@@ -827,9 +827,51 @@ sprintbias_break_run() {
        && [ -n "${SPRINTBIAS_BUDGET_WORK-x}" ]; then
         args+=(--budget "$SPRINTBIAS_BUDGET_BREAK")
     fi
+    local rc=0
     sprintbias_run -p "$(sprintbias_orient)
 
-$(sprintbias_break_rule "$file")" "${args[@]}" > "$log" 2>&1
+$(sprintbias_break_rule "$file")" "${args[@]}" --output-format stream-json > "$log" 2>&1 || rc=$?
+    sprintbias_break_stamp_cost "$file" "$log"
+    return "$rc"
+}
+
+# sprintbias_run_cost LOG — the run's cost in USD (e.g. 1.37) from the last
+# stream-json result event in LOG; nothing when the provider reports none.
+sprintbias_run_cost() {
+    [ -f "$1" ] && command -v python3 >/dev/null 2>&1 || return 0
+    python3 - "$1" <<'PY' 2>/dev/null || true
+import json, sys
+cost = None
+for line in open(sys.argv[1], errors="replace"):
+    try:
+        e = json.loads(line)
+    except ValueError:
+        continue
+    if isinstance(e, dict) and e.get("type") == "result" and e.get("total_cost_usd") is not None:
+        cost = e["total_cost_usd"]
+if cost is not None:
+    print("%.2f" % float(cost))
+PY
+}
+
+# sprintbias_break_stamp_cost FILE LOG — append "· $N.NN" to FILE's **Breaker**:
+# line when LOG reports a cost and the line has none yet (status --edges sums it).
+sprintbias_break_stamp_cost() {
+    local file="$1" cost
+    [ -n "$(sprintbias_break_line "$file")" ] || return 0
+    grep -qE '^\*\*Breaker\*\*:.*· \$[0-9]' "$file" && return 0
+    cost="$(sprintbias_run_cost "$2")"
+    case "$cost" in ""|0.00) return 0 ;; esac
+    python3 - "$file" "$cost" <<'PY' || true
+import sys
+p, cost = sys.argv[1], sys.argv[2]
+lines = open(p).read().split("\n")
+for i, l in enumerate(lines):
+    if l.startswith("**Breaker**:"):
+        lines[i] = l.rstrip() + " · $" + cost
+        break
+open(p, "w").write("\n".join(lines))
+PY
 }
 
 # sprintbias_break_signoff JOBS DRY FILE… — the breaker before sign-off (promote).
@@ -867,20 +909,33 @@ sprintbias_break_signoff() {
         return 0
     fi
     mkdir -p docs/tmp
-    local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/sb-break.XXXXXX")"
+    local tmp lane l=0 k pids=(); tmp="$(mktemp -d "${TMPDIR:-/tmp}/sb-break.XXXXXX")"
     [ "${jobs:-1}" -ge 1 ] 2>/dev/null || jobs=1
-    i=0
-    for f in "${todo[@]}"; do
-        ( had=0; sprintbias_has_proof "$f" && had=1
-          rc=0
-          # Detached from the caller's output: the timeout watcher must not
-          # hold a $(…) capture open.
-          run_with_timeout "${SPRINTBIAS_BREAK_TIMEOUT:-900}" sprintbias_break_run "$f" \
-              "$(sprintbias_log_path break "$(basename "$f")")" </dev/null >/dev/null 2>&1 || rc=$?
-          printf '%s %s\n' "$had" "$rc" > "$tmp/$i" ) &
-        i=$((i + 1))
-        [ $((i % jobs)) -eq 0 ] && wait
-    done
+    # Tasks that changed a common file share a lane and run one after another,
+    # so two breakers never edit the same file at once; lanes run in parallel.
+    while IFS= read -r lane; do
+        [ -n "$lane" ] || continue
+        ( for k in $lane; do
+            f="${todo[$k]}"
+            had=0; sprintbias_has_proof "$f" && had=1
+            rc=0
+            # Detached from the caller's output: the timeout watcher must not
+            # hold a $(…) capture open.
+            run_with_timeout "${SPRINTBIAS_BREAK_TIMEOUT:-900}" sprintbias_break_run "$f" \
+                "$(sprintbias_log_path break "$(basename "$f")")" </dev/null >/dev/null 2>&1 || rc=$?
+            printf '%s %s\n' "$had" "$rc" > "$tmp/$k"
+          done ) &
+        pids+=("$!")
+        # A free slot: wait until fewer than JOBS lanes run (bash 3.2 has no wait -n).
+        while :; do
+            l=0
+            for k in "${pids[@]}"; do kill -0 "$k" 2>/dev/null && l=$((l + 1)); done
+            [ "$l" -lt "$jobs" ] && break
+            sleep 1
+        done
+    done <<EOT
+$(sprintbias_break_lanes "${todo[@]}")
+EOT
     wait
     today="${SPRINTBIAS_TODAY:-$(date +%Y-%m-%d)}"
     i=0
@@ -903,6 +958,82 @@ sprintbias_break_signoff() {
     rm -rf "$tmp"
     SPRINTBIAS_BREAK_LOST="${SPRINTBIAS_BREAK_LOST# }"
     return 0
+}
+
+# sprintbias_break_lanes FILE… — group tasks into lanes for parallel breakers:
+# one line per lane (longest first), the 0-based indexes of FILE… that run one
+# after another.
+# Tasks whose ### Files changed lists share a code path join one lane (.md prose
+# files do not join lanes); tasks with no list share one lane (unknown reach).
+sprintbias_break_lanes() {
+    python3 - "$@" <<'PY' 2>/dev/null || { local i=0 f; for f in "$@"; do echo "$i"; i=$((i + 1)); done; }
+import re, sys
+files = sys.argv[1:]
+paths = []
+for f in files:
+    try:
+        text = open(f, errors="replace").read()
+    except OSError:
+        text = ""
+    m = re.search(r"^### Files changed[ \t]*\n(.*?)(?=^#|\Z)", text, re.M | re.S)
+    if not m:
+        paths.append(None)
+        continue
+    # List items or bare path lines, up to the first blank line after a path.
+    # A stray match only joins two lanes (safe); a missed path runs two
+    # breakers on one file at once, so read every line.
+    got = set()
+    for line in m.group(1).splitlines():
+        if not line.strip():
+            if got:
+                break
+            continue
+        for p in re.findall(r"[A-Za-z0-9_()./-]+", line.split(" (")[0]):
+            p = p.rstrip(".")
+            if ("/" in p or re.search(r"\.[A-Za-z0-9]{1,6}$", p)) and not p.lower().endswith(".md"):
+                got.add(p)
+    paths.append(got)
+parent = list(range(len(files)))
+def find(i):
+    while parent[i] != i:
+        parent[i] = parent[parent[i]]
+        i = parent[i]
+    return i
+unknown = [i for i, p in enumerate(paths) if p is None]
+for i in range(len(files)):
+    for j in range(i):
+        if (paths[i] is not None and paths[j] is not None and paths[i] & paths[j]) \
+           or (i in unknown and j in unknown):
+            parent[find(i)] = find(j)
+lanes = {}
+for i in range(len(files)):
+    lanes.setdefault(find(i), []).append(str(i))
+# Longest lane first, so it starts while the short ones fill the other slots.
+for lane in sorted(lanes.values(), key=lambda l: (-len(l), int(l[0]))):
+    print(" ".join(lane))
+PY
+}
+
+# sprintbias_test_cmd PATH — the command that runs one **Tests** file, as the
+# project runs it: a .sh file with bash; any other file with config TEST_RUN
+# ({} is the path, {file} its name; no placeholder appends the path), else a
+# .py file with pytest, an executable directly, anything else with bash.
+sprintbias_test_cmd() {
+    local p="$1" run
+    case "$p" in *.sh) printf 'bash %s' "$p"; return 0 ;; esac
+    run="${SPRINTBIAS_TEST_RUN:-$(sprintbias_cfg TEST_RUN)}"
+    if [ -n "$run" ]; then
+        case "$run" in
+            *"{}"*|*"{file}"*) run="${run//\{\}/$p}"; printf '%s' "${run//\{file\}/${p##*/}}" ;;
+            *) printf '%s %s' "$run" "$p" ;;
+        esac
+    elif [ "${p%.py}" != "$p" ]; then
+        printf 'python3 -m pytest -q %s' "$p"
+    elif [ -x "$p" ]; then
+        case "$p" in /*) printf '%s' "$p" ;; *) printf './%s' "$p" ;; esac
+    else
+        printf 'bash %s' "$p"
+    fi
 }
 
 # sprintbias_break_line FILE — the **Breaker**: summary the breaker wrote, or nothing.
@@ -1864,14 +1995,16 @@ sprintbias_add_known_edge() {
 sprintbias_file_fix_task() {
     local orig_id="$1" report="$2" orig title out fix fid today
     local crew plan tests held items item first testable="" human="" proofcmd=""
-    local dep dpath stage p kind
+    local dep dpath stage p kind signed=0
     SPRINTBIAS_FIX_ID=""; SPRINTBIAS_FIX_TASK=""
     orig=$(sprintbias_task_path "$orig_id") || orig=""
     case "$orig" in
         docs/tasks/review/*) ;;
+        # Found broken after sign-off: the fix is linked, the original stays done.
+        docs/tasks/done/*) signed=1 ;;
         "") echo "✗ No task #$orig_id found." >&2; return 1 ;;
-        *)  echo "✗ #$orig_id is in ${orig#docs/tasks/}; only a review/ task can be rejected." >&2
-            echo "  ${orig%/*}/ is not review/ — reject works on landed work waiting for sign-off." >&2
+        *)  echo "✗ #$orig_id is in ${orig#docs/tasks/}; reject works on landed work (review/ or done/)." >&2
+            echo "  It has not landed yet — finish it first:  ./sprint.sh work $orig_id" >&2
             return 1 ;;
     esac
     if [ -z "$(printf '%s' "$report" | tr -d '[:space:]')" ]; then
@@ -1894,7 +2027,7 @@ sprintbias_file_fix_task() {
     [ -n "$tests" ] && _sprintbias_write_field "$fix" "Tests" "$tests"
     case "$tests" in ""|none|None) ;; *)
         for p in $(printf '%s' "$tests" | tr ',' ' '); do
-            proofcmd="${proofcmd:+$proofcmd, }\`bash $p\`"
+            proofcmd="${proofcmd:+$proofcmd, }\`$(sprintbias_test_cmd "$p")\`"
         done ;;
     esac
 
@@ -1929,20 +2062,25 @@ EOF
 "
 
     SB_DW="$testable" SB_SO="$human" SB_REP="$report" \
-    awk -v oid="$orig_id" -v otitle="$title" -v opath="$orig" -v today="$today" '
+    awk -v oid="$orig_id" -v otitle="$title" -v opath="$orig" -v today="$today" -v signed="$signed" '
         BEGIN { dw = ENVIRON["SB_DW"]; so = ENVIRON["SB_SO"]; rep = ENVIRON["SB_REP"] }
         /^## Problem[[:space:]]*$/ {
             print; print ""
-            print "Task #" oid " (" otitle ") was sent back from review on " today "."
-            print "The reported problems are under ## Test log. Fix them in this task; #" oid
-            print "stays in review/ (Held) and releases its dependents once this lands."
+            if (signed) {
+                print "Task #" oid " (" otitle ") was signed off, then found broken on " today "."
+                print "The reported problems are under ## Test log. Fix them in this task."
+            } else {
+                print "Task #" oid " (" otitle ") was sent back from review on " today "."
+                print "The reported problems are under ## Test log. Fix them in this task; #" oid
+                print "stays in review/ (Held) and releases its dependents once this lands."
+            }
             print ""; skip = 1; next }
         /^## Done when \(automated\)[[:space:]]*$/ { print; print ""; printf "%s", dw; print ""; skip = 1; next }
         /^## Signoff \(human\)[[:space:]]*$/ { print; print ""; if (so != "") { printf "%s", so; print "" } ; skip = 1; next }
         /^## References[[:space:]]*$/ {
             print; print ""; print opath; print ""
             print "## Test log"; print ""
-            print "- " today " · sent back from review (#" oid "):"; print ""
+            print "- " today " · " (signed ? "found broken after sign-off" : "sent back from review") " (#" oid "):"; print ""
             print "```"; print rep; print "```"; print ""
             skip = 1; next }
         /^## / { skip = 0 }
@@ -1965,12 +2103,20 @@ EOF
         sprintbias_set_task_plan "$fix" "$plan" >/dev/null || true ;;
     esac
 
+    SPRINTBIAS_FIX_ID="$fid"; SPRINTBIAS_FIX_TASK="$fix"
+    if [ "$signed" -eq 1 ]; then
+        # Already signed off: a log line links the fix; nothing is held.
+        sprintbias_add_test_log "$orig" "- $today · found broken after sign-off: $(printf '%s\n' "$report" | head -1) → fix #$fid"
+        echo "✓ Filed fix task #$fid → $fix"
+        echo "  **Fixes**: #$orig_id · **Crew**: ${crew:-none} · **Plan**: ${plan:-none}"
+        echo "  #$orig_id stays in done/ (signed off); the fix is linked in its ## Test log"
+        return 0
+    fi
     # The original stays in review/ and holds its dependents until the fix lands.
     held=$(sprintbias_meta_value "$orig" "Held")
     _sprintbias_write_field "$orig" "Held" "${held:+$held, }fix #$fid" || true
     sprintbias_add_test_log "$orig" "- $today · sent back: $(printf '%s\n' "$report" | head -1) → fix #$fid"
 
-    SPRINTBIAS_FIX_ID="$fid"; SPRINTBIAS_FIX_TASK="$fix"
     echo "✓ Filed fix task #$fid → $fix"
     echo "  **Fixes**: #$orig_id · **Crew**: ${crew:-none} · **Plan**: ${plan:-none}"
     echo "  #$orig_id stays in review/ with **Held**: fix #$fid"
@@ -3920,6 +4066,12 @@ SPRINTBIAS_BUDGET_AUDIT="${SPRINTBIAS_BUDGET_AUDIT:-$(sprintbias_cfg BUDGET_AUDI
 
 SPRINTBIAS_BUDGET_BREAK="${SPRINTBIAS_BUDGET_BREAK:-$(sprintbias_cfg BUDGET_BREAK)}"
 : "${SPRINTBIAS_BUDGET_BREAK:=2.00}"
+
+SPRINTBIAS_BREAK_MAX_TURNS="${SPRINTBIAS_BREAK_MAX_TURNS:-$(sprintbias_cfg BREAK_MAX_TURNS)}"
+: "${SPRINTBIAS_BREAK_MAX_TURNS:=25}"
+
+SPRINTBIAS_BREAK_TIMEOUT="${SPRINTBIAS_BREAK_TIMEOUT:-$(sprintbias_cfg BREAK_TIMEOUT)}"
+: "${SPRINTBIAS_BREAK_TIMEOUT:=900}"
 
 SPRINTBIAS_AUDIT_MAX_PASSES="${SPRINTBIAS_AUDIT_MAX_PASSES:-$(sprintbias_cfg AUDIT_MAX_PASSES)}"
 : "${SPRINTBIAS_AUDIT_MAX_PASSES:=2}"

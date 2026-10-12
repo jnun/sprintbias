@@ -133,10 +133,12 @@ docs/
   so work happens and closes in dependency order.
 - `Dependents` — reverse edge; graph info only. `Plan` — its plan (`none` or an id).
 - `Crew` — the member it is routed to (`none` or a name); in `doing/`, the claim.
-- `Tests` — suite scripts under `docs/tests/` that prove success. `promote` runs them;
+- `Tests` — test files under `docs/tests/` that prove success. `promote` runs them
+  (`.sh` with bash; others with config `TEST_RUN`, else `.py` with pytest);
   all green → `done/`. `none` means a human signs off.
-- `Fixes` — on a fix task, the review/ task it repairs (`#<id>`). `promote --reject`
-  (or a failing full suite at `promote plan:N`) files it.
+- `Fixes` — on a fix task, the task it repairs (`#<id>`). `promote --reject` (on a
+  review/ task, or a done/ one found broken later) or a failing full suite at
+  `promote plan:N` files it.
 - `Held` — on the original: `fix #<new>`. It stays in `review/`, shows as
   `held: fix #N` in `plan check` and `status` (apart from *unproven*), releases its
   dependents once the fix lands, and closes once the fix is in `done/`.
@@ -170,6 +172,10 @@ removes the proof line for what it cannot (the task lands unproven, the failure 
 any task that has not had it before signing off, so `promote <id>` / `promote plan N`
 is the whole human path; `polish --break <id|plan:N>` runs it alone. A plan target
 reads `plan N`, `plan:N`, or a bare N when no task N exists (work, promote, polish, crew).
+Each run adds `· $cost` to its Breaker line; raise its limits with `BREAK_MAX_TURNS` (25),
+`BREAK_TIMEOUT` (900 s) and `BUDGET_BREAK` ($2) in config. `status --edges` scores it:
+defects the agents caught vs defects you found (`promote --reject`, including on a `done/`
+task found broken later, and human-test failures), with and without the breaker.
 
 ## The pipeline
 
@@ -226,6 +232,7 @@ Groups: **create · chat · plan · work · look · keep**.
 ./sprint.sh plan think 5        # improve the plan + align its tasks; calls listed under ## Decided
 ./sprint.sh plan start 5        # gate + commit members into next/ (latches STARTED)
 ./sprint.sh plan check 5        # read-only: STARTED / LANDED / SIGNED OFF, and each member's standing
+./sprint.sh plan check          # pick a plan, or Enter to check them all
 ./sprint.sh plan polish 5       # excellence-judge the plan's finished work
 ./sprint.sh plan done 5         # retire the plan into a history record (docs/history/)
 
@@ -241,7 +248,7 @@ Groups: **create · chat · plan · work · look · keep**.
                                 #   plan:N = sign off a LANDED plan with one approval)
 
 # look — read-only
-./sprint.sh status              # project status
+./sprint.sh status              # project status (--edges: caught by agents vs found by you)
 ./sprint.sh agents              # every AI session here and on your servers
 ./sprint.sh search <keyword>    # search tasks
 ./sprint.sh history             # finished work, newest first (--since <date|tag> = release notes)
@@ -287,7 +294,8 @@ Solo optimizes for one context: one agent, the code read once, nothing re-learne
 
 Crew optimizes for throughput: several AI sessions at once, each with a name and a
 job, none idle. A lead keeps everyone rowing; members such as a builder, a bug
-fixer or a production operator do the work. Each member is one file,
+fixer, a production operator or a security pass do the work. Write a member for
+every lane; run only the ones a plan needs. Each member is one file,
 `docs/crew/<name>.md`: its role, what it reads first, what it may touch, how it reports.
 `./sprint.sh crew setup` proposes a crew and fills the files; `crew <name> [id|plan:N]`
 starts a member in its own terminal (`./sprint.sh help crew`). Every member works by these:
@@ -299,8 +307,9 @@ starts a member in its own terminal (`./sprint.sh help crew`). Every member work
 2. **Stay in your lane.** Each member touches only what its file allows.
 3. **Land fast and report it.** Land each task with its proof line, tell the lead the
    id and proof (or write it on the plan's `## Crew` board), and take your next.
-4. **The lead splits and routes.** It holds the plan in its `## Crew` section, leaves
-   product code to the others, splits work as wide as disjoint `**Touching:**` lists
+4. **The lead splits and routes.** It holds the plan in its `## Crew` section, with an
+   `Active:` line naming who runs; adds a member for a task no lane covers; leaves
+   product code to the others; splits work as wide as disjoint `**Touching:**` lists
    allow, and routes what each landing releases, marking it "built on #N (landed)".
    At LANDED it runs the full suite, routes each fix to the member who built the
    original, and hands you one `./sprint.sh promote plan:N`.

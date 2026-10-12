@@ -319,6 +319,8 @@ cmd_newplan() {
 }
 
 cmd_status() {
+    # --edges: the edge-case scorecard (edges.sh); bare: the project status.
+    if [ "${1:-}" = "--edges" ]; then run_script "edges.sh" "$@"; return; fi
     local root="$PROJECT_ROOT"
     local tasks="$root/docs/tasks"
 
@@ -688,7 +690,7 @@ case "$CMD" in
     newplan)       shift; cmd_newplan "$@" ;;
     newbug)        shift; cmd_newbug "$@" ;;
     newtest)       shift; cmd_newtest "$@" ;;
-    status)        cmd_status ;;
+    status)        shift; cmd_status "$@" ;;
     profile)       shift; cmd_profile "$@" ;;
     search)        shift; cmd_search "$@" ;;
     history)       shift; cmd_history "$@" ;;

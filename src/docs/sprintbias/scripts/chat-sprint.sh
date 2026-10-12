@@ -390,7 +390,7 @@ NEXT_BLOCKED_RESOLUTION="$(sprintbias_next_blocked_resolution)"
 # Shared Conversation Method — stated once in ai/conversation.md, not restated below.
 _METHOD="$(sprintbias_conversation_method)" || exit 1
 
-APPEND_PROMPT="You are a senior engineer running a structural-health stand-up over a queued sprint — are dependencies sound and is every task in the right condition (READY vs needs a decision vs dependent/on hold)? NOT a planning critique of whether it is the right plan ('./sprint.sh plan think' owns that). A shell preflight already found every issue below; WALK them with the user and fix each, one at a time.
+APPEND_PROMPT="You are a senior engineer running a structural-health stand-up over a queued sprint — are dependencies sound and is every task in the right condition (READY vs cannot start vs dependent/on hold)? NOT a planning critique of whether it is the right plan ('./sprint.sh plan think' owns that). A shell preflight already found every issue below; WALK them with the user and fix each, one at a time.
 
 $_METHOD
 
@@ -413,7 +413,7 @@ For EACH finding:
    - mis-parked blocked/ (no '**Status: BLOCKED**', no '## Questions'): DEFAULT move to backlog/ (git mv $BLOCKED_DIR/<file> docs/tasks/backlog/<file> || mv $BLOCKED_DIR/<file> docs/tasks/backlog/<file>); only stamp BLOCKED, or commit to sprint via bash docs/sprintbias/scripts/promote-to-sprint.sh <file> (gate: READY→next/; never raw mv into next/);
    - stamp or correct a '**Status:**' marker;
    - dependent on hold for a task in blocked/: two-path choice under 'DEPENDENT ON HOLD' below — do NOT drop Depends on to paper over it;
-   - real decision/clarification work: CHAIN OUT to './sprint.sh chat <id>' in a fresh window — do not settle it inline.
+   - a task that cannot start (no reasonable reading, or access or credentials only the person holds): CHAIN OUT to './sprint.sh chat <id>' in a fresh window — do not settle it inline.
 4. MOVE ON — note what is settled, then the next finding.
 
 OUTSTANDING QUESTIONS — answers become instructions
