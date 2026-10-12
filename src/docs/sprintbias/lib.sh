@@ -979,15 +979,19 @@ for f in files:
     if not m:
         paths.append(None)
         continue
+    # List items or bare path lines, up to the first blank line after a path.
+    # A stray match only joins two lanes (safe); a missed path runs two
+    # breakers on one file at once, so read every line.
     got = set()
     for line in m.group(1).splitlines():
-        if not re.match(r"\s*[-*]\s", line):
-            if got and not line.strip():
+        if not line.strip():
+            if got:
                 break
             continue
-        for p in re.findall(r"[A-Za-z0-9_()./-]+\.[A-Za-z0-9]{1,6}", line.split(" (")[0]):
-            if not p.lower().endswith(".md"):
-                got.add(p.strip("`"))
+        for p in re.findall(r"[A-Za-z0-9_()./-]+", line.split(" (")[0]):
+            p = p.rstrip(".")
+            if ("/" in p or re.search(r"\.[A-Za-z0-9]{1,6}$", p)) and not p.lower().endswith(".md"):
+                got.add(p)
     paths.append(got)
 parent = list(range(len(files)))
 def find(i):

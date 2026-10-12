@@ -232,6 +232,7 @@ Groups: **create · chat · plan · work · look · keep**.
 ./sprint.sh plan think 5        # improve the plan + align its tasks; calls listed under ## Decided
 ./sprint.sh plan start 5        # gate + commit members into next/ (latches STARTED)
 ./sprint.sh plan check 5        # read-only: STARTED / LANDED / SIGNED OFF, and each member's standing
+./sprint.sh plan check          # pick a plan, or Enter to check them all
 ./sprint.sh plan polish 5       # excellence-judge the plan's finished work
 ./sprint.sh plan done 5         # retire the plan into a history record (docs/history/)
 

@@ -9,6 +9,8 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+## 0.0.139 — 2026-10-12
+
 ### Changed
 - Bare `./sprint.sh plan check` lists your plans and asks which to check; press Enter to check them all. Without a terminal it checks them all.
 
