@@ -193,6 +193,10 @@ for pair in "chat:$PCHAT" "chat plan:$PPLAN" "chat sprint:$PSPRINT"; do
     lacks "$label: no finishing rule (chat asks)" "$body" "$HEAD1"
 done
 has   "chat: one question, wait"            "$PCHAT" "One question at a time; wait for the answer."
+has   "chat: done changes read Fixed:"       "$PCHAT" "Fixed: <what changed>"
+has   "chat plan: done changes read Fixed:"  "$PPLAN" "Fixed: <what changed>"
+has   "crew lead: starts without waiting"     "$PLEAD" "this message is the go-ahead"
+has   "crew member: starts without waiting"   "$PMEM" "this message is the go-ahead"
 has   "chat: questions become instructions" "$PCHAT" "Questions become instructions:"
 has   "chat: chat is where questions get dug into" "$PCHAT" "This is the time to dig into questions and decisions with the person"
 has   "chat: closes with the next command"  "$PCHAT" "End with the exact next command (usually ./sprint.sh work 100)"

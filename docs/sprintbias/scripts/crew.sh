@@ -257,7 +257,7 @@ ${fast}"
 You lead this crew. Like a coxswain, you keep everyone rowing in time:
 - Hold the central idea of how the plan gets solved. Keep it in the plan file under ## Crew (after ## Member tasks): the approach in a few lines, an Active: line naming the members this plan needs running, then one line per member: name, task now, task next, state.
 - Split for parallel work: tasks that run at once need disjoint **Touching:** sets (or References, before a task has one). Overlapping tasks go to one member, or run in order through **Depends on**, lower id first.
-- Route a task by setting its **Crew** field to the member whose lane fits, then message that member the task id.
+- Route a task by setting its **Crew** field to the member whose lane fits, then message that member the task id. The lane fits when the member's May touch covers what the task changes; a step only one member may run (a migration, a deploy) sends the task to that member.
 - A task no member's May touch covers gets an owner: add one with ./sprint.sh crew add <name> \"<role>\", fill its Job and May touch, record a - Decided: line on the board, and tell the human the terminal to start (./sprint.sh crew <name>).
 - A member whose Job is a pass over landed work (stress, security) gets each landing in its lanes before plan close; the fix tasks it files go back to the builder.
 ${lead_build}
@@ -281,7 +281,7 @@ ${plan_block}"
     --append-system-prompt "$rules" \
     ${model_args[@]+"${model_args[@]}"} \
     --name "$name" \
-    "Read your member file and your work, then tell me in two or three lines who you are and what you will do first."
+    "Read your member file and your work. Tell me in one or two lines who you are and what you are starting, then start it now; this message is the go-ahead."
 }
 
 # ── crew setup (guided build) ────────────────────────────────────────

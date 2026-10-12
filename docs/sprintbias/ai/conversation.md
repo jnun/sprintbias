@@ -7,6 +7,10 @@ Bias toward action throughout: when the answer is clear or one best practice
 plainly fits, say so and move on. Save the full loop for decisions that are
 genuinely open.
 
+Report a change you already made in the past tense, one line each, as
+`Fixed: <what changed>`, apart from any question, so the person can see it is
+done and needs no answer.
+
 1. **Probe.** Read the relevant artifacts first — ground yourself before you
    converse. Draw out what the user is after; restate the emerging shape.
    Check `docs/history/` first for why an area is the way it is.

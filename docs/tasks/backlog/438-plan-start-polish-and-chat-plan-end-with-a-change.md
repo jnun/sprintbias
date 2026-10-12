@@ -3,56 +3,53 @@
 **Feature**: none
 **Created**: 2026-10-10
 **Docs**: none
-**Plan**: none
+**Plan**: 34
 **From plan**: none
-**Depends on**: none
+**Depends on**: 452
 **Dependents**: none
 **Parent**: none
 **Fixes**: none
 **Crew**: none
-**Tests**: none
+**Tests**: docs/tests/test-change-report.sh
 **Refined**: 0
 **Reworked**: 0
 
 ## Problem
 
-<!-- sb:hint  Clear, simple language. Concisely define the problem at a high
-     level — who is stuck, what is wrong, why it matters. 2–5 short sentences.
-     User-story height — not a build plan. -->
-
-
+`plan think` ends with a Changes report (every file it created, edited or
+moved, with `+N −M` and a one-line summary), and that report is what lets the
+person trust a pass without reading every file. `plan start`, `plan polish` and
+`chat plan` change plan and task files too but end without one, so the person
+has to diff by hand to see what moved.
 
 ## Done when (automated)
 
-<!-- sb:hint  What done looks like, proven by a machine. Each outcome is an
-     observable check; name the test or command that proves it in backticks
-     (`bash docs/tests/test-login.sh`, `npm test -- login`). When these pass, an
-     agent may land the task. For a library or detailed technical fix, state
-     the new technical needs as outcomes — still not a step outline. -->
-
-- [ ]
-- [ ]
-- [ ]
+- [ ] `plan start`, `plan polish` and `chat plan` each end with the same Changes
+  report `plan think` prints (one shared helper, not three copies), kept in
+  `docs/tmp/<command>-<id>-changes.md`. Proven by
+  `bash docs/tests/test-change-report.sh`
+- [ ] The report opens with the run's Consequences (#452) before the file list,
+  and its last line names the next command. Proven by
+  `bash docs/tests/test-change-report.sh`
+- [ ] A run that changed nothing prints one line saying so. Proven by
+  `bash docs/tests/test-change-report.sh`
+- [ ] Help for `plan` and `chat` names the report; `./sprint.sh validate --docs`
+  passes.
 
 ## Signoff (human)
 
-<!-- sb:hint  What only a person can judge: user stories to try, screens to
-     look at, real hardware to try. Never holds the work: in a plan these
-     gather into one human test, run at the end. Leave empty when a machine
-     proves everything. -->
-
-- [ ]
-
 ## Notes
 
-<!-- sb:hint  Optional helpful hints that assist the developer: constraints, edge
-     cases, gotchas. Guidance from answered questions also lives here when it
-     shapes how (and is not already a success criterion). Leave empty if none. -->
+- Decided: reuse plan think's before/after snapshot of `docs/tasks/` and
+  `docs/plans/` as the shared helper, because it already works and one report
+  shape reads the same everywhere.
 
 ## References
 
-<!-- sb:hint  Direct paths to docs or files known to be related. One path per
-     line. Leave empty if none. -->
+docs/sprintbias/scripts/plan-think.sh (Changes report)
+docs/sprintbias/scripts/plan-start.sh
+docs/sprintbias/scripts/plan-polish.sh
+docs/sprintbias/scripts/chat-plan.sh
 
 <!-- sb:hint  After work only — audit trail of what was touched. Helps committers,
      later audits, and "what broke?" recovery. List the product files you

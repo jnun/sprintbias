@@ -9,6 +9,10 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+### Changed
+- `chat` and `chat plan` report each change they already made as a past-tense `Fixed: …` line, apart from any question, so you can see it is done and needs no answer.
+- `crew <name>` starts working as soon as it opens: the lead runs `plan start` on a ready plan and routes wave 1, and a member takes its task, instead of describing its first step and waiting for you.
+
 ## 0.0.139 — 2026-10-12
 
 ### Changed
