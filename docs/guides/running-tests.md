@@ -160,6 +160,19 @@ bash docs/tests/test-no-stale-refs.sh
 `run-all.sh --unit` discovers every `docs/tests/test-*.sh` (including the
 command-matrix emit smoke). It does **not** run `smoke-*.sh` until `--emit`.
 
+**Linux (bash 5) before a release.** macOS ships bash 3.2, which forgives some
+things bash 5 rejects under `set -u` (an unset `$1`, for one). Run the suite in
+a Debian container on a copy of the repo:
+
+```bash
+docker run --rm -v "$PWD":/src:ro debian:bookworm-slim bash -c '
+  apt-get update -qq >/dev/null && apt-get install -y -qq git python3 rsync procps >/dev/null
+  cp -a /src /work && cd /work && git config --global user.email t@t && git config --global user.name t
+  bash docs/tests/run-all.sh 2>&1 | grep -E "FAIL|Suite:"'
+```
+
+A check that needs a shell the image lacks (zsh) skips itself.
+
 ---
 
 ## Tier 2 — Emit + Grok spine smoke

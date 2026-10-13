@@ -94,6 +94,8 @@ wrapped=$(bash "$SCRIPTS/agents.sh" --bogus 2>&1 || true)
 assert_contains "wrapper prints usage on an unknown flag" "$wrapped" "Usage: ./sprint.sh agents"
 wrapped=$(bash "$SCRIPTS/agents.sh" --host 2>&1 || true)
 assert_contains "wrapper wants a value after --host" "$wrapped" "Usage: ./sprint.sh agents"
+wrapped_bare=$(/bin/bash "$SCRIPTS/agents.sh" 2>&1 || true)
+assert_not_contains "bare agents runs under bash 3.2 (no unbound args)" "$wrapped_bare" "unbound variable"
 
 echo "-- unreachable host"
 out=$(agents --host "no-such-host.invalid")

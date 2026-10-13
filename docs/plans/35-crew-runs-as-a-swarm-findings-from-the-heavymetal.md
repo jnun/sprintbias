@@ -31,6 +31,18 @@ come from what the heavymetal plan 69 crew run shows, filed as it happens.
 - #460 — crew setup builds lanes from the project's own agents and standards
 - #461 — crew setup decides and builds instead of asking
 - #462 — No budget cap by default; a project sets one when it wants a ceiling
+- #463 — agents crashes with no flags on macOS bash
+- #464 — Crew keeps what lasts in project files, not agent memory
+- #465 — crew setup builds the project map first when a project has none
+- #466 — The crew lead runs members as subagents from their profiles
+- #467 — The crew lead stays light and hands off before its context runs out
+- #468 — work and crew run on Linux bash 5
+- #469 — Crew members prove a task with targeted tests; the full suite runs once at plan close
+- #470 — Crew runs tests on a shared Simulator, database or port one at a time
+- #471 — A known bug is fixed now, as deep as a solid result needs, and teaches the project
+- #472 — Every worker follows one six-step loop: build, test, adjust, resolve, fix, submit
+- #473 — The crew lead hands off early, at a quarter of its context used, with a brain dump, and a new lead takes over
+- #474 — Tasks a crew files during a plan carry --from-plan
 
 ## Signoff (human)
 

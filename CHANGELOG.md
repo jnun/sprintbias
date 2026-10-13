@@ -9,6 +9,22 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+### Changed
+- A crew lead hands off once about a quarter of its context is used, while three quarters is still free: it writes what it knows into `## Lead notes` in `docs/tmp/plan-<id>-progress.md`, tells the crew a new lead is coming, lets running work land, and marks `Handoff: ready`. `crew` then ends that session and starts a fresh lead in the same terminal, which takes over from the file, so no one retypes a command. Ending a lead yourself (`/quit`, Ctrl-C) stops the loop, and `./sprint.sh crew <lead> plan:N` resumes it.
+- A crew member in its own terminal stays fresh the same way: once about a quarter of its context is used, it lands its task, writes what the next session needs into the task file, and asks you to run `./sprint.sh crew <name>`.
+- Every worker and crew member follows one loop, in order: build what was defined, test what was built, adjust what fails, resolve known conflicts, fix all bugs, submit for review.
+- A known bug is fixed now: workers and the breaker fix defects in any code the change reaches, as deep as a solid result needs, instead of filing them for later. Each fixed case is listed under `### Edges found`, and sign-off adds it to your project map's `## Known edges` so later agents test it. At plan close the crew lead re-runs the suite until it is green.
+- Crew members prove each task with the targeted tests for what it changes, and the full suite runs once at plan close, so a chain of tasks no longer waits on a full test run per task.
+- One place to catch up on a plan: the crew lead keeps `docs/tmp/plan-<id>-progress.md` current (what is done and which member and agent built it, what is building, what each landing releases next, open calls). A fresh `crew <lead> plan:N` reads it and resumes, so a lead whose context runs long lets work in flight land and hands off. Member subagents report only the task id, proof line and calls.
+- `./sprint.sh crew <lead> plan:N` runs the whole plan from one terminal: the lead starts each member as a subagent (your project's own agent, such as `.claude/agents/api-engineer.md`, when the member file names one), a wave at once, and runs the review passes' agents itself. Open `crew <name>` in another terminal only for a member you want to watch or steer.
+- Crew sessions keep everything that must last in project files (tasks, plans, docs/crew/), never only in their own memory notes, so every member sees the same record.
+
+### Fixed
+- Tasks a crew files while working a plan now carry `--from-plan`, so `plan done` lists them as follow-ups instead of losing them.
+- A crew no longer runs two test runs at once on one iOS Simulator, dev database or port: parallel members and review passes were killing each other's test apps ("signal kill before establishing connection").
+- `work` and crew run on Linux again: every `work` prompt stopped with "unbound variable" under bash 5 (macOS's bash 3.2 hid it), and setup's fallback config edit no longer uses the macOS-only `sed -i ''`.
+- `./sprint.sh agents` with no flags runs again on macOS (it stopped with "args[@]: unbound variable").
+
 ## 0.0.141 — 2026-10-12
 
 ### Changed

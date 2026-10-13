@@ -60,7 +60,7 @@ Add the lead		./sprint.sh crew add orcha "Keeps everyone rowing: holds the plan,
 Add members			./sprint.sh crew add dill "Finds and fixes bugs"
 Fill in each file	edit docs/crew/<name>.md: Job, Reads first, May touch, Reports
 Start the lead		./sprint.sh crew orcha plan:5 (in its own terminal; assigns plan 5 to orcha)
-Start each member	./sprint.sh crew dill (one terminal each)
+Watch a member		./sprint.sh crew dill (its own terminal; otherwise the lead runs it as a subagent)
 See who holds what	./sprint.sh crew
 
 Run `crew <name>` from a plain terminal. Inside an AI session it prints the
@@ -205,8 +205,8 @@ infocmp -x $TERM | ssh <box> tic -x -.
 
 Time		Do
 Start		Start the lead on the plan. It reads the board and routes the day's tasks
-Morning		Start each member it routed work to. Each claims, works, and reports
-Midday		Run ./sprint.sh crew to see who holds what; answer the lead's questions
+Morning		The lead runs each routed member as a subagent, a wave at once. Each claims, works, and reports
+Midday		Run ./sprint.sh crew to see who holds what; open crew <name> for a member you want to steer
 Ongoing		Members land tasks in review/ with proof; the lead routes what each landing releases
 Plan close	The lead runs the suite and hands you ./sprint.sh promote plan:N. You approve once, commit, and push
 Next day	Start fresh sessions. The board and task files carry the state, not the chat history

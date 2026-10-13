@@ -1792,7 +1792,7 @@ if [ -f "$CONFIG_FILE" ]; then
         for _kv in "CLI=${SELECTED_CLI}" "PROVIDER=${SELECTED_PROVIDER}"; do
             _k="${_kv%%=*}"
             if grep -q "^${_k}=" "$CONFIG_FILE"; then
-                sed -i '' "s|^${_k}=.*|${_kv}|" "$CONFIG_FILE"
+                sed "s|^${_k}=.*|${_kv}|" "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
             else
                 echo "$_kv" >> "$CONFIG_FILE"
             fi
@@ -1829,7 +1829,7 @@ if [ -f "$CONFIG_FILE" ]; then
             if declare -F sprintbias_cfg_set >/dev/null 2>&1; then
                 sprintbias_cfg_set "$_mk" ""
             else
-                sed -i '' "s|^${_mk}=.*|${_mk}=|" "$CONFIG_FILE"
+                sed "s|^${_mk}=.*|${_mk}=|" "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
             fi
             _cleared=$((_cleared + 1))
         fi

@@ -150,7 +150,9 @@ that proves it, in backticks; an older `## Success criteria` reads as this),
 `## Signoff (human)` (what a person checks at sign-off), `## Test log` (each failure:
 command, failing test, error excerpt), and `## Completed`, which ends with the proof line.
 
-**Test loop** (every worker): build the smallest testable outcome first, run the
+**Test loop** (every worker), in order: build what was defined, test what was built,
+adjust what fails, resolve known conflicts, fix all bugs, submit for review. Build the
+smallest testable outcome first, run the
 targeted tests (those Done when names, plus tests for the code your Touching files
 feed), log each failure under `## Test log`, then audit it: a wrong test gets
 corrected, a clear cause gets fixed, and the run repeats until green. A failure still
@@ -163,10 +165,11 @@ its class. The gate names a check per listed case; the worker asserts each Done 
 case and each realistic case of the class, round trips (every form your docs, UI or
 examples tell people to write, and what the real tools people use emit), again and
 after (run twice, older state, hand edits), empty / one / many / malformed, and
-neighbors (other code on the same data). A failing case is fixed, or filed with
-`newtask` when it lives in another code path; Decided and Assumptions record choices
-between working options. **Breaker** (on by default): after a task lands, a fresh
-agent writes tests designed to fail against the change, fixes what it can, and
+neighbors (other code on the same data). A known bug is fixed now, in any code it
+reaches, as deep as a solid result needs; each one is listed under `### Edges found`
+and joins the project map's `## Known edges` at sign-off. Decided and Assumptions record
+choices between working options. **Breaker** (on by default): after a task lands, a fresh
+agent writes tests designed to fail against the change, fixes every defect it can (neighboring code too), and
 removes the proof line for what it cannot (the task lands unproven, the failure in
 `## Test log`). Off: `BREAK=off` in `docs/sprintbias/config`, or `--no-break`. `promote` runs it on
 any task that has not had it before signing off, so `promote <id>` / `promote plan N`
@@ -297,8 +300,8 @@ job, none idle. A lead keeps everyone rowing; members such as a builder, a bug
 fixer, a production operator or a security pass do the work. Write a member for
 every lane; run only the ones a plan needs. Each member is one file,
 `docs/crew/<name>.md`: its role, what it reads first, what it may touch, how it reports.
-`./sprint.sh crew setup` builds a crew from your project and fills the files; `crew <name> [id|plan:N]`
-starts a member in its own terminal (`./sprint.sh help crew`). Every member works by these:
+`./sprint.sh crew setup` builds a crew from your project and fills the files; `crew <lead> plan:N` runs the
+members as subagents, and `crew <name>` starts one in its own terminal to watch or steer (`./sprint.sh help crew`). Every member works by these:
 
 1. **Claim and route through files.** A task's `Crew` field routes it to a member.
    Moving it into `doing/` with `Crew` set to your own name is the claim; a task in

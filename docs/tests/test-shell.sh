@@ -104,8 +104,10 @@ for sh in zsh bash; do
   check "$sh: files copied"                  '[ -f "$H/.config/sprintbias/shell/prompt.$sh" ]'
   check "$sh: backup made"                   'cmp -s "$TMP/orig-rc" "$rc.sprintbias-bak"'
   check "$sh: block uses \$HOME, not a fixed path" 'grep -qF "\$HOME/.config/sprintbias/shell/prompt.$sh" "$rc"'
-  check "$sh: block loads in a real shell" \
-    '[ "$(HOME="$H" TERM=dumb $sh -i -c "echo \${__sb_host_c+loaded}" 2>/dev/null </dev/null)" = loaded ]'
+  if command -v "$sh" >/dev/null 2>&1; then
+    check "$sh: block loads in a real shell" \
+      '[ "$(HOME="$H" TERM=dumb $sh -i -c "echo \${__sb_host_c+loaded}" 2>/dev/null </dev/null)" = loaded ]'
+  fi
 
   echo "# added by the user later" >> "$rc"
   printf '# added by the user later\n' >> "$TMP/orig-rc"

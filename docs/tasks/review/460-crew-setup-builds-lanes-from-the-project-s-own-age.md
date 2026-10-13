@@ -30,6 +30,7 @@ heavymetal already defines its lanes: `.claude/agents/` holds api, db, web, iOS 
 
 ## Notes
 
+- Decided: the method names docs/crew/ as where member files live, because the heavymetal run looked for docs/sprintbias/crew and got a failing ls.
 - Decided: the project's existing agents and standards are the crew's starting position, because a configured project has already made those calls.
 
 ## References

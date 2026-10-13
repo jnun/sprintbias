@@ -80,6 +80,14 @@ has to see it at a glance and be able to undo it in one command.
   - Consequence: the iOS Release button becomes Return, which always asks where
     the unit was left, was Release with no place; decided in #1803
   - Consequence: new API field `held_since`, was none; decided in #1798
+- Second example, from the plan 69 crew gate (2026-10-12): three calls a product
+  owner should see first were recorded only in the plan's Decided list:
+  - Consequence: the equipment sync list format moves to ls3 on server and iOS,
+    was ls2; decided in #1798
+  - Consequence: synced equipment rows gain `holder_user_id`, `holder_name`,
+    `held_since`, was none; decided in #1798
+  - Consequence: a disposed unit you hold shows Release, not Return, was Return
+    everywhere; decided in #1803
 
 ## References
 

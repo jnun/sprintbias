@@ -112,8 +112,10 @@ has "gate: a check per listed case" "$GC" "A Done when line that lists cases nam
 has "gate: other code path is filed" "$GC" "A gap you find in another code path: ./sprint.sh newtask"
 R="$(sprintbias_proof_rule)"
 has "proof rule: assertion per case"   "$R" "add one assertion per ## Done when case and per realistic"
-has "proof rule: fix or file"          "$R" "Fix each failure; file one in"
-has "proof rule: Decided is not a parking lot" "$R" "never a known failure"
+has "proof rule: a known bug is fixed now" "$R" "Fix all bugs: each known bug, in any code it reaches"
+has "proof rule: as deep as needed"   "$R" "as deep as a solid result"
+has "proof rule: lists Edges found"   "$R" "### Edges found"
+has "proof rule: Decided is not a parking lot" "$R" "Never park a known failure"
 setup
 run_exec >/dev/null
 P="$(prompts | awk '/^=====$/{exit} {print}')"
@@ -241,6 +243,19 @@ has "breaker: extremes after"        "$BR" "Reach for extremes after"
 has "breaker: re-decides a bad call" "$BR" "When a - Decided: line caused it,"
 has "breaker: replaces the Decided line" "$BR" "replace that line (say what"
 has "breaker: failing test names its task" "$BR" "A test left failing names its filed task"
+has "breaker: fixes neighboring code too" "$BR" "A defect in a neighboring code path is fixed too"
+has "breaker: lists Edges found"     "$BR" "### Edges found"
+
+# sign-off lifts each task's ### Edges found into the map's ## Known edges, once
+LE="$(mktemp -d)"
+printf '# Project map\n\n## Code\n\n- src/\n' > "$LE/project.md"
+printf '# Task 77: Parse\n\n## Completed\n\n### Edges found\n- quoting: a path with a space\n- empty: a blank CSV row\n\n### Files changed\nsrc/a.sh\n' > "$LE/77-parse.md"
+SPRINTBIAS_PROJECT_MAP="$LE/project.md" sprintbias_lift_edges "$LE/77-parse.md" >/dev/null
+SPRINTBIAS_PROJECT_MAP="$LE/project.md" sprintbias_lift_edges "$LE/77-parse.md" >/dev/null
+has "lift edges: case added with its id" "$(cat "$LE/project.md")" "- quoting: a path with a space (#77)"
+is  "lift edges: each case once across runs" "$(grep -c 'blank CSV row' "$LE/project.md")" "1"
+lacks "lift edges: Files changed not lifted" "$(cat "$LE/project.md")" "src/a.sh (#77)"
+rm -rf "$LE"
 
 echo "Test 5: polish --break runs the breaker alone on landed work"
 setup

@@ -49,4 +49,4 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-exec python3 "$SCRIPTS_DIR/agents.py" "${args[@]}"
+exec python3 "$SCRIPTS_DIR/agents.py" ${args[@]+"${args[@]}"}

@@ -505,6 +505,7 @@ EOF
   BREAK_FILES=()
   for mid in $ORDER; do BREAK_FILES+=("$(sprintbias_task_path "$mid")"); done
   sprintbias_break_signoff "$BREAK_JOBS" "$DRY_RUN" "${BREAK_FILES[@]}"
+  [ "$DRY_RUN" -eq 1 ] || sprintbias_lift_edges "${BREAK_FILES[@]}"
   if [ "$SPRINTBIAS_BREAK_EMIT" -eq 1 ]; then
     echo ""
     echo "  Nothing moved. Then:  ./sprint.sh promote plan:$PLAN_ID"
@@ -898,6 +899,7 @@ for f in "${TASKS[@]}"; do
 done
 unset _t
 sprintbias_break_signoff "$BREAK_JOBS" "$DRY_RUN" ${BREAK_FILES[@]+"${BREAK_FILES[@]}"}
+[ "$DRY_RUN" -eq 1 ] || sprintbias_lift_edges ${BREAK_FILES[@]+"${BREAK_FILES[@]}"}
 if [ "$SPRINTBIAS_BREAK_EMIT" -eq 1 ]; then
   echo ""
   _again="./sprint.sh promote"; [ "$ACCEPT" -eq 1 ] && _again="$_again --accept"

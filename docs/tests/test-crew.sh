@@ -144,6 +144,33 @@ assert_contains "Board names the active set" "$out" "an Active: line naming the 
 assert_contains "Unowned lane gets a member" "$out" "A task no member's May touch covers gets an owner: add one with ./sprint.sh crew add"
 assert_contains "Lead names the terminal to start" "$out" "tell the human the terminal to start (./sprint.sh crew <name>)"
 assert_contains "Landings reach pass members" "$out" "A member whose Job is a pass over landed work (stress, security, UI and UX) gets each landing"
+assert_contains "Lead runs members as subagents" "$out" "Run the members yourself as subagents"
+assert_contains "Members prove with targeted tests" "$out" "prove the task with the targeted tests for what it changes"
+assert_contains "Members share a runtime resource one run at a time" "$out" "serves one test run at a time"
+assert_contains "Filed tasks carry their plan" "$out" "--from-plan <that plan's id>"
+assert_contains "Lead serializes runs on a shared resource" "$out" "Shared runtime resources count as touched too"
+assert_contains "Full suite once at plan close" "$out" "the full suite runs once, at plan close"
+assert_contains "Lead uses the project's own agent type" "$out" "the project's own agent, such as .claude/agents/api-engineer.md"
+assert_contains "Lead runs pass reviewers itself" "$out" "you run each pass's reviewers"
+assert_contains "Subagents return a short report" "$out" "return only the task id, its proof line"
+assert_contains "Lead keeps the progress file" "$out" "docs/tmp/plan-5-progress.md, current"
+assert_contains "Progress names who built what" "$out" "the member and agent type that built it"
+assert_contains "Fresh lead reads progress first" "$out" "read it first when it exists and resume from Next"
+assert_contains "Lead hands off at a quarter of its context" "$out" "When about a quarter of your context window is used (three quarters still free)"
+assert_contains "Terminal member restarts fresh at a quarter" "$out" "land the task you are on, put anything the next session needs in that task file"
+assert_contains "Lead writes a brain dump" "$out" "add a ## Lead notes section to the progress file"
+assert_contains "Brain dump keeps useful lines" "$out" "Keep every useful line"
+assert_contains "Lead tells the crew a new lead is coming" "$out" "a new lead is coming online"
+assert_contains "Lead marks the handoff" "$out" "Handoff: ready"
+assert_contains "Lead names the restore command" "$out" "run ./sprint.sh crew orcha plan:5 to bring the new lead online"
+assert_contains "New lead takes over from the file" "$out" "when the progress file says Handoff: ready, you are the new lead"
+mkdir -p "$TMPDIR/docs/tmp" && echo "## Done" > "$TMPDIR/docs/tmp/plan-5-progress.md"
+resumed="$(crew orcha plan:5)"
+assert_contains "Fresh lead names the progress file it resumes from" "$resumed" "Resuming plan 5 from docs/tmp/plan-5-progress.md"
+printf 'Handoff: ready (2026-10-12 17:00)\n## Done\n' > "$TMPDIR/docs/tmp/plan-5-progress.md"
+taken="$(crew orcha plan:5)"
+assert_contains "New lead announces a takeover" "$taken" "Taking over plan 5: the last lead handed off"
+rm -f "$TMPDIR/docs/tmp/plan-5-progress.md"
 out="$(crew orcha)"
 assert_contains "Lead resumes its assigned plan" "$out" "Your work is plan 5"
 assert_contains "List shows the plan a lead holds" "$(crew)" "leads plan 5: iOS logout race"
@@ -194,6 +221,8 @@ assert_contains "Setup adds a UI and UX pass from design docs" "$out" "a UI and 
 assert_contains "Setup decides instead of asking" "$out" "**Decide.** Settle each open call"
 assert_not_contains "Setup asks no questions" "$out" "Ask at most three questions"
 assert_contains "Setup starts building at once" "$out" "build the crew now; this message is the go-ahead"
+assert_contains "Setup keeps the crew in project files" "$out" "members read the files, not your memory notes"
+assert_contains "Setup hands off one start command" "$out" "The lead runs the active members as"
 assert_contains "Pass members name their command" "$out" "polish --break"
 echo "Test 6d2: breaker cases for task 444 (active-set size, pass members, the board)"
 assert_contains "Active-set size defers to the CLI notes" "$out" "fewer where your CLI's notes below say so"
@@ -268,6 +297,38 @@ while IFS= read -r d; do
     fi
     echo "  PASS: Tuned date $d"; PASS=$((PASS + 1))
 done < <(sed -n 's/^\*\*Tuned\*\*: *//p' "$SPRINTBIAS_SRC/ai/crew-setup.md")
+
+echo "Test 6f: a lead hands off to a fresh lead by itself"
+# A stub CLI plays three leads under a pseudo-terminal: the first two write
+# Handoff: ready and wait, the third marks itself online and quits.
+if command -v script >/dev/null 2>&1 && command -v pgrep >/dev/null 2>&1; then
+    stub="$TMPDIR/stub"; mkdir -p "$stub" "$TMPDIR/docs/tmp"
+    cat > "$stub/claude" <<'STUB'
+#!/bin/bash
+n=$(( $(cat "$STUB_COUNT" 2>/dev/null || echo 0) + 1 )); echo $n > "$STUB_COUNT"
+echo "stub lead $n"
+if [ $n -ge 3 ]; then printf 'Lead: online (%s)\n' $n > docs/tmp/plan-5-progress.md; exit 0; fi
+printf 'Handoff: ready (%s)\n' $n > docs/tmp/plan-5-progress.md
+trap 'echo "lead $n ended"; exit 0' TERM
+sleep 120 & wait
+STUB
+    chmod +x "$stub/claude"
+    printf 'Lead: online (0)\n' > "$TMPDIR/docs/tmp/plan-5-progress.md"
+    printf '# Plan 5: handoff\n\n**Status:** STARTED\n\n## Member tasks\n' > "$TMPDIR/docs/plans/5-handoff.md"
+    run="cd '$TMPDIR' && PATH='$stub':\$PATH STUB_COUNT='$stub/count' SPRINTBIAS_CLI=claude SPRINTBIAS_MODE=exec CREW_HANDOFF_GRACE=1 CREW_HANDOFF_MIN=0 bash docs/sprintbias/scripts/crew.sh orcha plan:5"
+    if script -qc true /dev/null >/dev/null 2>&1; then
+        auto="$(script -qc "$run" /dev/null </dev/null 2>&1 | tr -d '\r')"
+    else
+        auto="$(script -q /dev/null bash -c "$run" </dev/null 2>&1 | tr -d '\r')"
+    fi
+    assert_contains "Watcher ends a lead that handed off" "$auto" "lead 1 ended"
+    assert_contains "A fresh lead starts by itself" "$auto" "Handoff 2: starting a fresh lead for plan:5"
+    assert_contains "Third lead runs" "$auto" "stub lead 3"
+    assert_not_contains "A lead that quits ends the loop" "$auto" "Handoff 3:"
+    rm -rf "$stub" "$TMPDIR/docs/tmp/plan-5-progress.md" "$TMPDIR/docs/plans/5-handoff.md"
+else
+    echo "  SKIP: script or pgrep not installed"
+fi
 
 echo "Test 7: unknown member, task and plan fail"
 assert_fails "Unknown member" nobody
