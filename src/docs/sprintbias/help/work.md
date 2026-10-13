@@ -58,6 +58,12 @@ no flag. `--jobs N` sets the count; `--steady` runs one task at a time. Commit,
 push, ship.sh and sign-off to done/ stay yours by rule. Fast is safest on a dev
 server or a clean git tree. See `help fast`.
 
+Progress: a single task shows each step live as it runs (`-> Edit app/x.tsx`).
+Parallel tasks print one line per running task every 30 seconds with its
+elapsed time and latest step (`· #12  4m10s  Bash pnpm run lint`); set
+SPRINTBIAS_PROGRESS_SECS to change the pace (0 turns it off). Each task's full
+log grows in docs/tmp/log-work-<task>-*.json while it runs.
+
 Readiness gate: only tasks stamped 'Status: READY' with a clear question list
 are executed. A next/ task that hasn't been gated yet is not skipped — work
 runs the gate on it first (the same gate `gate` runs on next/), then routes by

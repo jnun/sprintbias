@@ -9,6 +9,23 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+## 0.0.145 — 2026-10-13
+
+### Changed
+- `chat bugs` sorts the whole inbox into the backlog in one fast pass and asks you nothing. Each report gets a quick verdict that checks the code, several at once, and the sweep acts on it with no menu: already fixed (or covered by a task) is deleted, with its evidence listed in the summary; a clear defect becomes a gleaned fix task in the backlog; an unclear report, or one that calls for a bigger decision, becomes a backlog task carrying the one question that settles it. That question keeps the task out of the sprint until you answer it with `chat <id>` or `chat backlog`. The summary ends with one copyable `./sprint.sh chat <id>` line per new task, showing the question on the ones waiting on you.
+
+### Fixed
+- `work` shows what a running task is doing instead of a line of dots. A single task prints each step live as it happens, even with `--jobs`. Parallel tasks print one status line per running task every 30 seconds with its elapsed time and latest step (`· #1883  4m12s  Edit app/src/…/CheckoutForm.tsx`); `SPRINTBIAS_PROGRESS_SECS` sets the pace, 0 turns it off. Each task's log in `docs/tmp/` now fills while the run goes rather than at the end, and `plan think` shows its steps live too.
+- Progress dots no longer keep printing over a prompt after an AI run times out or retries. A retried run starts no second dot ticker, and a ticker stops when the run it belongs to is gone.
+
+## 0.0.144 — 2026-10-13
+
+### Changed
+- `chat bugs` asks one plain question per report: **[c] Create task**, **[d] Discard as solved**, **[s] Skip for later** or **[q] Quit** (replacing work it, define it, close and kill it). The verdict checks the code first, so a report that is already resolved says so in one line with the evidence. It also names the **Standard** the report touches: the written rule the fix follows, or the doc where a missing rule is written first. Create task gleans the report into an actionable task, as complete as the report and the code allow: a clear problem with steps, done-when checks that name the standard, and recorded assumptions where the report is thin. Anything still unclear is defined later in the backlog, so a short report never stops the sweep.
+- Design calls follow written standards, and every task keeps those standards current. A task's `## Grounding` names a **Standards** line: the rule for each call it makes (how a screen, form or flow opens, its layout, buttons, words, style; an API or data shape), found in the project's standards docs such as `docs/guides/` and `docs/designs/`. A rule exists: the work follows it. A rule is unclear: the work improves it. No rule exists: the work writes one from best practice and the closest existing example. So the next page or button repeats the decision instead of guessing, and lessons from feedback and real use upgrade one rule. Every crew member carries the same rule, so tasks filed mid-plan (fixes, review findings) follow it too, and a reviewer that finds a rule unclear or silent writes or improves it before filing the fix.
+
+## 0.0.143 — 2026-10-12
+
 ## 0.0.142 — 2026-10-12
 
 ### Changed

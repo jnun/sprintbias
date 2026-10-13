@@ -18,7 +18,9 @@ docs/sprintbias/guides/crew.md → Recommended crews; start from the closest one
    project needs. An existing agent definition becomes the lane it describes,
    and its member's Reads first names that file: a builder agent is a lane, a
    reviewer agent is a pass. A design system or screen specs mean a UI and UX
-   pass that reviews each screen change against them; a security matrix or
+   pass that reviews each screen change against them (how a flow opens, its
+   layout, buttons, words, style) and writes or improves the rule wherever
+   the standard is unclear or silent; a security matrix or
    reviewer agent means a security pass. Name its invariants too, the rules every change
    keeps (tenant isolation, money that balances, records never edited), and
    find the document that holds them: the map's **Invariants:** line, or its

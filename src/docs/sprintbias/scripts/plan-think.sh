@@ -358,7 +358,8 @@ print_change_report() {
   echo "  Report: $CHANGES_FILE"
 }
 
-if sprintbias_run -p "$PROMPT" \
+# The filter shows each step live, so claim the line: the provider ticks no dots.
+if _SPRINTBIAS_HEARTBEAT_ON=1 sprintbias_run -p "$PROMPT" \
   ${_model_args[@]+"${_model_args[@]}"} \
   --tools "$TOOLS" \
   --permissions "$PERMISSIONS" \

@@ -248,6 +248,8 @@ $(sprintbias_parallel_rule "$self")
 
 $(sprintbias_proof_rule)
 
+$(sprintbias_standards_rule)
+
 $(sprintbias_assume_rule)"
   local fast; fast="$(sprintbias_fast_rules)"
   [ -n "$fast" ] && rules="${rules}

@@ -253,7 +253,7 @@ sprintbias_provider_exec() {
 
   local resume_prompt="Our connection broke mid-response and this session has been resumed. Review the conversation above and pick up exactly where you left off — do not redo completed work. If no prior progress is visible, start the task from the beginning using the original instructions. The original output requirements still apply."
 
-  local attempt=0 rc=0 session=""
+  local attempt=0 rc=0 session="" live=0
   local out errf errtext
   out="$(mktemp)" || return 1
   errf="$(mktemp)" || { rm -f "$out"; return 1; }
@@ -323,6 +323,20 @@ sprintbias_provider_exec() {
       ${tmo[@]+"${tmo[@]}"} "${cmd[@]}" 2>"$errf" | python3 -c "$_SPRINTBIAS_STREAM_FILTER" > "$out" \
         && _ps=("${PIPESTATUS[@]}") || _ps=("${PIPESTATUS[@]}")
       rc="${_ps[0]}"
+    elif [ "$effective_format" = "stream-json" ]; then
+      # A caller that asked for raw stream-json (work, plan think, breaker)
+      # gets each event as it happens, so its log grows during the run and its
+      # filter shows each step. $out keeps this attempt's copy for the result
+      # parse and the retry probe; a retry's stream follows on stdout.
+      # Dots still tick unless the caller claimed the line
+      # (_SPRINTBIAS_HEARTBEAT_ON=1) because it shows progress itself.
+      live=1
+      local -a _ls
+      _sprintbias_heartbeat_start
+      ${tmo[@]+"${tmo[@]}"} "${cmd[@]}" 2>"$errf" | tee "$out" \
+        && _ls=("${PIPESTATUS[@]}") || _ls=("${PIPESTATUS[@]}")
+      _sprintbias_heartbeat_stop
+      rc="${_ls[0]}"
     else
       # Both streams are captured to temp files, so the terminal goes dark for
       # the whole run — tick dots on the TTY so it never looks hung. Dots go to
@@ -408,7 +422,7 @@ sprintbias_provider_exec() {
       if [ "$failed" -eq 1 ] && [ "$rc" -eq 0 ]; then
         rc=1
       fi
-      cat "$out"
+      [ "$live" -eq 1 ] || cat "$out"
       [ -s "$errf" ] && cat "$errf" >&2
       rm -f "$out" "$errf" "$errtext"
       return "$rc"

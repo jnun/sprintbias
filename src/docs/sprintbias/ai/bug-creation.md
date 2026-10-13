@@ -41,17 +41,41 @@ Write observable behaviors that confirm the fix works:
 - "System shows [result]"
 - "[Action] no longer causes [problem]"
 
+### Draft From the Code
+
+A filer writes what they saw, often one line. Fill the rest from the code
+before asking: the starting state, the steps, the severity, and the success
+criteria. Then confirm with the filer one item at a time.
+
+### Standards
+
+A report that a screen, button, flow, word or API behaves wrongly or
+inconsistently is measured against a written rule. Look in the project's
+standards docs (the project map's sources; commonly `docs/guides/` and
+`docs/designs/`) and name it:
+
+- A rule exists: a success criterion says the work follows it
+  ("The dashboard action cards follow `docs/guides/design-system.md` → Dashboard action cards").
+- No rule exists, or it is unclear: the first success criterion is that the
+  rule is written or improved, from best practice and the closest existing
+  example that does the same job. The fix then follows it.
+
+The rule is what turns one report into a repeatable decision: the next screen
+follows it, and the next report improves it.
+
 ## After Documenting
 
 When the report is real work, **convert** it — do not keep a parallel bug file:
 
-1. Prefer `./sprint.sh chat bugs` → **[w] work it** — creates a fix task filled
-   from this report (Problem, steps, success criteria, origin in Notes) and
-   **deletes** the bug file.
+1. Prefer `./sprint.sh chat bugs`. It sorts every report: already fixed →
+   **deleted**; a clear defect → gleaned into a fix task in `backlog/`
+   (Problem, steps, Done when naming the **Standard:**, Decided lines where the
+   report is thin), then **deleted**; unclear or a bigger decision → the same
+   task carrying one question under `### Questions for the developer`, which
+   waits in the backlog for an answer (`./sprint.sh chat <id>`).
 2. Or create the task yourself: `./sprint.sh newtask "Fix: [description]"` and
-   delete the bug when the hand-off is done.
-3. Close without a task ([a] in chat bugs) or kill ([k]) also **delete** the
-   report. Open `docs/bugs/` is for unhandled reports only.
+   delete the bug when the hand-off is done. Open `docs/bugs/` is for
+   unhandled reports only.
 
 If the fix is already obvious, skip the inbox and file a task with `newtask`
 directly.

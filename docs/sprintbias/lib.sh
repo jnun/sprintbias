@@ -16,6 +16,7 @@
 #   run_with_timeout_dots SECS CMD… — same, with progress dots on the TTY while waiting
 #   _sprintbias_heartbeat_start / _stop — tick dots on the TTY during a quiet,
 #                                output-captured run so it never looks hung
+#   sprintbias_stream_last_step LOG — latest step of a live stream-json log, one line
 #   kebab_case STRING          — lowercase, hyphenated slug
 #   sprintbias_slug NAME [MAX]    — kebab_case + length cap + empty guard (returns 1)
 #   sprintbias_cfg KEY            — read a value: config.local overrides config
@@ -33,6 +34,7 @@
 #   sprintbias_grounding_rule     — the ## Grounding contract (gate writes, work fills gaps)
 #   sprintbias_grounding_conflicts FILE — conflict bullets from a task's ## Grounding
 #   sprintbias_profile_check      — no-AI health check of project.md (paths, staleness)
+#   sprintbias_standards_rule     — design calls follow, improve or write a written standard (crew)
 #   sprintbias_doc_sync_rule      — the write side: keep sources accurate or record ### Doc follow-ups
 #   sprintbias_doc_followups FILE — follow-up bullets from a finished task
 #   sprintbias_file_doc_followups — collect follow-ups from review/ + done/ into one backlog task
@@ -336,17 +338,33 @@ run_with_timeout_dots() {
 # (output captured, piped, or CI) and when a heartbeat is already running
 # (an outer run_with_timeout_dots owns the line) so dots never double up.
 # Pace with SPRINTBIAS_HEARTBEAT_SECS (default 2). Pair every _start with _stop.
+#
+# Two guards keep a ticker from outliving its run:
+#   - Calls pair up: a _start skipped because an outer ticker owns the line
+#     counts itself, and its _stop only uncounts, leaving the outer ticker and
+#     the "line is owned" flag alone. So a later _start, such as a provider
+#     retry, still sees the line owned and starts no second ticker.
+#   - The ticker watches the shell that started it and exits when that shell
+#     is gone, so a run killed by run_with_timeout's watchdog (which never
+#     reaches _stop) cannot leave dots printing over the next prompt.
 _SPRINTBIAS_HEARTBEAT_PID=""
+_SPRINTBIAS_HEARTBEAT_SKIPS=0
 _sprintbias_heartbeat_start() {
-    _SPRINTBIAS_HEARTBEAT_PID=""
+    local owner
     # Skip if an outer ticker already owns the line, or there is no TTY.
-    [ -z "${_SPRINTBIAS_HEARTBEAT_ON:-}" ] || return 0
-    { true >/dev/tty; } 2>/dev/null || return 0
+    if [ -n "${_SPRINTBIAS_HEARTBEAT_ON:-}" ] || ! { true >/dev/tty; } 2>/dev/null; then
+        _SPRINTBIAS_HEARTBEAT_SKIPS=$((${_SPRINTBIAS_HEARTBEAT_SKIPS:-0} + 1))
+        return 0
+    fi
     _SPRINTBIAS_HEARTBEAT_ON=1
+    # This (sub)shell's pid: $$ names the top-level script, and bash 3.2 has
+    # no BASHPID, so ask a child for its parent.
+    owner="$(exec sh -c 'echo $PPID')"
     ( trap 'exit 0' TERM
       n=0
-      while :; do
+      while kill -0 "$owner" 2>/dev/null; do
           sleep "${SPRINTBIAS_HEARTBEAT_SECS:-2}"
+          kill -0 "$owner" 2>/dev/null || exit 0
           printf '.' >/dev/tty 2>/dev/null || exit 0
           n=$((n + 1))
           [ $((n % 48)) -eq 0 ] && printf '\n' >/dev/tty 2>/dev/null
@@ -356,12 +374,17 @@ _sprintbias_heartbeat_start() {
     disown "$_SPRINTBIAS_HEARTBEAT_PID" 2>/dev/null || true
 }
 _sprintbias_heartbeat_stop() {
-    if [ -n "${_SPRINTBIAS_HEARTBEAT_PID:-}" ]; then
-        kill "$_SPRINTBIAS_HEARTBEAT_PID" 2>/dev/null || true
-        _SPRINTBIAS_HEARTBEAT_PID=""
-        # Close the dotted line so the next banner/result starts clean.
-        { printf '\n' >/dev/tty; } 2>/dev/null || true
+    # A skipped _start's pair only uncounts; the call that started the
+    # ticker stops it and frees the line.
+    if [ "${_SPRINTBIAS_HEARTBEAT_SKIPS:-0}" -gt 0 ]; then
+        _SPRINTBIAS_HEARTBEAT_SKIPS=$((_SPRINTBIAS_HEARTBEAT_SKIPS - 1))
+        return 0
     fi
+    [ -n "${_SPRINTBIAS_HEARTBEAT_PID:-}" ] || return 0
+    kill "$_SPRINTBIAS_HEARTBEAT_PID" 2>/dev/null || true
+    _SPRINTBIAS_HEARTBEAT_PID=""
+    # Close the dotted line so the next banner/result starts clean.
+    { printf '\n' >/dev/tty; } 2>/dev/null || true
     unset _SPRINTBIAS_HEARTBEAT_ON 2>/dev/null || true
 }
 
@@ -646,6 +669,17 @@ is present, keep it and add what is missing.
 **Sources:** the project-map entries this task touches — code structure,
 language and style, glossary / lexicon / taxonomy, other sources of truth — as
 `path` (what it governs), comma-separated.
+**Standards:** the written rule for each design call this task makes (how a
+screen, form or flow opens, its layout, buttons, words, style; an API, command
+or data shape), as `path` → section. Look in the project's standards docs
+first (the map's sources; commonly docs/guides/ and docs/designs/). A rule
+exists: follow it. A rule is unclear or leaves this case out: improve it. No
+rule exists: write one, in the standards doc it belongs to (docs/guides/ when
+none fits). Improve or write it from established best practice and good UI/UX,
+in step with the closest existing example that does the same job. Keep the
+rule short and general, and write it in this task, so every later change
+follows and upgrades the same rule. 'None — no design calls.' when there are
+none.
 **Terms:**
 - **term** — definition copied word for word from the glossary / lexicon /
   taxonomy. Only terms this task uses; 'None.' when the project has none.
@@ -654,13 +688,31 @@ language and style, glossary / lexicon / taxonomy, other sources of truth — as
 ('None found.' when there are none.)
 
 Conflicts cover the task vs a source of truth, two sources vs each other, the
-task vs the current code, and the task vs the SprintBias framework itself (its
+task vs the current code, the task vs a standard, and the task vs the SprintBias framework itself (its
 folders, rules, or commands). Settle each one here, before work, choosing the
 path that keeps the sources of truth intact. A term the glossary lacks is a
 conflict line: the reading you use, and a suggestion to add it. A conflict that
 changes scope or what done means is decided like any call: the most reasonable
 reading, recorded as a Decided: line. A conflict that leaves a source wrong or incomplete (a missing term, an outdated
 section) becomes a Doc follow-up when the task completes.
+EOF
+}
+
+# The standards loop for crew sessions, builders and passes alike. A task the
+# gate grounded carries it on its **Standards:** line; a task filed mid-plan
+# (a fix, a pass finding) reaches a member ungated, so the member carries it.
+sprintbias_standards_rule() {
+    cat <<'EOF'
+Standards: every design call (how a screen, form or flow opens, its layout,
+buttons, words, style; an API, command or data shape) follows a written rule in
+the project's standards docs (the map's sources; commonly docs/guides/ and
+docs/designs/). A rule exists: follow it. A rule is unclear or leaves the case
+out: improve it. No rule exists: write one, from best practice and good UI/UX,
+in step with the closest existing example that does the same job. Keep each
+rule short and general, and write it in the same task. Building, name the rule
+on the task's ## Grounding **Standards:** line. Reviewing, check the work
+against the rule, and where the review finds the rule unclear or silent, write
+or improve it before you file the fix.
 EOF
 }
 
@@ -681,6 +733,8 @@ under ## Completed as:
 ### Doc follow-ups
 - `path` — what needs to change and why
 
+A standard you wrote or improved under **Standards:** is part of this task:
+list it under ### Files changed.
 Add a line the same way for a project-map change (a source added, moved, or
 removed; a changed command or environment) — the map is refreshed with
 ./sprint.sh profile. Leave the subsection out when there is nothing to follow up.
@@ -1253,7 +1307,7 @@ sprintbias_profile_check() {
 # injection into interactive chat prompts. Prints the file body on stdout.
 # Loud-fails (message on stderr, return 1) if the file is missing — callers that
 # need the method must not continue without it. Walk-agnostic: same text for
-# chat <id>, chat bugs [d], chat-sprint, and (later) chat plan.
+# chat <id>, chat-sprint, and (later) chat plan.
 sprintbias_conversation_method() {
     local f="$_SPRINTBIAS_LIB_DIR/ai/conversation.md"
     if [ ! -f "$f" ]; then
@@ -3483,6 +3537,42 @@ for line in sys.stdin:
     fi
 }
 
+# sprintbias_stream_last_step LOG — the latest step in a stream-json log that is
+# still being written, as one short line ("Edit app/src/x.tsx", "Bash pnpm run
+# lint", or the agent's last words). Reads only the log's tail, so it stays
+# cheap on a long run. Prints nothing when the log has no step yet. Used by
+# work's parallel runner to sample each running task's progress.
+sprintbias_stream_last_step() {
+    [ -s "$1" ] && command -v python3 >/dev/null 2>&1 || return 0
+    python3 - "$1" <<'PY' 2>/dev/null || true
+import json, os, sys
+with open(sys.argv[1], "rb") as f:
+    f.seek(max(0, os.path.getsize(sys.argv[1]) - 65536))
+    lines = f.read().decode("utf-8", "replace").splitlines()
+def hint(inp):
+    for k in ("file_path", "command", "pattern", "description", "path"):
+        if inp.get(k):
+            return " ".join(str(inp[k]).split())
+    return ""
+for line in reversed(lines):
+    try:
+        e = json.loads(line)
+    except ValueError:
+        continue
+    if not isinstance(e, dict) or e.get("type") != "assistant":
+        continue
+    step = ""
+    for b in (e.get("message") or {}).get("content") or []:
+        if b.get("type") == "tool_use":
+            step = ("%s %s" % (b.get("name", "?"), hint(b.get("input") or {}))).strip()
+        elif b.get("type") == "text" and b.get("text", "").strip():
+            step = " ".join(b["text"].split())
+    if step:
+        print(step[:90] + "..." if len(step) > 90 else step)
+        break
+PY
+}
+
 # sprintbias_interactive_ok — true when a live back-and-forth session is actually
 # possible right now. The single source of truth for that decision, consulted
 # both by sprintbias_run_interactive (to route the run) and by callers like
@@ -3514,7 +3604,7 @@ sprintbias_interactive_ok() {
 # wedge after the first turn under that shape (task 335: O_RDONLY was
 # necessary but not sufficient; the device path matters too). Callers that
 # launch a nested interactive session from a menu (chat-folder [d], chat-bugs
-# [d]) should open stdin with:  … <>"$(sprintbias_tty)"
+# [t]) should open stdin with:  … <>"$(sprintbias_tty)"
 sprintbias_tty() {
     local t
     if t=$(tty 2>/dev/null) && [ -n "$t" ] && [ -c "$t" ]; then

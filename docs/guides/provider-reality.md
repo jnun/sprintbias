@@ -73,7 +73,7 @@ the burn log; **this guide is the living home**.
 | KK-18b | Fast mode skips permission prompts: `sprintbias_run` / `sprintbias_run_interactive` lead with neutral `--skip-permissions` when `sprintbias_fast_on`, which wins over the call site's `--permissions`. Claude → `--dangerously-skip-permissions`; Grok → `--always-approve`; default profile and emit consume it | RESOLVED — works | Fast off keeps `--permission-mode auto`. Human-owned actions stay walled by rule, not prompt. Locked by `test-fast.sh` (2026-10-10) |
 | KK-18c | Read-only interactive session (`help` AI fallback, `scripts/help-ask.sh`): `--permissions plan` + `--tools Read,Grep,Glob`, with `SPRINTBIAS_FAST=off` so `--skip-permissions` never outranks plan mode. Claude → `--permission-mode plan` (+ `--allowedTools`, which pre-approves, not restricts); Grok → `--permission-mode plan` (interactive TUI drops `--tools`, so plan mode alone holds read-only) | RESOLVED — works | Both CLIs list `plan` as a `--permission-mode` value (2026-10-10 `--help`). Args locked by `test-help-resolve.sh` with stub CLIs; the live read-only behavior is the task 440 human signoff |
 | KK-19 | Canonical shell id is `run_terminal_command`; map accepts `run_terminal_cmd` too | RESOLVED — works | Locked by #291 + `grok-provider-tier.md` |
-| KK-19b | Neutral `stream-json` contract for headless progress | RESOLVED — works | Call sites (esp. `work`) pass `--output-format stream-json` only. Claude profile: keep `stream-json` and auto-add `--verbose`. Grok profile: map → `streaming-messages-json` (Anthropic Messages NDJSON; work progress filter), drop `--verbose`. Never forward Claude-only flags from call sites. Locked by `test-grok-provider.sh` Test 15 (2026-08-07) |
+| KK-19b | Neutral `stream-json` contract for headless progress | RESOLVED — works | Call sites (esp. `work`) pass `--output-format stream-json` only. Claude profile: keep `stream-json` and auto-add `--verbose`. Grok profile: map → `streaming-messages-json` (Anthropic Messages NDJSON; work progress filter), drop `--verbose`. Never forward Claude-only flags from call sites. Both profiles pass the stream through live, so a caller's log grows during the run (Claude tees its retry copy instead of replaying at the end). Locked by `test-grok-provider.sh` Test 15 (2026-08-07), `test-live-progress.sh` (2026-10-13) |
 
 ### Subagents & orchestration
 
@@ -206,6 +206,8 @@ We cannot list them. We list **where** they usually appear. Append under
 ## Surfaced unknowns
 
 - 2026-08-07 — Grok `work` exec died immediately: `invalid value 'stream-json'` and (next) unexpected `--verbose`. Root cause: `work.sh` hardcoded Claude CLI flags; Grok profile passed them through. Fix: neutral `stream-json` contract + profile maps (KK-19b); unit Test 15.
+
+- 2026-10-13 — Claude `work` runs looked hung: the profile buffered raw stream-json until the CLI exited, so `docs/tmp/log-work-*.json` stayed 0 bytes and only dots showed. Fix: live pass-through via `tee` (KK-19b); work samples each log for status lines.
 
 Append as smoke and real projects hit them.
 

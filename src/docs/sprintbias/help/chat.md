@@ -135,26 +135,30 @@ After authoring: optional `./sprint.sh plan think <id>` (dual-persona critique),
 then `./sprint.sh plan start <id>` to commit members into the sprint (fast on:
 the session may run it for you).
 
-With `bugs`, `chat` sweeps the bug inbox (`docs/bugs/`) — the same verdict-first
-tempo, but bug-shaped. A bug report is not a task: it lives flat, has no
-dependency or status metadata. Handled reports leave the workspace (delete) —
-the inbox holds open reports only. For each report the sweep gives a fast
-verdict (REPRODUCIBLE / FIXED / UNDEFINED / DUPLICATE / STALE on a cheap model),
-then lets you decide:
+With `bugs`, `chat` sorts the bug inbox (`docs/bugs/`) into backlog tasks,
+fast, and asks you nothing. A bug report is not a task: it lives flat, has no
+dependency or status metadata. Handled reports leave the workspace (delete), so
+one run empties the inbox.
 
-  - [w] work it   — **convert**: create a fix task filled from the report
-                    (Problem, Steps→Problem, the report's Success criteria
-                    → Done when (automated), origin in Notes),
-                    then **delete** the bug file. The task owns the work from
-                    here; refine later with `chat <task-id>` if needed.
-  - [d] define it — go deep on the *report itself* (the strongest model):
-                    sharpen `## Problem`, `## Steps to reproduce`, the severity,
-                    and `## Success criteria` until anyone could reproduce and
-                    verify the fix. The only step that escalates past the verdict.
-                    When done, `/quit` (or `quit`) returns you to the bug sweep
-  - [a] close     — already fixed or obsolete, no task → **delete** the report
-  - [k] kill it   — not a real bug: delete after confirming
-  - [s] skip / [q] quit
+Each report gets a quick verdict on a cheap model, several at once. The verdict
+checks the code and names the **Standard** the report touches (the written rule
+the fix follows, or the doc where a missing rule is written first). Then the
+sweep acts on its lane:
+
+  - FIXED  — the code already does it, or a task covers it: the report is
+             deleted, and the summary lists each one with its evidence
+  - TASK   — a clear defect: a fix task lands in `backlog/`, gleaned from the
+             report as far as the code allows (Problem with steps, Done when
+             naming the Standard, Decided lines where the report is thin)
+  - DECIDE — only you can settle it (unclear, or a decision bigger than one
+             fix): the same backlog task, carrying the one question under
+             `### Questions for the developer`. An open question keeps a task
+             out of `next/` and `work` until it is answered. Answer them with
+             `chat <id>`, or all with `chat backlog` — that talk can also turn
+             the answer into a plan.
+
+The summary ends with one copyable `./sprint.sh chat <id>` line per new task,
+marking the ones waiting on your answer with their question.
 
 Unlike the task-folder sweep, this runs no dependency resolution — bugs have no
 dependencies. File a bug first with `./sprint.sh newbug "…"`. Prefer filing a
@@ -168,7 +172,7 @@ Usage:
   ./sprint.sh chat <task-id>    # chat one task through
   ./sprint.sh chat <folder>     # sweep one folder: blocked, next, or backlog
   ./sprint.sh chat plan [id]    # author a plan (plan id; bare = pick one)
-  ./sprint.sh chat bugs         # sweep the bug inbox → fix tasks
+  ./sprint.sh chat bugs         # sort the bug inbox → backlog tasks
   ./sprint.sh chat sprint       # walk the whole sprint's structural health
   ./sprint.sh chat <id> --model <id>   # pin the model for this run only
 

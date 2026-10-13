@@ -39,7 +39,7 @@ A bug backlog to burn down							lead, fixer-a, fixer-b		split May touch by fold
 One API, several clients (web, iOS, Android)		lead, api, data, web, app		api owns the API contract; data owns schema and migrations
 Money or regulated data (a ledger, tenants)			add checker					checker: tests the invariants, reviews each landing that touches them
 A plan you ship to real users						add stress, security		passes over review/ work: polish --break, polish --code; filed fixes go to the builder
-Screens with a design system or screen specs		add ux						ux: reviews each screen change against the design system and specs; filed fixes go to the builder
+Screens with a design system or screen specs		add ux						ux: reviews each screen change against the design system and specs, and improves the standard where it is unclear; filed fixes go to the builder
 
 The lead's file arrives filled in from `crew add <name> "<role>" --lead`. A
 member's file arrives with Reports filled in; you write its Job and May touch.

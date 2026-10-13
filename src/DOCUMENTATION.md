@@ -47,7 +47,7 @@ Follow these eight and you will not get lost:
    the person holds. A tool idea becomes `./sprint.sh newtask "…"`; then back to the goal.
 7. **Start from the project map.** `docs/sprintbias/project.md` says where the
    project's knowledge lives. Ground a task before working it — its `## Grounding`
-   names the sources, the terms, and the conflicts. Sources of truth are the
+   names the sources, the terms, the standards it follows, and the conflicts. Sources of truth are the
    authority: name a conflict instead of working around it. Check `docs/history/`
    first for why an area is the way it is.
 8. **Work alongside other agents.** Every task in `doing/` is an agent at work.
@@ -379,7 +379,8 @@ Fast mode is the switch for how freely agents run: `fast on` lets them work
 autonomously at high throughput; `fast off` (steady) is the default. In fast mode
 agents skip the AI CLI's permission prompts, and `work` and `polish` run
 independent tasks in parallel (4 jobs; `--jobs N` sets the count, `--steady` runs
-one at a time). Commit, push, `ship.sh`, sign-off to `done/` and production
+one at a time). While they run, `work` prints each task's elapsed time and latest
+step every 30 seconds; a single task shows every step live. Commit, push, `ship.sh`, sign-off to `done/` and production
 credentials stay yours by rule. Fast is safest on a dev server or a clean git
 tree. It is per machine, saved as `FAST=` in `config.local`. Put `--fast` or
 `--steady` before any command for one run (`./sprint.sh --fast chat 12`);
@@ -406,9 +407,18 @@ straight to the right file instead of searching.
 `./sprint.sh profile` builds or refreshes it (`show`, `check`: `help profile`).
 Every AI command orients from the map; `work` and `plan start` say when it has
 drifted. Before a task is worked, the gate writes its **`## Grounding`**: the sources
-it relies on, the glossary terms it uses (word for word), and its conflicts — task vs
-a source, source vs source, task vs code, or task vs SprintBias — each settled before
-work. A conflict that changes scope or what done means becomes a question for you.
+it relies on, the glossary terms it uses (word for word), its **Standards**, and its conflicts — task vs a
+source, source vs source, task vs code, task vs a standard, or task vs SprintBias —
+each settled before work.
+
+**Standards are a loop.** Every design call (how a screen or flow opens, its layout,
+buttons, words, style; an API or data shape) follows a written rule in the project's
+standards docs, such as `docs/guides/` and `docs/designs/`. A rule exists: the work
+follows it. A rule is unclear or missing a case: the work improves it. No rule exists:
+the work writes one, from best practice and the closest existing example. Each rule
+is short and general, so the next page, button or flow repeats the decision instead
+of guessing, and what you learn from feedback and real use upgrades one rule for
+everything built after it. A conflict that changes scope or what done means becomes a question for you.
 `work` grounds what the gate did not and reports every conflict.
 
 **Known edges.** `promote --reject <id> "class: case"` also adds one line to the

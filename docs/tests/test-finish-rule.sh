@@ -63,6 +63,17 @@ for gone in "goal-shaping item waits" "write the question into the task file" \
 done
 G="$(cd "$ROOT" && bash -c 'source docs/sprintbias/lib.sh; sprintbias_grounding_rule')"
 has   "grounding: scope conflict is decided" "$G" "decided like any call"
+has   "grounding: follows a standard"      "$G" "A rule exists: follow it."
+has   "grounding: improves an unclear one" "$G" "leaves this case out: improve it."
+has   "grounding: writes a missing one"    "$G" "No
+rule exists: write one"
+D="$(cd "$ROOT" && bash -c 'source docs/sprintbias/lib.sh; sprintbias_doc_sync_rule')"
+has   "doc sync: a written standard ships with the task" "$D" "under **Standards:** is part of this task"
+CB="$(cat "$SB/scripts/chat-bugs.sh")"
+has   "chat bugs: verdict names the standard"   "$CB" "STANDARD: <"
+has   "chat bugs: a decision waits as an open question" "$CB" "### Questions for the developer"
+has   "chat bugs: convert carries the standard" "$CB" "**Standard:** %s"
+has   "chat bugs: a fixed report names evidence" "$CB" "for FIXED, the evidence"
 
 DOC="$(cat "$ROOT/DOCUMENTATION.md")"
 has   "manual: chat asks, work finishes"  "$DOC" "**Chat asks; work finishes.**"

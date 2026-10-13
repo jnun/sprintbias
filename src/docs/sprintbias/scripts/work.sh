@@ -1361,6 +1361,10 @@ _journal_plan=""
 for ((_ji = 0; _ji < COUNT; _ji++)); do
   _journal_plan="$_journal_plan ${TASK_FILES[$_ji]##*/}"
 done
+# One task has nothing to overlap: run it on the sequential path, which shows
+# each step live instead of a quiet background job.
+[ "$PARALLEL" -eq 1 ] && [ "$COUNT" -le 1 ] && PARALLEL=0
+
 _journal run count "$COUNT" parallel "$PARALLEL" jobs "$MAX_JOBS" \
   plan "${_journal_plan# }"
 unset _journal_plan _ji
@@ -1375,11 +1379,16 @@ unset _journal_plan _ji
 # stream-json contract (NDJSON progress + Claude-shaped assistant/result
 # events). Profiles translate: Claude keeps stream-json (+ --verbose);
 # Grok maps to streaming-messages-json and drops Claude-only flags.
-# Raw event log always lands in docs/tmp/; pass display=1 (sequential) to
-# also render live progress on the terminal. Returns the CLI's exit code.
+# Raw event log always lands in docs/tmp/ and grows as the run goes; pass
+# display=1 (sequential) to also render live progress on the terminal. The
+# parallel runner passes the LOG path so it can sample each task's latest step.
+# Either way work shows progress itself, so it claims the line
+# (_SPRINTBIAS_HEARTBEAT_ON) and the provider ticks no dots. Returns the CLI's
+# exit code.
 _run_task() {
-  local name="$1" display="${2:-0}" log
-  log="$(sprintbias_log_path work "$name")"
+  local name="$1" display="${2:-0}" log="${3:-}"
+  [ -n "$log" ] || log="$(sprintbias_log_path work "$name")"
+  local _SPRINTBIAS_HEARTBEAT_ON=1
   if [ "$display" -eq 1 ]; then
     sprintbias_run -p "$(_task_prompt "$WORKING_DIR/$name")" \
       ${_model_args[@]+"${_model_args[@]}"} \
@@ -1682,7 +1691,12 @@ if [ "$PARALLEL" -eq 1 ]; then
 
   NTASK=${#TASK_FILES[@]}
   STATE=(); PIDS=()                       # STATE[i]: 0 pending, 1 running, 2 done
-  for ((i=0; i<NTASK; i++)); do STATE+=(0); PIDS+=(0); done
+  LOGS=(); STARTS=()                      # each task's live log and launch time
+  for ((i=0; i<NTASK; i++)); do STATE+=(0); PIDS+=(0); LOGS+=(""); STARTS+=(0); done
+  # Every SPRINTBIAS_PROGRESS_SECS (default 30; 0 = off) print one line per
+  # running task: its elapsed time and latest step, read from its live log.
+  _PROGRESS_SECS="${SPRINTBIAS_PROGRESS_SECS:-30}"
+  _next_progress=$((SECONDS + _PROGRESS_SECS))
 
   # Interrupt handling. Kill the whole process tree of every running task (the
   # CLI child is a grandchild of the tracked wrapper PID and would otherwise
@@ -1710,7 +1724,9 @@ if [ "$PARALLEL" -eq 1 ]; then
       [ "$idx" -lt 0 ] && break          # nothing runnable right now
       name="$(_ensure_in_doing "${TASK_FILES[$idx]}")"
       TASK_FILES[$idx]="$WORKING_DIR/$name"
-      _run_task "$name" &
+      LOGS[$idx]="$(sprintbias_log_path work "$name")"
+      STARTS[$idx]=$SECONDS
+      _run_task "$name" 0 "${LOGS[$idx]}" &
       PIDS[$idx]=$!
       STATE[$idx]=1
       RUNNING=$((RUNNING + 1)); LAUNCHED=$((LAUNCHED + 1))
@@ -1748,6 +1764,16 @@ if [ "$PARALLEL" -eq 1 ]; then
       fi
     done
     [ "$_progressed" -eq 1 ] && _try_launch
+    if [ "$RUNNING" -gt 0 ] && [ "$_PROGRESS_SECS" -gt 0 ] && [ "$SECONDS" -ge "$_next_progress" ]; then
+      for ((i=0; i<NTASK; i++)); do
+        [ "${STATE[$i]}" -eq 1 ] || continue
+        _el=$((SECONDS - STARTS[i]))
+        _step="$(sprintbias_stream_last_step "${LOGS[$i]}")"
+        printf '  · #%s  %dm%02ds  %s\n' "$(task_id "${TASK_FILES[$i]}")" \
+          $((_el / 60)) $((_el % 60)) "${_step:-starting...}"
+      done
+      _next_progress=$((SECONDS + _PROGRESS_SECS))
+    fi
     [ "$RUNNING" -gt 0 ] && sleep 3
   done
 

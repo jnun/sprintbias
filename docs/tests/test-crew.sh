@@ -107,6 +107,8 @@ assert_contains "Points at the member file" "$out" "docs/crew/dill.md"
 assert_contains "Names the task" "$out" "Your work is task 7"
 assert_contains "Claim rule" "$out" "set its **Crew** field to dill"
 assert_not_contains "No lead rules for a member" "$out" "You lead this crew"
+assert_contains "Standards loop: follow" "$out" "A rule exists: follow it."
+assert_contains "Standards loop: a pass improves the rule" "$out" "before you file the fix"
 
 echo "Test 6: the lead gets lead rules on a plan"
 printf '# Plan 3: Upload fixes\n\n**Status:** STARTED\n' > "$TMPDIR/docs/plans/3-upload-fixes.md"

@@ -92,7 +92,7 @@ Command		Does
 chat \<id\>		Define / refine / split one task in conversation
 chat \<folder\>		Sweep backlog / next / blocked — verdict-first sort
 chat plan [id]		Author or refine a plan (plan id; bare = pick one); works plan think's decision checklist first, one line at a time
-chat bugs		Sweep bug inbox → convert or kill
+chat bugs		Sort bug inbox into backlog (fixed → delete, clear → task, unclear → task with an open question)
 chat			Menu that includes newtask, newplan, chat folder, chat plan (plan id; bare = pick one), chat bugs (bare = work through oldest to newest or until stopped)
 
 One conversational engine. Target chooses depth; the method is always
