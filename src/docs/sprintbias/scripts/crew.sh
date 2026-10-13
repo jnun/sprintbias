@@ -191,6 +191,13 @@ cmd_start() {
       work_line="Your work is plan $pid: $pfile."
       if [ "$lead" = "yes" ]; then
         assign_plan "$pfile" "$name"
+        if [ -f "docs/tmp/plan-${pid}-progress.md" ]; then
+          if head -1 "docs/tmp/plan-${pid}-progress.md" | grep -q '^Handoff: ready'; then
+            echo -e "${DIM}▸ Taking over plan ${pid}: the last lead handed off in docs/tmp/plan-${pid}-progress.md${NC}"
+          else
+            echo -e "${DIM}▸ Resuming plan ${pid} from docs/tmp/plan-${pid}-progress.md${NC}"
+          fi
+        fi
         local start_line=""
         [ "$(grep -m1 -E '^\*\*Status:\*\*' "$pfile" | tr -d '[:space:]')" = "**Status:**STARTED" ] \
           || start_line="
@@ -202,7 +209,7 @@ ${start_line}
 - Route on landing: when a member reports one, check its **Proof**: line (./sprint.sh plan check $pid shows it landed) and route the tasks it releases in that same turn. Landed releases; done/ is never the wait.
 - Mark each released task on the board \"built on #N (landed)\", so a rejection of #N traces to everything it affects.
 - A blocked member hands the blocker to its owner (or you) and starts its next task. A member with nothing runnable writes its next task's ## Grounding with **Touching:** so it starts warm.
-- Plan close: when plan check reads LANDED, run the full suite once (./sprint.sh promote plan:$pid </dev/null runs it, files a fix task per failure and, with no answer, moves nothing), or have a member run it. Route each fix to the member who built the original. When green, hand the human one sign-off: ./sprint.sh promote plan:$pid. That approval is the human's; never answer it.
+- Plan close: when plan check reads LANDED, run the full suite once (./sprint.sh promote plan:$pid </dev/null runs it, files a fix task per failure and, with no answer, moves nothing), or have a member run it. Route each fix to the member who built the original in that turn, and run the suite again once they land, as many rounds as green takes. When green, hand the human one sign-off: ./sprint.sh promote plan:$pid. That approval is the human's; never answer it.
 - The plan's human test (**Owner**: human, in review/) is the person's. No member waits on it or works it; the fix tasks its ## Results file route like any other."
       fi ;;
     *)
@@ -231,10 +238,10 @@ Your member file is ${file}. It is your job description: read it first, then the
 ${work_line}
 
 Crew rules:
-1. The files are the shared state. Anything that must last goes in a task file or the plan file, never only in a message.
+1. The files are the shared state. Anything that must last goes in a task file or the plan file, never only in a message or your own memory notes: other members read the files, not your memory. A shared runtime resource (the iOS Simulator and its build folder, a dev database, a server port) serves one test run at a time: before you run against it, check that no other run is using it (for the Simulator, pgrep xcodebuild) and wait for that run to finish. A task you file while working a plan carries it: ./sprint.sh newtask \"<the task>\" --from-plan <that plan's id>, so plan done lists it as a follow-up.
 ${hold_rules}
-4. Land the normal way: fill the task's ## Completed section with its proof line, move it to review/, and report the landing (task id and proof line) to the lead by message, or on the plan's ## Crew board when your CLI cannot message. The file is the record, so a restart loses nothing. Then start your next task; when blocked, tell the lead and the owner and take your next.
-5. Other members are reachable by their crew name. Messages are for nudges and questions.
+4. Land the normal way: prove the task with the targeted tests for what it changes (the test files and filtered runs that cover it); the full suite runs once, at plan close. Fill the task's ## Completed section with its proof line, move it to review/, and report the landing (task id and proof line) to the lead by message, or on the plan's ## Crew board when your CLI cannot message. The file is the record, so a restart loses nothing. Then start your next task; when blocked, tell the lead and the owner and take your next.
+5. Other members are reachable by their crew name. Messages are for nudges and questions. In your own terminal, stay fresh: when about a quarter of your context window is used, land the task you are on, put anything the next session needs in that task file, and tell the person in one line to run ./sprint.sh crew ${name} for a fresh session.
 6. The human approves, commits and ships.
 
 $(sprintbias_parallel_rule "$self")
@@ -256,10 +263,18 @@ ${fast}"
 
 You lead this crew. Like a coxswain, you keep everyone rowing in time:
 - Hold the central idea of how the plan gets solved. Keep it in the plan file under ## Crew (after ## Member tasks): the approach in a few lines, an Active: line naming the members this plan needs running, then one line per member: name, task now, task next, state.
-- Split for parallel work: tasks that run at once need disjoint **Touching:** sets (or References, before a task has one). Overlapping tasks go to one member, or run in order through **Depends on**, lower id first.
+- Split for parallel work: tasks that run at once need disjoint **Touching:** sets (or References, before a task has one). Overlapping tasks go to one member, or run in order through **Depends on**, lower id first. Shared runtime resources count as touched too: builds, passes and reviewers that test against the same Simulator, dev database or port run one after another.
 - Route a task by setting its **Crew** field to the member whose lane fits, then message that member the task id. The lane fits when the member's May touch covers what the task changes; a step only one member may run (a migration, a deploy) sends the task to that member.
 - A task no member's May touch covers gets an owner: add one with ./sprint.sh crew add <name> \"<role>\", fill its Job and May touch, record a - Decided: line on the board, and tell the human the terminal to start (./sprint.sh crew <name>).
 - A member whose Job is a pass over landed work (stress, security, UI and UX) gets each landing in its lanes before plan close; the fix tasks it files go back to the builder.
+- Run the members yourself as subagents (where your CLI has them). For each task you route, when ./sprint.sh agents shows no live session for its member, start a background subagent for it: the agent type its member file's Reads first names (the project's own agent, such as .claude/agents/api-engineer.md), or the general-purpose agent, with the member file (docs/crew/<name>.md), the task path and the member rules: claim it (doing/, **Crew**), build, land it in review/ with its **Proof**: line, and return only the task id, its proof line and any - Decided: lines, so your context stays small. Start a whole wave at once and route what each landing releases as it returns. A member with a live session gets a message instead.
+- Subagents start none of their own, so you run each pass's reviewers: when a pass member's Job names reviewer agents (security, contracts, gates), start those agents on the landing directly.
+- Keep the plan's progress file, docs/tmp/plan-${close_plan}-progress.md, current: rewrite it after each landing and each routing. It holds Done (task, the member and agent type that built it, proof line), Building (task, member, agent type), Next (what each pending landing releases and to whom), and Open calls. A fresh lead catches up from it alone, so read it first when it exists and resume from Next.
+- Stay light and hand off early. Work runs fastest and cheapest while most of the context window is free, so read state from the files when you need it instead of holding it. When about a quarter of your context window is used (three quarters still free), or it has been compacted, hand off:
+  1. Brain dump: add a ## Lead notes section to the progress file with everything in your context a new lead would need and could not read from the files: why each routing call was made, what each member is doing and how far it got, problems seen and how they were handled, what to check next, anything surprising. Keep every useful line; add to what is there, and remove a line only when a newer one replaces it.
+  2. Tell the crew: start no new subagents; message each subagent still running, and each member in its own terminal, that a new lead is coming online: finish the current task, land it with its proof line, and report on the progress file. Wait for the running subagents to land (they end with this session).
+  3. Mark the file last: make its first line Handoff: ready (YYYY-MM-DD HH:MM). That line ends this session; crew starts the new lead by itself. Tell the person in one line that a fresh lead is taking over, and, if it does not start, to run ./sprint.sh crew ${name} plan:${close_plan} to bring the new lead online.
+- Taking over: when the progress file says Handoff: ready, you are the new lead. Read the file, ## Lead notes included, then the plan's ## Crew board; change that first line to Lead: online (YYYY-MM-DD HH:MM); message each member in its own terminal that you lead now; and continue from Next.
 ${lead_build}
 - When the plan's work has landed, close with the human: list the calls the crew made (each - Decided: line, with ./sprint.sh newtask \"<the change you want>\" to change one), then the next command: ./sprint.sh promote plan:${close_plan}."
     [ -n "$plan_block" ] && rules="${rules}
@@ -275,13 +290,60 @@ ${plan_block}"
     echo -e "${DIM}Starting ${name}. When finished, type /quit to end the session.${NC}"
   fi
 
-  # No --tools list: a crew member needs the full toolset, including whatever
-  # the CLI offers for messaging other sessions.
-  sprintbias_run_interactive \
-    --append-system-prompt "$rules" \
-    ${model_args[@]+"${model_args[@]}"} \
-    --name "$name" \
-    "Read your member file and your work. Tell me in one or two lines who you are and what you are starting, then start it now; this message is the go-ahead."
+  # A lead on a plan in a live session hands off by itself: when the progress
+  # file turns to Handoff: ready, end this session and start a fresh lead.
+  local progress=""
+  if [ "$lead" = "yes" ] && sprintbias_interactive_ok; then
+    case "$target" in plan:*) progress="docs/tmp/plan-${target#plan:}-progress.md" ;; esac
+  fi
+
+  local round=0 started first
+  while :; do
+    first=""; [ -f "$progress" ] && first="$(head -1 "$progress")"
+    started="$(date +%s)"
+    local watcher=""
+    if [ -n "$progress" ]; then
+      watch_handoff "$progress" "$first" "$$" &
+      watcher=$!
+    fi
+    # No --tools list: a crew member needs the full toolset, including whatever
+    # the CLI offers for messaging other sessions.
+    sprintbias_run_interactive \
+      --append-system-prompt "$rules" \
+      ${model_args[@]+"${model_args[@]}"} \
+      --name "$name" \
+      "Read your member file and your work. Tell me in one or two lines who you are and what you are starting, then start it now; this message is the go-ahead." || true
+    [ -n "$watcher" ] && { kill "$watcher" 2>/dev/null || true; wait "$watcher" 2>/dev/null || true; }
+    [ -n "$progress" ] || break
+    stty sane 2>/dev/null || true
+    # Only a fresh Handoff: ready line starts another lead; a session that
+    # ended any other way (/quit, Ctrl-C) ends the loop.
+    head -1 "$progress" 2>/dev/null | grep -q '^Handoff: ready' || break
+    [ "$(head -1 "$progress")" != "$first" ] || break
+    round=$((round + 1))
+    if [ $(( $(date +%s) - started )) -lt "${CREW_HANDOFF_MIN:-60}" ] || [ "$round" -ge "${CREW_HANDOFFS:-50}" ]; then
+      echo -e "${YELLOW}⚠ Lead handed off again within a minute (or ${CREW_HANDOFFS:-50} times). Stopping; run ./sprint.sh crew ${name} ${target} to continue.${NC}"
+      break
+    fi
+    echo -e "${DIM}▸ Handoff ${round}: starting a fresh lead for ${target} from ${progress}${NC}"
+  done
+}
+
+# watch_handoff PROGRESS_FILE START_LINE SHELL_PID
+# Runs beside a lead session. When the progress file's first line becomes a
+# new Handoff: ready line, wait for the lead's last words, then end the
+# session (the CLI is a child of SHELL_PID; this watcher is skipped).
+watch_handoff() {
+  local file="$1" start="$2" shell="$3" line self pid
+  self="$(sh -c 'echo $PPID')"
+  while sleep 5; do
+    line="$(head -1 "$file" 2>/dev/null || true)"
+    case "$line" in "Handoff: ready"*) [ "$line" != "$start" ] && break ;; esac
+  done
+  sleep "${CREW_HANDOFF_GRACE:-20}"
+  for pid in $(pgrep -P "$shell" 2>/dev/null); do
+    [ "$pid" = "$self" ] || kill -TERM "$pid" 2>/dev/null || true
+  done
 }
 
 # ── crew setup (guided build) ────────────────────────────────────────

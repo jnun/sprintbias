@@ -9,6 +9,8 @@ renames that section to the new version and date on each bump.
 
 ## Unreleased
 
+## 0.0.142 — 2026-10-12
+
 ### Changed
 - A crew lead hands off once about a quarter of its context is used, while three quarters is still free: it writes what it knows into `## Lead notes` in `docs/tmp/plan-<id>-progress.md`, tells the crew a new lead is coming, lets running work land, and marks `Handoff: ready`. `crew` then ends that session and starts a fresh lead in the same terminal, which takes over from the file, so no one retypes a command. Ending a lead yourself (`/quit`, Ctrl-C) stops the loop, and `./sprint.sh crew <lead> plan:N` resumes it.
 - A crew member in its own terminal stays fresh the same way: once about a quarter of its context is used, it lands its task, writes what the next session needs into the task file, and asks you to run `./sprint.sh crew <name>`.

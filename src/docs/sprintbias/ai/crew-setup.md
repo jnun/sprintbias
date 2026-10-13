@@ -10,7 +10,7 @@ run only the members a plan needs. The recommended shapes are in
 docs/sprintbias/guides/crew.md → Recommended crews; start from the closest one.
 
 1. **Read first.** The project map, the instruction file, `./sprint.sh crew`
-   (members that already exist), the open plans in docs/plans/, the project's
+   (members that already exist, their files in docs/crew/), the open plans in docs/plans/, the project's
    own agent definitions (`.claude/agents/`, roles named in AGENTS.md), and its
    standards docs (API and security standards, RBAC or permission matrix,
    design system, UI and form standards, screen specs). Name the lanes you
@@ -39,14 +39,16 @@ docs/sprintbias/guides/crew.md → Recommended crews; start from the closest one
    (`./sprint.sh newtask "Write down the project's invariants"`) and list them
    in the lead's Job until it lands. The map's ## Known edges stays the record of cases that broke; rules
    live in their own document. A solo lane with a clear queue needs no crew:
-   say so, recommend `./sprint.sh work`, and stop.
+   say so, recommend `./sprint.sh work`, and stop. Everything the crew needs
+   lives in these project files; members read the files, not your memory notes.
 4. **Name the active set** for each open plan: the members it needs running,
    about four to six per lead, or fewer where your CLI's notes below say so.
 5. **Hand off** in a short table (name, lead, role, May touch, active), then the
    calls you made (each `- Decided:` line, with `./sprint.sh newtask "<the
-   change you want>"` to change one), then the start commands: the lead on a plan
-   (`./sprint.sh crew <lead> plan:N`), then one terminal per member of the
-   active set (`./sprint.sh crew <name>`).
+   change you want>"` to change one), then the start command: the lead on a plan
+   (`./sprint.sh crew <lead> plan:N`). The lead runs the active members as
+   subagents; `./sprint.sh crew <name>` in its own terminal is for a member the
+   person wants to watch or steer.
 
 Ownership rules every crew follows: one owner per kind of work; a shared file
 (an API contract, a schema) has one named owner and the others read it and ask;
@@ -76,9 +78,11 @@ report each landing to the lead with the task id and its proof line.
   line), and the lead routes what it releases in that turn.
 - The proof line in the task file is the record; the message is the nudge. A
   restarted session reads its state from the files and the ## Crew board.
-- Three or four members run comfortably on one machine. A member may use
-  subagents for parallel work inside its own lane; the lead may hand the
-  plan-close suite run to a subagent or a member.
+- The lead runs members as background subagents, a whole wave at once, using
+  the project's own agent type from `.claude/agents/` when the member's file
+  names one. Subagents start none of their own, so the lead starts each pass's
+  reviewer agents itself. A member in its own terminal (`crew <name>`) gets a
+  message instead; three or four of those run comfortably on one machine.
 - Give the lead the strongest model available; members do well on the default.
 
 ## Grok Build

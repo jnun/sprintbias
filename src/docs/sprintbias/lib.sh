@@ -694,7 +694,8 @@ EOF
 # tells the agent to look again, since siblings start later. Used by work
 # (exec + emit) and crew. Always returns 0.
 sprintbias_parallel_rule() {
-    local self="${1##*/}" f crew others="" n=0
+    local self="${1:-}" f crew others="" n=0
+    self="${self##*/}"
     for f in docs/tasks/doing/[0-9]*-*.md; do
         [ -f "$f" ] && [ "${f##*/}" != "$self" ] || continue
         n=$((n + 1))
@@ -749,25 +750,25 @@ EOF
 # to sprintbias_parallel_rule. Sent with every task, so keep it short.
 sprintbias_proof_rule() {
     cat <<'EOF'
-Test loop:
-- Build the smallest testable outcome first, then grow it.
-- Run targeted tests: the ones ## Done when (automated) names, plus the tests
-  for code your **Touching:** files feed. The full suite runs once, at plan close.
-- Before landing, add one assertion per ## Done when case and per realistic
-  edge case below in the code path you change. Fix each failure; file one in
-  another code path: ./sprint.sh newtask "<the failing case>". Decided and
-  Assumptions record choices between working options, never a known failure.
-- Log each failure under ## Test log (command, failing test, error excerpt).
-  Audit the test first (a wrong test gets corrected, with why), fix any clear
-  cause, and re-run until green. Still unexplained: land without **Proof**.
-- Work that cannot start (no reasonable reading, or access or credentials
-  only the person holds): add ## Outcome with **Result**: blocked and a
-  one-line **Reason**:. Stop.
-- To land, open ## Completed with **Summary**: <one plain sentence: what
-  changed, for someone reading the project's history>, end it with the tests
-  you ran, then move to review/:
-  **Proof**: YYYY-MM-DD · <targeted test commands> · pass
-  Without it the task is "in review, unproven" and holds its dependents.
+Test loop: build, test, adjust, resolve, fix, submit, in that order.
+1. Build what was defined: the smallest testable outcome first, then grow it.
+2. Test what was built: the tests ## Done when (automated) names and the tests
+   for code your **Touching:** files feed; the full suite runs once, at plan close.
+   Then add one assertion per ## Done when case and per realistic edge case below.
+3. Adjust what fails: log it under ## Test log (command, failing test, error excerpt).
+   Audit the test first (a wrong test gets corrected, with why).
+4. Resolve known conflicts (docs, a - Decided: line, a task in doing/) by best practice; record each.
+5. Fix all bugs: each known bug, in any code it reaches, as deep as a solid result
+   needs (a step only a crew lane's owner runs goes to that owner). List each under
+   ### Edges found: - <class>: <case>. Never park a known failure. Re-run until green.
+   Still unexplained: land without **Proof**.
+6. Submit for review: open ## Completed with **Summary**: <one plain sentence: what
+   changed, for someone reading the project's history> and the tests you ran, then
+   move to review/ with:
+   **Proof**: YYYY-MM-DD · <targeted test commands> · pass
+   Without it the task is "in review, unproven" and holds its dependents.
+Cannot start (no reasonable reading, or access or credentials only the person
+holds): add ## Outcome with **Result**: blocked and a one-line **Reason**:. Stop.
 
 EOF
     sprintbias_edge_cases
@@ -801,13 +802,17 @@ then the changed code (git diff on those files, or read them).
 - A failure that is a real defect: fix the code, re-run the targeted tests,
   and keep the **Proof**: line current. When a - Decided: line caused it,
   re-decide it by best practice, fix, and replace that line (say what
-  changed). One in another code path, or one you cannot fix: file it with
-  ./sprint.sh newtask "<the failing case>". Cannot fix: also log it under
-  ## Test log (command, failing test, error excerpt) and remove **Proof**:.
+  changed). A defect in a neighboring code path is fixed too, as deep as a
+  solid result needs; add its files to ### Files changed. Only one you cannot
+  fix after auditing it: file it with ./sprint.sh newtask "<the failing case>",
+  log it under ## Test log (command, failing test, error excerpt) and remove
+  **Proof**:.
+- List each real defect you fixed or filed under ### Edges found in
+  ## Completed: - <class>: <the case>
 - A test left failing names its filed task (in its name or a comment such as
   "fails until #N"); only then mark it expected-failure / skip / todo.
 - Add under ## Completed: **Breaker**: <N> cases tried · <N> fixed · <N> filed
-- Change only the task file, the changed code and its tests.
+- Change the task file, the code each defect lives in, and its tests.
 
 EOF
     sprintbias_edge_cases
@@ -1971,6 +1976,28 @@ sprintbias_add_known_edge() {
             if (in_k && !done) { print e; done = 1 }
             if (!done) { print ""; print "## Known edges"; print ""; print e }
         }' "$map" > "$tmp" && mv "$tmp" "$map"
+    return 0
+}
+
+# sprintbias_lift_edges FILE… — copy each "- <class>: <case>" line under a
+# task's ### Edges found (the defects its worker or breaker confirmed) into the
+# project map's ## Known edges, once. Run at sign-off, one task at a time, so
+# parallel agents never edit the map together. Silent no-op without a map.
+sprintbias_lift_edges() {
+    local f id line n=0
+    [ -f "$SPRINTBIAS_PROJECT_MAP" ] || return 0
+    for f in "$@"; do
+        [ -f "$f" ] || continue
+        id="$(task_id "$f")"
+        while IFS= read -r line; do
+            line="${line#- }"
+            [ -n "$line" ] || continue
+            grep -qF -- "${line:0:80}" "$SPRINTBIAS_PROJECT_MAP" && continue
+            sprintbias_add_known_edge "$id" "$line"
+            n=$((n + 1))
+        done < <(awk '/^### Edges found/ { on = 1; next } /^#/ { on = 0 } on && /^- / { print }' "$f")
+    done
+    [ "$n" -gt 0 ] && echo "▸ Added $n case(s) to ## Known edges in $SPRINTBIAS_PROJECT_MAP"
     return 0
 }
 

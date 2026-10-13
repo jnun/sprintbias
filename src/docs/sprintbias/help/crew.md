@@ -29,11 +29,25 @@ How do I:
                           files or powers, or a pass such as security); fill in
                           Job and May touch so each lane has one owner. Shapes:
                           guide → Recommended crews
-  start the day           ./sprint.sh crew <lead> plan:N in one terminal, then
-                          crew <name> for each member on the board's Active:
-                          line; later, crew <lead> alone resumes its plan (one
-                          plan per lead)
+  start the day           ./sprint.sh crew <lead> plan:N: the lead runs each
+                          member as a subagent (the project's own agent when
+                          its file names one); open crew <name> in another
+                          terminal only for a member you want to watch or
+                          steer. Later, crew <lead> alone resumes its plan
+                          (one plan per lead)
                           (plan:N, plan N, or a bare N when no task N exists)
+  catch up on a plan      docs/tmp/plan-N-progress.md: what is done and by
+                          which member and agent, what is building, what each
+                          landing releases next, open calls, and the lead's
+                          ## Lead notes. The lead rewrites it as work lands
+  hand off a lead         at about a quarter of its context used (three
+                          quarters free) the lead writes its notes
+                          into that file, tells the crew a new lead is coming,
+                          lets running work land and marks Handoff: ready.
+                          crew ends that session and starts a fresh lead in
+                          the same terminal, which takes over from the file.
+                          /quit or Ctrl-C ends the loop; crew <lead> plan:N
+                          resumes it
   hand a task to someone  set the task's **Crew** field to their name (the
                           lead does this) and tell them
   see who holds what      ./sprint.sh crew (tasks) or ./sprint.sh agents (sessions)
@@ -63,8 +77,9 @@ member works its lane first and picks up an idle or stalled lane's work.
 The lead builds too and asks you only goal questions. Promote plan:N stays
 your sign-off.
 
-Start each member in its own plain terminal; inside an AI session the
-command prints the member's prompt instead of opening a session. Files are
+The lead runs members as subagents. To watch or steer one, start it in its
+own plain terminal; inside an AI session the command prints the member's
+prompt instead of opening a session. Files are
 the shared state; messages are only the nudge. The human approves, commits
 and ships.
 

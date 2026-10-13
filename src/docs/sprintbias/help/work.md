@@ -104,8 +104,9 @@ decide each open call, record it as `- Decided: X, because Y`, and finish.
 Only a task that cannot start (no reasonable reading, or access or credentials
 only you hold) gets a one-line `## Outcome` and lands in `blocked/`.
 
-**Test loop** (every worker, solo or crew): build the smallest testable outcome
-first; run targeted tests (those Done when names, plus the tests for code the
+**Test loop** (every worker, solo or crew), in order: build what was defined,
+test what was built, adjust what fails, resolve known conflicts, fix all bugs,
+submit for review. Build the smallest testable outcome first; run targeted tests (those Done when names, plus the tests for code the
 **Touching:** files feed; the full suite runs once, at plan close); log each failure under
 `## Test log` and re-run until green; land with the `**Proof**:` line. A task
 that lands without one is reported as in review, unproven.
@@ -115,21 +116,22 @@ example stands for a class. Workers assert each Done when case and each
 realistic case of: the class the example stands for; round trips (every form
 the project's docs, UI or examples tell people to write, and what the real
 tools people use emit); again and after (run twice, older state, hand edits);
-empty, one, many, malformed; neighbors (other code on the same data). A failing
-case is fixed, or filed with `newtask` when it lives in another code path —
-never parked as a Decided or Assumption line. A design choice inside the class
+empty, one, many, malformed; neighbors (other code on the same data). A known
+bug is fixed now, in the changed code or any code it reaches, as deep as a solid
+result needs (a defect a fix uncovers included) — never parked as a Decided or
+Assumption line. Each fixed defect is listed under `### Edges found`. A design choice inside the class
 (a rounding rule, a format, a limit) is decided and built; a scope-out names
 its task (`- Decided: X is out of scope, because Y; filed as #N`), and the
 end-of-run checklist lists any without one as an Unfiled gap with its
-`newtask` command. Cases a person rejected
-(`promote --reject`) collect in the project map's `## Known edges`, and agents
-test the ones their change touches.
+`newtask` command. Cases a person rejected (`promote --reject`) and every
+task's `### Edges found` (added at sign-off) collect in the project map's
+`## Known edges`, and agents test the ones their change touches.
 
 **Breaker** (on by default): after a task lands, a fresh agent writes tests
 designed to fail against the change — real use first (commands and inputs as
 people type or paste them, every form the docs promise), extremes after — fixes what it can (re-running targeted
-tests and keeping the proof line), files what lives elsewhere, and removes the
-proof line for what it cannot fix — the task then lands in review, unproven,
+tests and keeping the proof line), neighboring code included, and removes the
+proof line for what it cannot fix (filed with `newtask`) — the task then lands in review, unproven,
 with the failure under `## Test log`. It adds `**Breaker**: N cases tried · N
 fixed · N filed · $cost` under `## Completed`. Bounded: targeted tests only,
 BREAK_MAX_TURNS (25) turns, BREAK_TIMEOUT (900 s) at sign-off, and BUDGET_BREAK
